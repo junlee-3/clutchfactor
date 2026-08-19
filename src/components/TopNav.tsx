@@ -4,6 +4,7 @@ const LINKS = [
   { to: "/", label: "Library" },
   { to: "/trends", label: "Trends" },
   { to: "/corpus", label: "Reference corpus" },
+  { to: "/settings", label: "Settings" },
 ];
 
 /** Shared topbar navigation. The current screen's link renders as plain

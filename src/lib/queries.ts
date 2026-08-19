@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   buildCorpus,
   corpusStatus,
+  deleteMatch,
+  getAppSettings,
   getGrid,
   getHabits,
   getMatchDetail,
@@ -11,6 +13,7 @@ import {
   importCorpusDemo,
   importDemo,
   listMatches,
+  setTrackedOverride,
   trackedPlayer,
 } from "./ipc";
 import type { ProgressEvent } from "./ipc";
@@ -101,6 +104,38 @@ export function useBuildCorpus(onProgress: (e: ProgressEvent) => void) {
       void client.invalidateQueries({ queryKey: ["grid"] });
       // D6 insights may change after a rebuild.
       void client.invalidateQueries({ queryKey: ["report"] });
+    },
+  });
+}
+
+// ---- M6: settings + housekeeping ----
+
+export function useAppSettings() {
+  return useQuery({ queryKey: ["app_settings"], queryFn: getAppSettings });
+}
+
+export function useSetTrackedOverride() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (steamid: string | null) => setTrackedOverride(steamid),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["app_settings"] });
+      void client.invalidateQueries({ queryKey: ["tracked_player"] });
+    },
+  });
+}
+
+export function useDeleteMatch() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (matchId: number) => deleteMatch(matchId),
+    onSuccess: () => {
+      // Every cross-match surface can change when a match disappears.
+      void client.invalidateQueries({ queryKey: ["matches"] });
+      void client.invalidateQueries({ queryKey: ["habits"] });
+      void client.invalidateQueries({ queryKey: ["trends"] });
+      void client.invalidateQueries({ queryKey: ["app_settings"] });
+      void client.invalidateQueries({ queryKey: ["tracked_player"] });
     },
   });
 }

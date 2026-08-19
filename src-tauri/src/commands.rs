@@ -913,3 +913,141 @@ pub fn analyze_positioning(state: State<'_, AppState>, match_id: i64) -> Result<
     let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
     run_positioning(&mut store, match_id)
 }
+
+// ---- M6: settings + housekeeping ----
+
+#[derive(serde::Serialize)]
+pub struct ThresholdRow {
+    pub name: String,
+    pub value: String,
+    pub unit: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct AppSettings {
+    /// The settings-table override, if the player set one.
+    pub tracked_override: Option<String>,
+    /// What analysis actually uses right now (override, else the player
+    /// seen in the most own matches).
+    pub tracked_effective: Option<String>,
+    pub tracked_name: Option<String>,
+    pub db_path: String,
+    pub own_matches: u32,
+    pub corpus_demos: u32,
+    pub thresholds: Vec<ThresholdRow>,
+}
+
+fn threshold_rows(cfg: &cf_analysis::DetectorConfig) -> Vec<ThresholdRow> {
+    let row = |name: &str, value: String, unit: &str| ThresholdRow {
+        name: name.to_string(),
+        value,
+        unit: unit.to_string(),
+    };
+    vec![
+        row("Trade window", format!("{}", cfg.trade.window_s), "s"),
+        row(
+            "Trade distance",
+            format!("{}", cfg.trade.distance_u),
+            "units",
+        ),
+        row(
+            "Isolation distance",
+            format!("{}", cfg.trade.isolation_u),
+            "units",
+        ),
+        row("Effective flash", format!("{}", cfg.flash.effective_s), "s"),
+        row(
+            "Weapon-switch window",
+            format!("{}", cfg.h3.switch_window_s),
+            "s",
+        ),
+        row(
+            "Early aggression cutoff",
+            format!("{}", cfg.timing.early_aggression_s),
+            "s",
+        ),
+        row(
+            "Habit promotion",
+            format!(
+                "{} of last {}",
+                cfg.habit.min_matches, cfg.habit.window_matches
+            ),
+            "matches",
+        ),
+        row(
+            "Positioning corpus gate",
+            format!("{}", cfg.corpus.min_demos_per_map),
+            "demos per map",
+        ),
+    ]
+}
+
+#[tauri::command]
+pub fn get_app_settings(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<AppSettings, String> {
+    use tauri::Manager;
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    let tracked_override = store
+        .get_setting("tracked_steamid")
+        .map_err(|e| e.to_string())?;
+    let tracked_effective = store.tracked_steamid().map_err(|e| e.to_string())?;
+    let tracked_name = match &tracked_effective {
+        Some(sid) => store.player_name(sid).map_err(|e| e.to_string())?,
+        None => None,
+    };
+    let db_path = app
+        .path()
+        .app_data_dir()
+        .map(|d| d.join("clutchfactor.db").to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let own_matches = store.list_matches().map_err(|e| e.to_string())?.len() as u32;
+    let corpus_demos: u32 = store
+        .corpus_summary()
+        .map_err(|e| e.to_string())?
+        .iter()
+        .map(|c| c.demos)
+        .sum();
+    Ok(AppSettings {
+        tracked_override,
+        tracked_effective,
+        tracked_name,
+        db_path,
+        own_matches,
+        corpus_demos,
+        thresholds: threshold_rows(&detector_config()),
+    })
+}
+
+/// Sets or clears the tracked-player override. Applies to new imports —
+/// existing matches keep their analysis until deleted and re-imported.
+#[tauri::command]
+pub fn set_tracked_override(
+    state: State<'_, AppState>,
+    steamid: Option<String>,
+) -> Result<(), String> {
+    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    match steamid {
+        Some(s) => {
+            let s = s.trim().to_string();
+            if s.len() != 17 || !s.chars().all(|c| c.is_ascii_digit()) {
+                return Err(format!(
+                    "\"{s}\" is not a SteamID64 — expected 17 digits, e.g. 76561199228328773."
+                ));
+            }
+            store
+                .set_setting("tracked_steamid", &s)
+                .map_err(|e| e.to_string())
+        }
+        None => store
+            .delete_setting("tracked_steamid")
+            .map_err(|e| e.to_string()),
+    }
+}
+
+#[tauri::command]
+pub fn delete_match(state: State<'_, AppState>, match_id: i64) -> Result<(), String> {
+    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    store.delete_match(match_id).map_err(|e| e.to_string())
+}

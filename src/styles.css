@@ -1367,3 +1367,113 @@ body {
     grid-column: 1 / -1;
   }
 }
+
+/* Settings screen + Library housekeeping (M6). */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 480px));
+  gap: 28px;
+  align-items: start;
+}
+
+.settings-card {
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.settings-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 6px 0;
+  font-size: 13px;
+}
+
+.settings-label {
+  color: var(--text-dim);
+  min-width: 110px;
+  font-size: 12px;
+}
+
+.settings-path {
+  word-break: break-all;
+  font-size: 11px;
+}
+
+.settings-override {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 4px;
+  flex-wrap: wrap;
+}
+
+.settings-input {
+  background: var(--bg0);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  width: 260px;
+}
+
+.settings-input:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+.settings-hint {
+  color: var(--text-dim);
+  font-size: 12px;
+  font-style: normal;
+  margin-top: 6px;
+}
+
+.settings-saved {
+  color: var(--text);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.match-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.match-list li .match-row {
+  flex: 1;
+}
+
+.row-delete {
+  background: none;
+  color: var(--text-dim);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 5px 9px;
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.row-delete:hover {
+  color: var(--text);
+}
+
+.row-delete:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+.row-delete-armed {
+  color: var(--loss);
+  border-color: var(--loss);
+}
+
+.row-confirm {
+  display: inline-flex;
+  gap: 6px;
+  flex-shrink: 0;
+}

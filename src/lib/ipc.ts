@@ -16,6 +16,7 @@
 //   CorpusStatus   <- src-tauri/src/commands.rs
 //   TrendMatchRow  <- src-tauri/crates/cf-store/src/store.rs
 //   TrendsDto (+ RuleSeries) <- src-tauri/src/commands.rs
+//   AppSettings (+ ThresholdRow) <- src-tauri/src/commands.rs
 // Conventions: steamids are strings (steamid64 overflows JS number);
 // command names are snake_case; Rust arg names arrive camelCased.
 
@@ -323,4 +324,34 @@ export interface TrendsDto {
 
 export function getTrends(): Promise<TrendsDto> {
   return invoke<TrendsDto>("get_trends");
+}
+
+// ---- M6: settings + housekeeping ----
+
+export interface ThresholdRow {
+  name: string;
+  value: string;
+  unit: string;
+}
+
+export interface AppSettings {
+  tracked_override: string | null;
+  tracked_effective: string | null;
+  tracked_name: string | null;
+  db_path: string;
+  own_matches: number;
+  corpus_demos: number;
+  thresholds: ThresholdRow[];
+}
+
+export function getAppSettings(): Promise<AppSettings> {
+  return invoke<AppSettings>("get_app_settings");
+}
+
+export function setTrackedOverride(steamid: string | null): Promise<void> {
+  return invoke<void>("set_tracked_override", { steamid });
+}
+
+export function deleteMatch(matchId: number): Promise<void> {
+  return invoke<void>("delete_match", { matchId });
 }

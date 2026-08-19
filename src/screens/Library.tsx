@@ -4,7 +4,12 @@ import { TopNav } from "../components/TopNav";
 import { open } from "@tauri-apps/plugin-dialog";
 import { basename } from "../lib/basename";
 import type { ProgressEvent } from "../lib/ipc";
-import { useImportDemo, useMatches, useTrackedPlayer } from "../lib/queries";
+import {
+  useDeleteMatch,
+  useImportDemo,
+  useMatches,
+  useTrackedPlayer,
+} from "../lib/queries";
 import { formatMatchRow } from "../lib/score";
 import { ImportProgress } from "../components/ImportProgress";
 
@@ -15,7 +20,20 @@ export function Library() {
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
   const [importingFile, setImportingFile] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const importDemo = useImportDemo(setProgress);
+  const deleteMatch = useDeleteMatch();
+
+  async function reallyDelete(id: number) {
+    setImportError(null);
+    try {
+      await deleteMatch.mutateAsync(id);
+    } catch (e) {
+      setImportError(String(e));
+    } finally {
+      setConfirmDelete(null);
+    }
+  }
 
   async function pickAndImport() {
     setImportError(null);
@@ -105,6 +123,31 @@ export function Library() {
                   <span className="meta">{m.rounds} rounds</span>
                   <span className="meta date">{m.imported_at}</span>
                   </button>
+                  {confirmDelete === m.id ? (
+                    <span className="row-confirm">
+                      <button
+                        className="row-delete row-delete-armed"
+                        onClick={() => void reallyDelete(m.id)}
+                        disabled={deleteMatch.isPending}
+                      >
+                        Delete match
+                      </button>
+                      <button
+                        className="row-delete"
+                        onClick={() => setConfirmDelete(null)}
+                      >
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      className="row-delete"
+                      title="Delete this match (the demo file is untouched — re-import any time)"
+                      onClick={() => setConfirmDelete(m.id)}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </li>
               );
             })}

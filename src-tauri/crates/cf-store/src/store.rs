@@ -1182,6 +1182,12 @@ impl Store {
         Ok(v)
     }
 
+    pub fn delete_setting(&mut self, key: &str) -> Result<(), StoreError> {
+        self.conn
+            .execute("DELETE FROM settings WHERE key = ?1", [key])?;
+        Ok(())
+    }
+
     pub fn set_setting(&mut self, key: &str, value: &str) -> Result<(), StoreError> {
         self.conn.execute(
             "INSERT INTO settings (key, value) VALUES (?1, ?2)
@@ -1369,6 +1375,34 @@ impl Store {
 
     /// Tracked player: explicit setting wins; otherwise the steamid appearing
     /// in the most imported matches (PROMPT.md §13 M1 identity detection).
+    /// Deletes a match and (via FK cascade) every child row — kills, ticks,
+    /// analysis, the lot. Frees the file hash for re-import.
+    pub fn delete_match(&mut self, id: i64) -> Result<(), StoreError> {
+        self.conn
+            .execute("DELETE FROM matches WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Display name for a steamid, from the most recent own match it
+    /// appeared in.
+    pub fn player_name(&self, steamid: &str) -> Result<Option<String>, StoreError> {
+        let v = self
+            .conn
+            .query_row(
+                "SELECT p.name FROM players p
+                 JOIN matches m ON m.id = p.match_id AND m.kind = 'own'
+                 WHERE p.steamid = ?1 ORDER BY m.id DESC LIMIT 1",
+                [steamid],
+                |r| r.get(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        Ok(v)
+    }
+
     pub fn tracked_steamid(&self) -> Result<Option<String>, StoreError> {
         if let Some(v) = self.get_setting("tracked_steamid")? {
             return Ok(Some(v));
@@ -2305,5 +2339,56 @@ mod tests {
             !cells.iter().any(|c| c.match_id == corpus),
             "corpus match must not appear in rule trend cells"
         );
+    }
+
+    #[test]
+    fn delete_match_cascades_and_frees_the_hash() {
+        use cf_analysis::{Category, Insight};
+        let (_dir, mut store) = open_tmp();
+        let a = store
+            .save_match("a.dem", "h-a", MatchKind::Own, &sample_match())
+            .unwrap();
+        let b = store
+            .save_match("b.dem", "h-b", MatchKind::Own, &sample_match())
+            .unwrap();
+        store
+            .replace_detector_insights(
+                a,
+                "D6_UNUSUAL_POSITIONING",
+                &[Insight {
+                    detector: "D6_UNUSUAL_POSITIONING".into(),
+                    category: Category::Positioning,
+                    severity: 0.5,
+                    confidence: 0.6,
+                    round: 0,
+                    player: 1,
+                    title_data: serde_json::json!({}),
+                    metrics: serde_json::json!({}),
+                    evidence: vec![],
+                }],
+            )
+            .unwrap();
+        store.delete_match(a).unwrap();
+        // Parent gone, children cascaded, hash reusable; b untouched.
+        assert_eq!(store.list_matches().unwrap().len(), 1);
+        assert!(!store.has_file_hash("h-a").unwrap());
+        assert!(store.has_file_hash("h-b").unwrap());
+        assert!(store.insights_for_match(a).unwrap().is_empty());
+        let orphans: i64 = store
+            .conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM kills WHERE match_id = ?1)
+                      + (SELECT COUNT(*) FROM rounds WHERE match_id = ?1)
+                      + (SELECT COUNT(*) FROM tick_samples WHERE match_id = ?1)
+                      + (SELECT COUNT(*) FROM players WHERE match_id = ?1)",
+                [a],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(orphans, 0, "cascade left orphan child rows");
+        assert!(!store.rounds_for_match(b).unwrap().is_empty());
+        // Name lookup survives for players of remaining matches.
+        assert_eq!(store.player_name("1").unwrap().as_deref(), Some("alice"));
+        assert_eq!(store.player_name("999").unwrap(), None);
     }
 }
