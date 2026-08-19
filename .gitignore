@@ -1,0 +1,16 @@
+# Demo fixtures — large binaries, never committed (goldens + README are)
+fixtures/**
+!fixtures/README.md
+!fixtures/goldens/
+!fixtures/goldens/**
+
+# Rust
+target/
+
+# Node
+node_modules/
+dist/
+
+# OS / editor
+.DS_Store
+*.local
