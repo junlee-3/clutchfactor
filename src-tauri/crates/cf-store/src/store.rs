@@ -66,18 +66,21 @@ impl Store {
         Ok(Store { conn })
     }
 
+    pub fn has_file_hash(&self, file_hash: &str) -> Result<bool, StoreError> {
+        Ok(self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM matches WHERE file_hash = ?1)",
+            [file_hash],
+            |r| r.get(0),
+        )?)
+    }
+
     pub fn save_match(
         &mut self,
         file_name: &str,
         file_hash: &str,
         data: &MatchData,
     ) -> Result<i64, StoreError> {
-        let exists: bool = self.conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM matches WHERE file_hash = ?1)",
-            [file_hash],
-            |r| r.get(0),
-        )?;
-        if exists {
+        if self.has_file_hash(file_hash)? {
             return Err(StoreError::DuplicateImport);
         }
 
