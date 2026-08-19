@@ -16,3 +16,4 @@ dist-ssr/
 # OS / editor
 .DS_Store
 *.local
+.idea/
