@@ -464,6 +464,11 @@ dependencies = [
 [[package]]
 name = "cf-narrator"
 version = "0.1.0"
+dependencies = [
+ "cf-analysis",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "cf-parser"
