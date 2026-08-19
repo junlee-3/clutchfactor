@@ -65,6 +65,22 @@ impl Detector for H2TradeSpacing {
             if team_pattern && (id == FAILED || id == BAITED) {
                 title_data["team_pattern"] = json!(true);
             }
+            // Spec H2: baited captions must be able to NAME the teammate who
+            // didn't follow — surface the per-flag names (deduped, capped 3).
+            if id == BAITED {
+                let mut non_followers: Vec<String> = vec![];
+                for f in &fs {
+                    if let Some(s) = f.details["non_following_teammate"].as_str() {
+                        if !non_followers.iter().any(|n| n == s) {
+                            non_followers.push(s.to_string());
+                        }
+                    }
+                }
+                non_followers.truncate(3);
+                if !non_followers.is_empty() {
+                    title_data["non_following_teammates"] = json!(non_followers);
+                }
+            }
             let per_round: Vec<serde_json::Value> = fs
                 .iter()
                 .map(|f| json!({ "round": f.round, "tick": f.tick }))
@@ -669,6 +685,37 @@ mod tests {
         assert_eq!(ins.len(), 1);
         assert_eq!(ins[0].detector, FAILED);
         assert!(ins[0].title_data.get("team_pattern").is_none());
+    }
+
+    #[test]
+    fn baited_insight_names_non_followers_deduped_capped() {
+        let data = insight_ctx_data();
+        let named = |round: u32, tick: i32, who: &str| {
+            let mut f = syn(BAITED, round, tick, 0.7);
+            f.details = json!({ "non_following_teammate": who });
+            f
+        };
+        let flags = vec![
+            named(1, 2000, "201"),
+            named(2, 3000, "202"),
+            named(3, 4000, "201"), // duplicate — must dedupe
+            named(4, 5000, "203"),
+            named(5, 6000, "204"), // fourth distinct — must be capped at 3
+        ];
+        let ins = insights_for(&data, &flags);
+        let baited = ins.iter().find(|i| i.detector == BAITED).expect("baited");
+        assert_eq!(
+            baited.title_data["non_following_teammates"],
+            json!(["201", "202", "203"])
+        );
+
+        // Flags without the detail (old data) → key absent, not empty array.
+        let ins = insights_for(
+            &data,
+            &[syn(BAITED, 1, 2000, 0.7), syn(BAITED, 2, 3000, 0.7)],
+        );
+        let baited = ins.iter().find(|i| i.detector == BAITED).expect("baited");
+        assert!(baited.title_data.get("non_following_teammates").is_none());
     }
 
     #[test]

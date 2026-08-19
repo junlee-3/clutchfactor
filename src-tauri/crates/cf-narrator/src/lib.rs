@@ -193,6 +193,27 @@ mod tests {
     }
 
     #[test]
+    fn baited_trade_names_the_non_followers_when_known() {
+        // ctx() maps 77 → "Riku"; 999 is unknown → raw id fallback.
+        let n = say(&ins(
+            "H2_BAITED_TRADE",
+            json!({
+                "count": 2,
+                "rule": "H2_BAITED_TRADE",
+                "non_following_teammates": ["77", "999"]
+            }),
+            json!({ "count": 2, "per_round": per_round(&[3, 8]) }),
+        ));
+        assert!(
+            n.body.contains("Riku and 999 were nearest and stayed put"),
+            "must name the non-followers: {}",
+            n.body
+        );
+        assert!(n.body.contains("team spacing problem"));
+        assert!(!n.body.to_lowercase().contains("your fault"));
+    }
+
+    #[test]
     fn baited_trade_exact_never_blames() {
         let n = say(&ins(
             "H2_BAITED_TRADE",

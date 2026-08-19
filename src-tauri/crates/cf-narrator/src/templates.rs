@@ -28,7 +28,7 @@ pub(crate) fn narrate(insight: &Insight, ctx: &MatchContext) -> Narration {
     match insight.detector.as_str() {
         "H2_ISOLATED_DEATH" => isolated_death(&f, r),
         "H2_FAILED_TRADE" => failed_trade(&f, r),
-        "H2_BAITED_TRADE" => baited_trade(&f),
+        "H2_BAITED_TRADE" => baited_trade(&f, ctx),
         "H3_VULNERABLE_DEATHS" => vulnerable_deaths(&f, r),
         "H3_WASTED_UTILITY" => wasted_utility(&f),
         "H4_KILLED_WITHOUT_CONTACT" => killed_without_contact(&f, r),
@@ -163,9 +163,23 @@ fn failed_trade(f: &Facts, round: u32) -> Narration {
 
 /// Never blames. Spec §2 H2: this rule is the *complement* of the failed
 /// trade — the player did the right thing and got left in it.
-fn baited_trade(f: &Facts) -> Narration {
+fn baited_trade(f: &Facts, ctx: &MatchContext) -> Narration {
     let n = f.int("count");
     let where_ = f.round_clause();
+    // Spec §2 H2: the caption must NAME the teammate who didn't follow when
+    // the insight carries them (steamid strings, resolved to display names).
+    let non_followers: Vec<String> = f
+        .get("non_following_teammates")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(Value::as_str)
+                .filter_map(|s| s.parse::<u64>().ok())
+                .map(|sid| ctx.name(sid))
+                .take(2)
+                .collect()
+        })
+        .unwrap_or_default();
     let opener = match (n, &where_) {
         (Some(n), Some(w)) => format!(
             "You committed to the trade and the follow-up never came — {}, {w}.",
@@ -180,10 +194,16 @@ fn baited_trade(f: &Facts) -> Narration {
         }
         (None, None) => "You committed to the trade and the follow-up never came.".to_string(),
     };
-    let mut body = format!(
-        "{opener} You were the only one who re-peeked; that is a team spacing problem, not a \
-         reason to stop trading."
-    );
+    let who = match non_followers.as_slice() {
+        [] => "You were the only one who re-peeked".to_string(),
+        [a] => format!("You were the only one who re-peeked — {a} was nearest and stayed put"),
+        [a, b] => {
+            format!("You were the only one who re-peeked — {a} and {b} were nearest and stayed put")
+        }
+        _ => unreachable!("capped at 2 above"),
+    };
+    let mut body =
+        format!("{opener} {who}; that is a team spacing problem, not a reason to stop trading.");
     if f.flag("team_pattern") {
         body.push(' ');
         body.push_str(
