@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+demoparser = { git = "https://github.com/LaihoE/demoparser", rev = "266a831f08b0264dd722b017a5c05d765206a7ed", package = "parser" }
+ahash = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
