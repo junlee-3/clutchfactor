@@ -8,7 +8,9 @@ use demoparser::parse_demo::{Parser, ParsingMode};
 use demoparser::second_pass::parser_settings::create_huffman_lookup_table;
 
 fn main() {
-    let path = std::env::args().nth(1).expect("usage: probe_rounds <demo.dem>");
+    let path = std::env::args()
+        .nth(1)
+        .expect("usage: probe_rounds <demo.dem>");
     let huf = create_huffman_lookup_table();
     let wanted = [
         "round_start",
