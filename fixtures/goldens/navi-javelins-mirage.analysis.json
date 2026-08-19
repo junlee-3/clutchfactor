@@ -1,6 +1,7 @@
 {
   "deaths": 16,
   "rules": {
+    "H11_SLOW_ROTATION": 1,
     "H16_FIRE_LINGER": 2,
     "H2_FAILED_TRADE": 3,
     "H2_ISOLATED_DEATH": 7,
