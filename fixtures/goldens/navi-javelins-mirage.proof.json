@@ -1,0 +1,1289 @@
+{
+  "map": "de_mirage",
+  "kills": [
+    {
+      "tick": 2827,
+      "attacker": "f6tal",
+      "victim": "Angelka",
+      "weapon": "glock",
+      "headshot": false
+    },
+    {
+      "tick": 3421,
+      "attacker": "Elizabeth-",
+      "victim": "LETi-",
+      "weapon": "glock",
+      "headshot": false
+    },
+    {
+      "tick": 3431,
+      "attacker": "f6tal",
+      "victim": "vicu",
+      "weapon": "glock",
+      "headshot": true
+    },
+    {
+      "tick": 4179,
+      "attacker": "Liina",
+      "victim": "t4tty",
+      "weapon": "elite",
+      "headshot": false
+    },
+    {
+      "tick": 5258,
+      "attacker": "Ksu",
+      "victim": "Liina",
+      "weapon": "glock",
+      "headshot": true
+    },
+    {
+      "tick": 5478,
+      "attacker": "f6tal",
+      "victim": "Hanka-",
+      "weapon": "elite",
+      "headshot": false
+    },
+    {
+      "tick": 7767,
+      "attacker": "victoria",
+      "victim": "Angelka",
+      "weapon": "galilar",
+      "headshot": true
+    },
+    {
+      "tick": 7995,
+      "attacker": "t4tty",
+      "victim": "Hanka-",
+      "weapon": "galilar",
+      "headshot": true
+    },
+    {
+      "tick": 8133,
+      "attacker": "vicu",
+      "victim": "t4tty",
+      "weapon": "usp_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 8364,
+      "attacker": "vicu",
+      "victim": "victoria",
+      "weapon": "usp_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 9001,
+      "attacker": "Elizabeth-",
+      "victim": "LETi-",
+      "weapon": "mac10",
+      "headshot": false
+    },
+    {
+      "tick": 10663,
+      "attacker": "Elizabeth-",
+      "victim": "vicu",
+      "weapon": "mac10",
+      "headshot": true
+    },
+    {
+      "tick": 10805,
+      "attacker": "Ksu",
+      "victim": "Liina",
+      "weapon": "hegrenade",
+      "headshot": false
+    },
+    {
+      "tick": 13422,
+      "attacker": "Angelka",
+      "victim": "t4tty",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 13807,
+      "attacker": "Elizabeth-",
+      "victim": "Angelka",
+      "weapon": "mac10",
+      "headshot": false
+    },
+    {
+      "tick": 13825,
+      "attacker": "vicu",
+      "victim": "Elizabeth-",
+      "weapon": "aug",
+      "headshot": true
+    },
+    {
+      "tick": 17219,
+      "attacker": "Liina",
+      "victim": "Ksu",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 17323,
+      "attacker": "LETi-",
+      "victim": "victoria",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 17399,
+      "attacker": "vicu",
+      "victim": "f6tal",
+      "weapon": "aug",
+      "headshot": false
+    },
+    {
+      "tick": 21413,
+      "attacker": "vicu",
+      "victim": "t4tty",
+      "weapon": "aug",
+      "headshot": false
+    },
+    {
+      "tick": 21493,
+      "attacker": "Angelka",
+      "victim": "victoria",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 21676,
+      "attacker": "Elizabeth-",
+      "victim": "Angelka",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 23812,
+      "attacker": "Liina",
+      "victim": "f6tal",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 23997,
+      "attacker": "Liina",
+      "victim": "Elizabeth-",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 24047,
+      "attacker": "LETi-",
+      "victim": "Ksu",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 29130,
+      "attacker": "f6tal",
+      "victim": "Angelka",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 29238,
+      "attacker": "Liina",
+      "victim": "f6tal",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 29314,
+      "attacker": "t4tty",
+      "victim": "Liina",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 29571,
+      "attacker": "Elizabeth-",
+      "victim": "Hanka-",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 29591,
+      "attacker": "vicu",
+      "victim": "Elizabeth-",
+      "weapon": "aug",
+      "headshot": false
+    },
+    {
+      "tick": 29660,
+      "attacker": "vicu",
+      "victim": "Ksu",
+      "weapon": "aug",
+      "headshot": false
+    },
+    {
+      "tick": 31554,
+      "attacker": "victoria",
+      "victim": "LETi-",
+      "weapon": "awp",
+      "headshot": false
+    },
+    {
+      "tick": 32202,
+      "attacker": "vicu",
+      "victim": "t4tty",
+      "weapon": "aug",
+      "headshot": false
+    },
+    {
+      "tick": 33042,
+      "attacker": "victoria",
+      "victim": "vicu",
+      "weapon": "awp",
+      "headshot": true
+    },
+    {
+      "tick": 37102,
+      "attacker": "victoria",
+      "victim": "Hanka-",
+      "weapon": "awp",
+      "headshot": false
+    },
+    {
+      "tick": 37254,
+      "attacker": "Elizabeth-",
+      "victim": "Liina",
+      "weapon": "galilar",
+      "headshot": true
+    },
+    {
+      "tick": 37502,
+      "attacker": "Ksu",
+      "victim": "vicu",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 37710,
+      "attacker": "Angelka",
+      "victim": "f6tal",
+      "weapon": "deagle",
+      "headshot": true
+    },
+    {
+      "tick": 40114,
+      "attacker": "t4tty",
+      "victim": "Angelka",
+      "weapon": "galilar",
+      "headshot": false
+    },
+    {
+      "tick": 40971,
+      "attacker": "LETi-",
+      "victim": "t4tty",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 45846,
+      "attacker": "LETi-",
+      "victim": "t4tty",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 45991,
+      "attacker": "f6tal",
+      "victim": "LETi-",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 46122,
+      "attacker": "f6tal",
+      "victim": "Angelka",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 46427,
+      "attacker": "victoria",
+      "victim": "Hanka-",
+      "weapon": "awp",
+      "headshot": false
+    },
+    {
+      "tick": 47795,
+      "attacker": "Ksu",
+      "victim": "Liina",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 49175,
+      "attacker": "vicu",
+      "victim": "Elizabeth-",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 49461,
+      "attacker": "victoria",
+      "victim": "vicu",
+      "weapon": "awp",
+      "headshot": true
+    },
+    {
+      "tick": 56358,
+      "attacker": "Hanka-",
+      "victim": "Ksu",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 56391,
+      "attacker": "f6tal",
+      "victim": "Hanka-",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 56484,
+      "attacker": "t4tty",
+      "victim": "vicu",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 57049,
+      "attacker": "Elizabeth-",
+      "victim": "Angelka",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 58908,
+      "attacker": "t4tty",
+      "victim": "Liina",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 59172,
+      "attacker": "LETi-",
+      "victim": "t4tty",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 60125,
+      "attacker": "Elizabeth-",
+      "victim": "LETi-",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 67887,
+      "attacker": "f6tal",
+      "victim": "Angelka",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 67957,
+      "attacker": "f6tal",
+      "victim": "Hanka-",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 67973,
+      "attacker": "LETi-",
+      "victim": "f6tal",
+      "weapon": "deagle",
+      "headshot": false
+    },
+    {
+      "tick": 68480,
+      "attacker": "Ksu",
+      "victim": "LETi-",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 68963,
+      "attacker": "vicu",
+      "victim": "Elizabeth-",
+      "weapon": "p250",
+      "headshot": true
+    },
+    {
+      "tick": 69347,
+      "attacker": "Ksu",
+      "victim": "vicu",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 69711,
+      "attacker": "Liina",
+      "victim": "Ksu",
+      "weapon": "p250",
+      "headshot": false
+    },
+    {
+      "tick": 70553,
+      "attacker": "Liina",
+      "victim": "t4tty",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 71624,
+      "attacker": "victoria",
+      "victim": "Liina",
+      "weapon": "awp",
+      "headshot": false
+    },
+    {
+      "tick": 74093,
+      "attacker": "vicu",
+      "victim": "Elizabeth-",
+      "weapon": "awp",
+      "headshot": false
+    },
+    {
+      "tick": 75337,
+      "attacker": "Hanka-",
+      "victim": "Ksu",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 75381,
+      "attacker": "t4tty",
+      "victim": "vicu",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 75391,
+      "attacker": "Liina",
+      "victim": "f6tal",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 78441,
+      "attacker": "t4tty",
+      "victim": "Angelka",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 79303,
+      "attacker": "Hanka-",
+      "victim": "victoria",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 79394,
+      "attacker": "t4tty",
+      "victim": "Hanka-",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 80156,
+      "attacker": "Liina",
+      "victim": "t4tty",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 87556,
+      "attacker": "LETi-",
+      "victim": "f6tal",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 88108,
+      "attacker": "Liina",
+      "victim": "Elizabeth-",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 88265,
+      "attacker": "t4tty",
+      "victim": "Liina",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 88326,
+      "attacker": "Angelka",
+      "victim": "Ksu",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 88429,
+      "attacker": "t4tty",
+      "victim": "Angelka",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 88482,
+      "attacker": "victoria",
+      "victim": "Hanka-",
+      "weapon": "awp",
+      "headshot": false
+    },
+    {
+      "tick": 90721,
+      "attacker": "t4tty",
+      "victim": "vicu",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 91430,
+      "attacker": "LETi-",
+      "victim": "t4tty",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 94240,
+      "attacker": "victoria",
+      "victim": "Liina",
+      "weapon": "awp",
+      "headshot": false
+    },
+    {
+      "tick": 96004,
+      "attacker": "victoria",
+      "victim": "Hanka-",
+      "weapon": "awp",
+      "headshot": false
+    },
+    {
+      "tick": 96655,
+      "attacker": "Angelka",
+      "victim": "f6tal",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 96775,
+      "attacker": "t4tty",
+      "victim": "Angelka",
+      "weapon": "tec9",
+      "headshot": true
+    },
+    {
+      "tick": 97441,
+      "attacker": "vicu",
+      "victim": "Elizabeth-",
+      "weapon": "awp",
+      "headshot": false
+    },
+    {
+      "tick": 97594,
+      "attacker": "LETi-",
+      "victim": "t4tty",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 98050,
+      "attacker": "victoria",
+      "victim": "LETi-",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 99416,
+      "attacker": "vicu",
+      "victim": "Ksu",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 99593,
+      "attacker": "vicu",
+      "victim": "victoria",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 115937,
+      "attacker": "victoria",
+      "victim": "Hanka-",
+      "weapon": "usp_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 115973,
+      "attacker": "victoria",
+      "victim": "Liina",
+      "weapon": "usp_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 118387,
+      "attacker": "Ksu",
+      "victim": "LETi-",
+      "weapon": "usp_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 118479,
+      "attacker": "f6tal",
+      "victim": "vicu",
+      "weapon": "elite",
+      "headshot": true
+    },
+    {
+      "tick": 118517,
+      "attacker": "Angelka",
+      "victim": "Ksu",
+      "weapon": "glock",
+      "headshot": true
+    },
+    {
+      "tick": 118556,
+      "attacker": "victoria",
+      "victim": "Angelka",
+      "weapon": "usp_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 121018,
+      "attacker": "LETi-",
+      "victim": "f6tal",
+      "weapon": "glock",
+      "headshot": true
+    },
+    {
+      "tick": 121172,
+      "attacker": "t4tty",
+      "victim": "LETi-",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 121257,
+      "attacker": "victoria",
+      "victim": "Hanka-",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 121367,
+      "attacker": "Liina",
+      "victim": "victoria",
+      "weapon": "glock",
+      "headshot": true
+    },
+    {
+      "tick": 121707,
+      "attacker": "Elizabeth-",
+      "victim": "Liina",
+      "weapon": "mp9",
+      "headshot": false
+    },
+    {
+      "tick": 121846,
+      "attacker": "vicu",
+      "victim": "t4tty",
+      "weapon": "mp9",
+      "headshot": true
+    },
+    {
+      "tick": 124197,
+      "attacker": "Ksu",
+      "victim": "Angelka",
+      "weapon": "mp9",
+      "headshot": false
+    },
+    {
+      "tick": 124657,
+      "attacker": "Elizabeth-",
+      "victim": "vicu",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 127841,
+      "attacker": "f6tal",
+      "victim": "Hanka-",
+      "weapon": "mp9",
+      "headshot": true
+    },
+    {
+      "tick": 127933,
+      "attacker": "LETi-",
+      "victim": "Elizabeth-",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 128028,
+      "attacker": "LETi-",
+      "victim": "t4tty",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 128124,
+      "attacker": "f6tal",
+      "victim": "LETi-",
+      "weapon": "mp9",
+      "headshot": false
+    },
+    {
+      "tick": 128343,
+      "attacker": "Angelka",
+      "victim": "f6tal",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 129511,
+      "attacker": "Angelka",
+      "victim": "victoria",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 130333,
+      "attacker": "Liina",
+      "victim": "Ksu",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 134779,
+      "attacker": "t4tty",
+      "victim": "Liina",
+      "weapon": "deagle",
+      "headshot": true
+    },
+    {
+      "tick": 135063,
+      "attacker": "Ksu",
+      "victim": "vicu",
+      "weapon": "fiveseven",
+      "headshot": true
+    },
+    {
+      "tick": 135268,
+      "attacker": "Angelka",
+      "victim": "Ksu",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 136972,
+      "attacker": "Elizabeth-",
+      "victim": "Angelka",
+      "weapon": "fiveseven",
+      "headshot": false
+    },
+    {
+      "tick": 137415,
+      "attacker": "Hanka-",
+      "victim": "Elizabeth-",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 138482,
+      "attacker": "victoria",
+      "victim": "LETi-",
+      "weapon": "deagle",
+      "headshot": true
+    },
+    {
+      "tick": 138711,
+      "attacker": "Hanka-",
+      "victim": "t4tty",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 139174,
+      "attacker": "victoria",
+      "victim": "Hanka-",
+      "weapon": "deagle",
+      "headshot": false
+    },
+    {
+      "tick": 146633,
+      "attacker": "t4tty",
+      "victim": "Angelka",
+      "weapon": "mp9",
+      "headshot": true
+    },
+    {
+      "tick": 147250,
+      "attacker": "LETi-",
+      "victim": "f6tal",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 147309,
+      "attacker": "Elizabeth-",
+      "victim": "vicu",
+      "weapon": "famas",
+      "headshot": true
+    },
+    {
+      "tick": 147408,
+      "attacker": "Hanka-",
+      "victim": "Elizabeth-",
+      "weapon": "galilar",
+      "headshot": true
+    },
+    {
+      "tick": 147999,
+      "attacker": "LETi-",
+      "victim": "victoria",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 149072,
+      "attacker": "Liina",
+      "victim": "t4tty",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 149216,
+      "attacker": "Ksu",
+      "victim": "Liina",
+      "weapon": "famas",
+      "headshot": false
+    },
+    {
+      "tick": 150364,
+      "attacker": "Ksu",
+      "victim": "Hanka-",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 150406,
+      "attacker": "LETi-",
+      "victim": "Ksu",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 153066,
+      "attacker": "LETi-",
+      "victim": "victoria",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 153895,
+      "attacker": "Liina",
+      "victim": "f6tal",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 156557,
+      "attacker": "t4tty",
+      "victim": "LETi-",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 156751,
+      "attacker": "Angelka",
+      "victim": "t4tty",
+      "weapon": "galilar",
+      "headshot": false
+    },
+    {
+      "tick": 157572,
+      "attacker": "Elizabeth-",
+      "victim": "Hanka-",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 157628,
+      "attacker": "Angelka",
+      "victim": "Ksu",
+      "weapon": "galilar",
+      "headshot": true
+    },
+    {
+      "tick": 157631,
+      "attacker": "vicu",
+      "victim": "Elizabeth-",
+      "weapon": "galilar",
+      "headshot": false
+    },
+    {
+      "tick": 162701,
+      "attacker": "t4tty",
+      "victim": "LETi-",
+      "weapon": "taser",
+      "headshot": false
+    },
+    {
+      "tick": 162803,
+      "attacker": "Hanka-",
+      "victim": "t4tty",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 163852,
+      "attacker": "Angelka",
+      "victim": "f6tal",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 163903,
+      "attacker": "Angelka",
+      "victim": "Elizabeth-",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 164751,
+      "attacker": "vicu",
+      "victim": "Ksu",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 164764,
+      "attacker": "victoria",
+      "victim": "vicu",
+      "weapon": "usp_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 164811,
+      "attacker": "Hanka-",
+      "victim": "victoria",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 170493,
+      "attacker": "Angelka",
+      "victim": "Elizabeth-",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 170641,
+      "attacker": "victoria",
+      "victim": "vicu",
+      "weapon": "aug",
+      "headshot": true
+    },
+    {
+      "tick": 171182,
+      "attacker": "Liina",
+      "victim": "Ksu",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 171922,
+      "attacker": "f6tal",
+      "victim": "Angelka",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 172037,
+      "attacker": "f6tal",
+      "victim": "LETi-",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 172285,
+      "attacker": "Liina",
+      "victim": "f6tal",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 172586,
+      "attacker": "Hanka-",
+      "victim": "t4tty",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 172706,
+      "attacker": "Hanka-",
+      "victim": "victoria",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 175583,
+      "attacker": "Liina",
+      "victim": "t4tty",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 175689,
+      "attacker": "f6tal",
+      "victim": "Liina",
+      "weapon": "p250",
+      "headshot": true
+    },
+    {
+      "tick": 179263,
+      "attacker": "f6tal",
+      "victim": "Angelka",
+      "weapon": "p250",
+      "headshot": false
+    },
+    {
+      "tick": 179419,
+      "attacker": "LETi-",
+      "victim": "Ksu",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 179471,
+      "attacker": "LETi-",
+      "victim": "Elizabeth-",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 179498,
+      "attacker": "Hanka-",
+      "victim": "f6tal",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 180637,
+      "attacker": "vicu",
+      "victim": "victoria",
+      "weapon": "awp",
+      "headshot": false
+    },
+    {
+      "tick": 183827,
+      "attacker": "vicu",
+      "victim": "f6tal",
+      "weapon": "awp",
+      "headshot": false
+    },
+    {
+      "tick": 186084,
+      "attacker": "Liina",
+      "victim": "t4tty",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 186734,
+      "attacker": "victoria",
+      "victim": "vicu",
+      "weapon": "awp",
+      "headshot": false
+    },
+    {
+      "tick": 187067,
+      "attacker": "Hanka-",
+      "victim": "victoria",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 187690,
+      "attacker": "Elizabeth-",
+      "victim": "LETi-",
+      "weapon": "m4a1_silencer",
+      "headshot": true
+    },
+    {
+      "tick": 188649,
+      "attacker": "Liina",
+      "victim": "Ksu",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 195873,
+      "attacker": "vicu",
+      "victim": "f6tal",
+      "weapon": "awp",
+      "headshot": true
+    },
+    {
+      "tick": 198260,
+      "attacker": "t4tty",
+      "victim": "Liina",
+      "weapon": "m4a1_silencer",
+      "headshot": false
+    },
+    {
+      "tick": 198923,
+      "attacker": "Angelka",
+      "victim": "t4tty",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 201014,
+      "attacker": "Elizabeth-",
+      "victim": "LETi-",
+      "weapon": "famas",
+      "headshot": true
+    },
+    {
+      "tick": 201088,
+      "attacker": "Angelka",
+      "victim": "Elizabeth-",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 201531,
+      "attacker": "Hanka-",
+      "victim": "Ksu",
+      "weapon": "ak47",
+      "headshot": false
+    },
+    {
+      "tick": 202165,
+      "attacker": "Angelka",
+      "victim": "victoria",
+      "weapon": "ak47",
+      "headshot": true
+    },
+    {
+      "tick": 204260,
+      "attacker": "<world>",
+      "victim": "Hanka-",
+      "weapon": "planted_c4",
+      "headshot": false
+    },
+    {
+      "tick": 204260,
+      "attacker": "<world>",
+      "victim": "Angelka",
+      "weapon": "planted_c4",
+      "headshot": false
+    }
+  ],
+  "round_ends": [
+    {
+      "tick": 5478,
+      "winner": "T"
+    },
+    {
+      "tick": 10805,
+      "winner": "T"
+    },
+    {
+      "tick": 18154,
+      "winner": "CT"
+    },
+    {
+      "tick": 24965,
+      "winner": "CT"
+    },
+    {
+      "tick": 33042,
+      "winner": "T"
+    },
+    {
+      "tick": 41063,
+      "winner": "T"
+    },
+    {
+      "tick": 49461,
+      "winner": "T"
+    },
+    {
+      "tick": 60084,
+      "winner": "T"
+    },
+    {
+      "tick": 71624,
+      "winner": "T"
+    },
+    {
+      "tick": 80156,
+      "winner": "CT"
+    },
+    {
+      "tick": 91201,
+      "winner": "CT"
+    },
+    {
+      "tick": 99593,
+      "winner": "CT"
+    },
+    {
+      "tick": 118556,
+      "winner": "CT"
+    },
+    {
+      "tick": 124657,
+      "winner": "CT"
+    },
+    {
+      "tick": 130333,
+      "winner": "T"
+    },
+    {
+      "tick": 139174,
+      "winner": "CT"
+    },
+    {
+      "tick": 150406,
+      "winner": "T"
+    },
+    {
+      "tick": 157631,
+      "winner": "T"
+    },
+    {
+      "tick": 164811,
+      "winner": "T"
+    },
+    {
+      "tick": 172706,
+      "winner": "T"
+    },
+    {
+      "tick": 180637,
+      "winner": "T"
+    },
+    {
+      "tick": 190670,
+      "winner": "T"
+    },
+    {
+      "tick": 202165,
+      "winner": "T"
+    }
+  ]
+}
