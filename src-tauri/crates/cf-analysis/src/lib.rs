@@ -9,6 +9,7 @@ pub mod classify;
 pub mod config;
 pub mod context;
 pub mod families;
+pub mod habits;
 pub mod scenario;
 pub mod types;
 
