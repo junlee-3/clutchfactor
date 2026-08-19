@@ -1,8 +1,12 @@
+[workspace]
+members = ["crates/cf-parser", "crates/cf-analysis", "crates/cf-store", "crates/cf-narrator"]
+resolver = "2"
+
 [package]
 name = "clutchfactor"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "ClutchFactor — CS2 coaching insights from demo files"
+authors = ["junlee"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
