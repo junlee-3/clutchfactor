@@ -1,5 +1,57 @@
 {
   "map": "de_mirage",
+  "players": [
+    {
+      "steamid": 76561197996875761,
+      "name": "Liina",
+      "team_number": 2
+    },
+    {
+      "steamid": 76561198070540608,
+      "name": "Hanka-",
+      "team_number": 2
+    },
+    {
+      "steamid": 76561198184979557,
+      "name": "LETi-",
+      "team_number": 2
+    },
+    {
+      "steamid": 76561198191616018,
+      "name": "Angelka",
+      "team_number": 2
+    },
+    {
+      "steamid": 76561198266290430,
+      "name": "vicu",
+      "team_number": 2
+    },
+    {
+      "steamid": 76561197961799823,
+      "name": "t4tty",
+      "team_number": 3
+    },
+    {
+      "steamid": 76561197965929550,
+      "name": "victoria",
+      "team_number": 3
+    },
+    {
+      "steamid": 76561197989010446,
+      "name": "Ksu",
+      "team_number": 3
+    },
+    {
+      "steamid": 76561198014914403,
+      "name": "f6tal",
+      "team_number": 3
+    },
+    {
+      "steamid": 76561198037661952,
+      "name": "Elizabeth-",
+      "team_number": 3
+    }
+  ],
   "kills": [
     {
       "tick": 2827,

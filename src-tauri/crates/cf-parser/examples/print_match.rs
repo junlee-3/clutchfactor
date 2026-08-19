@@ -17,6 +17,10 @@ fn main() {
     let summary = cf_parser::proof::parse_proof_summary(&demo).expect("parse failed");
 
     println!("map: {}", summary.map);
+    println!("-- players ({}) --", summary.players.len());
+    for p in &summary.players {
+        println!("  team {} | {:<20} | {}", p.team_number, p.name, p.steamid);
+    }
     println!("-- kill feed ({} kills) --", summary.kills.len());
     for k in &summary.kills {
         let hs = if k.headshot { " (HS)" } else { "" };

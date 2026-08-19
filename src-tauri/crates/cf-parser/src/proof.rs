@@ -26,8 +26,16 @@ pub struct RoundEnd {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+pub struct PlayerInfo {
+    pub steamid: u64,
+    pub name: String,
+    pub team_number: i32,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ProofSummary {
     pub map: String,
+    pub players: Vec<PlayerInfo>,
     pub kills: Vec<KillEntry>,
     pub round_ends: Vec<RoundEnd>,
 }
@@ -95,6 +103,27 @@ pub fn parse_proof_summary(path: &Path) -> Result<ProofSummary, String> {
         .and_then(|h| h.get("map_name").cloned())
         .unwrap_or_else(|| "<unknown>".to_string());
 
+    // player_md is the end-of-match scoreboard; roster is the entity-derived
+    // fallback for demos where that message is absent (community/casual).
+    let md = if output.player_md.is_empty() {
+        &output.roster
+    } else {
+        &output.player_md
+    };
+    let mut players: Vec<PlayerInfo> = md
+        .iter()
+        .filter_map(|p| {
+            Some(PlayerInfo {
+                steamid: p.steamid?,
+                name: p.name.clone()?,
+                team_number: p.team_number.unwrap_or(0),
+            })
+        })
+        .filter(|p| p.steamid > 0)
+        .collect();
+    players.sort_by_key(|p| (p.team_number, p.steamid));
+    players.dedup_by_key(|p| p.steamid);
+
     let mut kills = vec![];
     let mut round_ends = vec![];
     for ev in &output.game_events {
@@ -117,6 +146,7 @@ pub fn parse_proof_summary(path: &Path) -> Result<ProofSummary, String> {
     }
     Ok(ProofSummary {
         map,
+        players,
         kills,
         round_ends,
     })
