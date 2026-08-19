@@ -4,40 +4,36 @@ The resume file. A fresh session reads CLAUDE.md → this file → the active pl
 
 ## Now
 
-M3 in flight (plan: docs/plans/M3-detectors.md). DONE: Tasks 0–2 (parser rule data incl. targeted inventory pass; schema migration 2 + save_analysis/readers; cf-analysis foundation — types/config/context/scenario/classifier, 15 tests) + Task 8 partials (import pipeline runs analyze, print_insights tool). IN FLIGHT: Tasks 3–7 dispatched to five parallel subagents in worktrees under `.claude/worktrees/agent-*` (families h2, h3, h16, h4, flash_util — each creates `cf-analysis/src/families/<x>.rs` + registers in mod.rs in its own worktree). MERGE PROCEDURE when they report: copy each family file into main tree, hand-merge the five mod.rs registrations, run full test suite + clippy, code-review each family against its plan task + spec §2, then Task 9 (analysis goldens for mirage-tie+navi with class-13 share, wipe dev DB, UI re-import, hand-verify ≥3 flags/family via evidence deep links in the replay viewer, docs, tag m3).
+M3 complete (tagged `m3`). Next: M4 — Match Report (PROMPT.md §13): insight feed UI (grouping by category, severity × confidence ranking + recurrence, evidence chips → replay deep links), round timeline strip, TemplateNarrator v1 (§8 quality bar — cf-narrator crate is still empty), D4 + D5 detectors (H1 man-count + H6-info + H11 rotation ⇒ classes 8/11), **plus §5A cross-demo habit promotion** (patterns across matches — H4_REPEAT_HOTSPOT is natively cross-demo). DoD: owner reviews one of their own matches end-to-end and finds ≥1 insight they agree is real. Start with superpowers:writing-plans → `docs/plans/M4-report.md`; invoke frontend-design + dataviz for the feed/timeline UI.
 
 ## Next
 
-1. Merge + review family subagent outputs (above).
-2. Task 9 verification (see plan).
-3. M6 debt: Settings UI for tracked-player override.
-4. Perf budget (§10.4) nightly integration still unbuilt; import now includes an analyze stage — timing worth a look at Task 9.
+1. M4 plan (above). Insights are already persisted with EvidenceRefs; the UI reads insights_for_match/death_classes_for_match (cf-store readers exist).
+2. M4 narration inputs: rule `details` JSONs carry steamids as strings + distances/places — TemplateNarrator resolves names Rust-side.
+3. M6 debt: Settings UI for tracked-player override; re-analyze command for old imports (analysis runs only at import today).
+4. Perf: import incl. analysis ≈ well under budget (~3 s parse+analyze release); nightly §10.4 integration test still unbuilt.
 
 ## Done
 
-- 2026-08-19: **M2 complete** — awpy radar assets vendored (ADR-0004, build 17595823, served via vite publicDir=assets); MatchDetail/RoundTicks read models + commands; replay math TDD (coords/interp/utility/timeline, 24 tests); canvas replay viewer (rAF, 16 Hz interpolation, utility lifetimes w/ smoke_expired pairing, bomb state, death markers, focus dimming, kill feed, roster HP, scrubber + pips, keyboard transport, evidence deep links); Windows CI build job green. E2E on real demos via AX scripting: mirage round played at steady 60 fps, kill-feed jump verified against DB ground truth (NCZ RG 0:23 / nekoo鸭 0:25 first deaths, live HP 91/87/86 mid-fight), round switch to 12/24, de_nuke (lower-layer map) loads & plays. Tag `m2`.
-- 2026-08-19: **M1 complete** — MatchData model + round normalization (7 unit tests, MM+GOTV encodings); two-pass extraction (events + ticks) with side assignment, roster-following score derivation, goldens for mirage-tie (12–12) and navi (13–10); ADR-0002 sample_every=4; cf-store SQLite schema v1 + migrations (ADR-0003, 6 tests); import_demo with Channel progress + sha256 dedup; Library screen (TanStack Query, 7 vitest tests). E2E through the real UI via accessibility scripting: 3 own demos imported by clicking Import → native dialog, live progress, correct rows (Dust2 L 4–13 6/17, Inferno W 13–7 16/14, Mirage T 12–12 7/19), duplicate re-import rejected with visible error, relaunch persistence confirmed, owner identity set via settings override. Tag `m1`.
-- 2026-08-19: Owner demos verified (5/5 parse, misosoupy3 in every roster); spec addendum integrated (docs/spec/death-taxonomy.md, PROMPT §5A).
-- 2026-08-19: **M0 complete** — scaffold, workspace, CI, demoparser2 proven (tag `m0`).
+- 2026-08-19: **M3 complete** — §5A rule engine: cf-analysis foundation (types/config-YAML/context/scenario-builder/classifier, priority order + class-14 pre-emption + 13-vs-15 fair-duel split); five families built by parallel subagents in worktrees, reviewed & merged (H2 trade spacing, H3 utility vulnerability, H4 Tier-1 exposure, H16 utility damage, flash+utility economy) — 99 cf-analysis tests; parser gained shots/hurts/reloads/is_scoped + targeted pre-death inventory pass; schema migration 2 (death_class/rule_flags/insights + inputs); import pipeline analyzes + persists; print_insights tool; analysis goldens w/ class-13 share as CI metric; §12 hand-verification via independent SQL cross-checks + replay spot check (see fixtures/goldens/README.md). Tag `m3`.
+- 2026-08-19: **M2 complete** — replay viewer (radar assets ADR-0004, 60 fps canvas, scrubber, evidence deep links, Windows CI). Tag `m2`.
+- 2026-08-19: **M1 complete** — ingest pipeline & Library (tag `m1`). **M0 complete** — skeleton + parser proof (tag `m0`).
 
 ## Decisions
 
-- ADR-0001: demoparser2 pinned git dep — proven. ADR-0002: tick sampling every 4th tick (16 Hz). ADR-0003: SQLite schema v1 (steamids as TEXT everywhere incl. IPC; death_class/rule tables deferred to migration 2 at M3).
-- tauri-specta still RC → TS types hand-mirrored in `src/lib/ipc.ts` under MIRROR CHECKLIST.
+- ADR-0001 demoparser2 git dep (proven). ADR-0002 sample_every=4. ADR-0003 schema v1 (+migration 2 at M3). ADR-0004 awpy radar assets.
+- Rules-as-data: YAML-driven DetectorConfig thresholds/severities (predicate DSL deliberately deferred — spec principle 3 partially satisfied, revisit if rule authoring by non-devs ever matters).
+- tauri-specta still not adopted (RC) — hand-mirrored TS types under MIRROR CHECKLIST.
+- Subagent-driven development works well for rule families: isolated worktrees, disjoint module files, coordinator merges + reviews. Registration lines merged by coordinator, not agents.
 
 ## Gotchas
 
-- react-hooks v7 lint forbids ref writes during render and setState-in-effect: replay playback uses key-based remount per round + a `getScene()` closure read inside rAF; images via useMemo'd `Image` polled with `img.complete` (no state).
-- AX-tree reads race the 10 Hz React panel updates while playing — pause first (Space keystroke), then read; wrap element reads in `try`.
-- Round chips (role=tab buttons) expose as AX "radio button"; kill-feed rows are buttons (invisible to static-text dumps); react-router `<Link>` clicks via AX are unreliable — relaunch to navigate back in E2E scripts.
-- `weapon_name` values are display names ("USP-S", "Bayonet"), not `weapon_*` codes.
-
-- **demoparser2 skips per-tick prop collection when `wanted_events` is non-empty** (collect_entities gate) → cf-parser does two passes per demo, like upstream's Python bindings. Two passes ≈ 1 s release on a 250 MB demo.
-- `active_weapon` prop = raw entity handle (U32); the weapon-name string prop is **`weapon_name`**. Small int props arrive as I32 *or* U32 per netvar — `int_col` handles both.
-- **Numeric round_end reason codes are winner-relative** (9 = Terrorists_Win ⇒ CTs eliminated); MM string reasons name the eliminated side ("t_killed" = CT win). Decoder maps both to eliminated-side enums; cross-checked vs #SFUI messages.
-- MM vs GOTV round events differ (String vs I32 winner; GOTV round 1 may lack round_start; MM duplicates round_officially_ended ×2). normalize_rounds handles all; don't touch without running both goldens.
-- **Identity modal fallback can pick a constant queue-mate** (it did: xnopyt appears in all 3 imported demos and has a lower steamid). Owner's DB has `settings.tracked_steamid = 76561199228328773`; M6 Settings UI must expose this. Kill counts exclude self-kills (`victim != attacker`) — self/fall deaths show as attacker=self, weapon "world" (class-14 material at M3).
-- E2E technique: the WKWebView exposes DOM via macOS accessibility — `osascript` System Events can click app buttons and read rendered text; native open dialog driven with Cmd+Shift+G + typed path. Screen capture is permission-blocked; AX text dump is the reliable check.
-- Port 1420 leftovers: killing tauri dev can orphan vite — `lsof -ti :1420 | xargs kill` before relaunching.
-- demoparser's `csgoproto` needs `protoc` (CI: arduino/setup-protoc@v3; local via Homebrew).
-- `cargo`/`rustc` need `source "$HOME/.cargo/env"` in fresh shells. Shell cwd drifts between tool calls — use absolute paths.
+- **Death-tick inventory is always empty** (items drop at death; a living player always holds ≥ a knife) → parser samples 0.25 s pre-death; `inventory_at` skips empty samples as death artifacts.
+- Steamids as JSON numbers lose precision in JS (2^53) — `EvidenceRef.focus_players` serializes as strings; rule `details` steamids are stringified by convention.
+- demoparser2 skips per-tick props when events are wanted (two passes; third targeted pass for inventory via `wanted_ticks`). `active_weapon` = entity handle; the string prop is `weapon_name`. Numeric round_end reasons are winner-relative (9 = CTs eliminated).
+- MM vs GOTV round-event dialects differ; normalize_rounds handles both (goldens for each).
+- Identity modal fallback can pick a constant queue-mate — owner's DB has settings.tracked_steamid override; M6 Settings UI must expose it. Tracked setting must exist BEFORE import for analysis to use it (set via sqlite3 in dev).
+- E2E via macOS AX: pause before reading (10 Hz updates race the tree); round chips are AX "radio buttons"; kill-feed rows are buttons; canvas content is invisible to AX — verify via SQL cross-checks + kill feed/roster text.
+- Keyboard transport must be window-scoped (round chips live outside the player subtree).
+- `.claude/` (agent worktrees) must stay excluded from git/eslint/vitest — vitest silently picked up worktree test copies (33→198 tests).
+- CI: protoc via arduino/setup-protoc; `packageManager` pinned for pnpm/action-setup; `cargo`/`rustc` need `source "$HOME/.cargo/env"`.

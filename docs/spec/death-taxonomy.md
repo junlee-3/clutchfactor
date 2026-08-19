@@ -305,6 +305,18 @@ Not a rule-engine blocker: callout *names* are only used for human-readable evid
 
 ---
 
+## 5A. Implementation addenda (M3, 2026-08-19 — additions only, no renames)
+
+- New rule ids added per §2's "additions allowed" rule: `H5_DIED_FLASHED` (sources class 3
+  until the audio-model H5 rules land), `H6_DEAD_TIME_SMOKE`, `H6_UNUSED_UTIL_AT_ROUND_END`
+  (round-end holding; H3_WASTED_UTILITY covers died-holding), `H6_UTIL_TEAM_DAMAGE`,
+  `H14_DIED_SELF_OR_WORLD` (class-14 source, event-derived).
+- M3 ships classes 1–7, 9, 13–15; classes 8/10/11/12 are reserved (H1, H4-Tier-2/3,
+  H6-info, H8) and labeled "[not built]" in tooling output per §1's honesty rule.
+- Parser facts learned: the death-tick inventory sample is always empty (items drop on
+  death) — inventories are sampled ~0.25 s pre-death, and empty samples are treated as the
+  death artifact (a living player always holds a knife).
+
 ## 6. Cross-demo habit tracking (owner requirement, verbatim intent)
 
 The coaching must be cross-demo, not single-demo. If a mistake repeats across games, the app tells

@@ -19,8 +19,10 @@ pnpm typecheck && pnpm lint && pnpm test:run          # frontend checks (tsc, es
 cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml --workspace          # add --release to speed up golden demo parse
-# M0 parser proof — kill feed + round scores from a real demo:
+# Parser proof — kill feed + round scores from a real demo:
 cargo run -p cf-parser --release --example print_match --manifest-path src-tauri/Cargo.toml -- fixtures/public/<demo>.dem
+# Detector output — insights, rule flags, death-class table + class-13 share:
+cargo run -p cf-analysis --release --example print_insights --manifest-path src-tauri/Cargo.toml -- fixtures/own/<demo>.dem <steamid64>
 ```
 
 ## Architecture map
