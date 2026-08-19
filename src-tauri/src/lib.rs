@@ -28,7 +28,12 @@ pub fn run() {
             commands::get_match_detail,
             commands::get_match_report,
             commands::get_habits,
-            commands::get_round_ticks
+            commands::get_round_ticks,
+            commands::import_corpus_demo,
+            commands::build_corpus,
+            commands::corpus_status,
+            commands::get_grid,
+            commands::analyze_positioning
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

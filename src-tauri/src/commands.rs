@@ -2,11 +2,14 @@
 //! `src/lib/ipc.ts` (keep the MIRROR CHECKLIST there in sync). Steamids are
 //! strings on the wire.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use cf_analysis::corpus::{self, Phase, PhaseSample, TrackedMoment};
 use cf_parser::extract::{parse_match, ImportStage};
-use cf_store::store::{MatchDetail, RoundTicks};
+use cf_parser::model::Side;
+use cf_store::store::{GridRow, MatchDetail, RoundTicks};
 use cf_store::{MatchSummary, Store, StoreError};
 use sha2::{Digest, Sha256};
 use tauri::ipc::Channel;
@@ -42,19 +45,22 @@ fn send(ch: &Channel<ProgressEvent>, stage: &str, pct: f32, detail: &str) {
     });
 }
 
-#[tauri::command]
-pub async fn import_demo(
-    state: State<'_, AppState>,
+/// Hash → duplicate check → parse → save, shared by own and corpus imports.
+/// Returns the saved id, the parsed data (own imports analyze it next) and
+/// the derived score.
+async fn parse_and_save(
+    state: &State<'_, AppState>,
     path: String,
-    on_progress: Channel<ProgressEvent>,
-) -> Result<ImportResult, String> {
+    on_progress: &Channel<ProgressEvent>,
+    kind: cf_store::store::MatchKind,
+) -> Result<(i64, cf_parser::model::MatchData, u32, u32), String> {
     let file = PathBuf::from(&path);
     let file_name = file
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .ok_or_else(|| "not a file path".to_string())?;
 
-    send(&on_progress, "hashing", 0.0, "Hashing demo file");
+    send(on_progress, "hashing", 0.0, "Hashing demo file");
     let hash_path = file.clone();
     let file_hash = tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
         let bytes = std::fs::read(&hash_path).map_err(|e| format!("cannot read demo: {e}"))?;
@@ -71,7 +77,7 @@ pub async fn import_demo(
         }
     }
 
-    send(&on_progress, "parsing", 0.05, "Parsing demo");
+    send(on_progress, "parsing", 0.05, "Parsing demo");
     let parse_path = file.clone();
     let progress_channel = on_progress.clone();
     let data = tauri::async_runtime::spawn_blocking(move || {
@@ -89,23 +95,33 @@ pub async fn import_demo(
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
 
-    send(&on_progress, "saving", 0.88, "Saving to library");
-    let (match_id, map, score_a, score_b, tracked) = {
+    send(on_progress, "saving", 0.88, "Saving to library");
+    let match_id = {
         let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
-        let id = store
-            .save_match(
-                &file_name,
-                &file_hash,
-                cf_store::store::MatchKind::Own,
-                &data,
-            )
+        store
+            .save_match(&file_name, &file_hash, kind, &data)
             .map_err(|e| match e {
                 StoreError::DuplicateImport => e.to_string(),
                 other => format!("failed to save match: {other}"),
-            })?;
-        let (_, _, wa, wb) = cf_parser::extract::derive_score(&data.rounds);
-        let tracked = store.tracked_steamid().map_err(|e| e.to_string())?;
-        (id, data.map.clone(), wa, wb, tracked)
+            })?
+    };
+    let (_, _, score_a, score_b) = cf_parser::extract::derive_score(&data.rounds);
+    Ok((match_id, data, score_a, score_b))
+}
+
+#[tauri::command]
+pub async fn import_demo(
+    state: State<'_, AppState>,
+    path: String,
+    on_progress: Channel<ProgressEvent>,
+) -> Result<ImportResult, String> {
+    let (match_id, data, score_a, score_b) =
+        parse_and_save(&state, path, &on_progress, cf_store::store::MatchKind::Own).await?;
+    let map = data.map.clone();
+
+    let tracked = {
+        let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        store.tracked_steamid().map_err(|e| e.to_string())?
     };
 
     // Analysis needs a tracked player; after save_match the modal fallback
@@ -122,6 +138,21 @@ pub async fn import_demo(
         store
             .save_analysis(match_id, &analysis)
             .map_err(|e| e.to_string())?;
+        // D6 runs outside analyze(): it needs the corpus grids, which only
+        // exist once pro demos were imported and built for this map.
+        let has_grids = !store
+            .load_grids(&map)
+            .map_err(|e| e.to_string())?
+            .is_empty();
+        if has_grids {
+            send(
+                &on_progress,
+                "analyzing",
+                0.97,
+                "Comparing positioning to corpus",
+            );
+            run_positioning(&mut store, match_id)?;
+        }
     }
 
     send(&on_progress, "done", 1.0, "Import complete");
@@ -496,4 +527,280 @@ pub fn get_round_ticks(
     store
         .round_ticks(match_id, round)
         .map_err(|e| e.to_string())
+}
+
+// ---- M5: reference corpus + D6 positioning ----
+
+const D6_DETECTOR: &str = "D6_UNUSUAL_POSITIONING";
+
+fn side_from_str(s: &str) -> Option<Side> {
+    match s {
+        "CT" => Some(Side::Ct),
+        "T" => Some(Side::T),
+        _ => None,
+    }
+}
+
+fn phase_from_str(p: &str) -> Option<Phase> {
+    match p {
+        "freeze_end" => Some(Phase::FreezeEnd),
+        "early" => Some(Phase::Early),
+        "mid" => Some(Phase::Mid),
+        "post_plant" => Some(Phase::PostPlant),
+        _ => None,
+    }
+}
+
+fn occupancy_to_row(g: &corpus::OccupancyGrid) -> GridRow {
+    GridRow {
+        map: g.map.clone(),
+        side: match g.side {
+            Side::Ct => "CT".to_string(),
+            Side::T => "T".to_string(),
+        },
+        phase: g.phase.as_str().to_string(),
+        size: g.size,
+        counts: g.counts.clone(),
+        demos: g.demos as u32,
+        samples: g.samples,
+    }
+}
+
+fn row_to_occupancy(r: GridRow) -> Option<corpus::OccupancyGrid> {
+    Some(corpus::OccupancyGrid {
+        side: side_from_str(&r.side)?,
+        phase: phase_from_str(&r.phase)?,
+        map: r.map,
+        size: r.size,
+        counts: r.counts,
+        demos: r.demos as usize,
+        samples: r.samples,
+    })
+}
+
+#[derive(serde::Serialize)]
+pub struct CorpusStatus {
+    pub maps: Vec<cf_store::store::CorpusMapCount>,
+    pub grids: Vec<cf_store::store::GridStatus>,
+    /// The honest D6 gate (§5): grids from fewer corpus demos stay silent.
+    pub min_demos_per_map: usize,
+}
+
+/// Import a pro demo as reference-corpus data: parsed and saved with
+/// kind='corpus' (invisible to the library, reports and habits), never
+/// analyzed — corpus players aren't coached.
+#[tauri::command]
+pub async fn import_corpus_demo(
+    state: State<'_, AppState>,
+    path: String,
+    on_progress: Channel<ProgressEvent>,
+) -> Result<ImportResult, String> {
+    let (match_id, data, score_a, score_b) = parse_and_save(
+        &state,
+        path,
+        &on_progress,
+        cf_store::store::MatchKind::Corpus,
+    )
+    .await?;
+    send(&on_progress, "done", 1.0, "Corpus import complete");
+    Ok(ImportResult {
+        match_id,
+        map: data.map,
+        score_a,
+        score_b,
+    })
+}
+
+/// (Re)build occupancy grids from every corpus demo — all maps, or just one.
+/// Returns how many grids were built. Synchronous store scan: corpus sizes
+/// are tens of demos, not thousands.
+#[tauri::command]
+pub async fn build_corpus(
+    state: State<'_, AppState>,
+    map: Option<String>,
+    on_progress: Channel<ProgressEvent>,
+) -> Result<usize, String> {
+    let cfg = cf_analysis::DetectorConfig::default().corpus;
+    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    let maps: Vec<String> = match map {
+        Some(m) => vec![m],
+        None => store
+            .corpus_summary()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|c| c.map)
+            .collect(),
+    };
+    let mut total_grids = 0usize;
+    for (mi, map) in maps.iter().enumerate() {
+        let ids = store.corpus_match_ids(map).map_err(|e| e.to_string())?;
+        let demos_per_map: HashMap<String, usize> = HashMap::from([(map.clone(), ids.len())]);
+        let mut samples: Vec<PhaseSample> = Vec::new();
+        for (di, id) in ids.iter().enumerate() {
+            send(
+                &on_progress,
+                "building",
+                (mi as f32 + di as f32 / ids.len().max(1) as f32) / maps.len().max(1) as f32,
+                &format!("{map}: demo {}/{}", di + 1, ids.len()),
+            );
+            let Some((_, tickrate)) = store.match_map_tickrate(*id).map_err(|e| e.to_string())?
+            else {
+                continue;
+            };
+            for r in store.rounds_for_match(*id).map_err(|e| e.to_string())? {
+                let Some(freeze_end) = r.freeze_end_tick else {
+                    continue;
+                };
+                let plant = store
+                    .bomb_plant_tick(*id, r.number)
+                    .map_err(|e| e.to_string())?;
+                let sides: HashMap<String, String> = store
+                    .sides_for_round(*id, r.number)
+                    .map_err(|e| e.to_string())?
+                    .into_iter()
+                    .collect();
+                for (phase, tick) in
+                    corpus::phase_moments(freeze_end, r.end_tick, plant, tickrate as f32, &cfg)
+                {
+                    for p in store.positions_at(*id, tick).map_err(|e| e.to_string())? {
+                        if !p.alive {
+                            continue;
+                        }
+                        let Some(side) = sides.get(&p.steamid).and_then(|s| side_from_str(s))
+                        else {
+                            continue;
+                        };
+                        samples.push(PhaseSample {
+                            map: map.clone(),
+                            side,
+                            phase,
+                            x: p.x,
+                            y: p.y,
+                        });
+                    }
+                }
+            }
+        }
+        let grids = corpus::build_grids(&samples, &demos_per_map, &cfg);
+        let rows: Vec<GridRow> = grids.iter().map(occupancy_to_row).collect();
+        store.save_grids(&rows).map_err(|e| e.to_string())?;
+        total_grids += rows.len();
+    }
+    send(&on_progress, "done", 1.0, "Corpus build complete");
+    Ok(total_grids)
+}
+
+#[tauri::command]
+pub fn corpus_status(state: State<'_, AppState>) -> Result<CorpusStatus, String> {
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    Ok(CorpusStatus {
+        maps: store.corpus_summary().map_err(|e| e.to_string())?,
+        grids: store.grid_status().map_err(|e| e.to_string())?,
+        min_demos_per_map: cf_analysis::DetectorConfig::default()
+            .corpus
+            .min_demos_per_map,
+    })
+}
+
+#[tauri::command]
+pub fn get_grid(
+    state: State<'_, AppState>,
+    map: String,
+    side: String,
+    phase: String,
+) -> Result<Option<GridRow>, String> {
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    Ok(store
+        .load_grids(&map)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|g| g.side == side && g.phase == phase))
+}
+
+/// D6 for one own match: sample the tracked player's phase moments, compare
+/// against this map's grids, and replace the match's D6 insights. Returns
+/// the number of insights written (0 = corpus silent or nothing unusual).
+fn run_positioning(store: &mut Store, match_id: i64) -> Result<usize, String> {
+    let cfg = cf_analysis::DetectorConfig::default().corpus;
+    let Some((map, tickrate)) = store
+        .match_map_tickrate(match_id)
+        .map_err(|e| e.to_string())?
+    else {
+        return Err("unknown match".to_string());
+    };
+    let tracked = store
+        .tracked_steamid()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "no tracked player".to_string())?;
+    let grids: Vec<corpus::OccupancyGrid> = store
+        .load_grids(&map)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter_map(row_to_occupancy)
+        .collect();
+
+    let rounds = store
+        .rounds_for_match(match_id)
+        .map_err(|e| e.to_string())?;
+    let total_rounds = rounds.len() as u32;
+    let mut moments: Vec<TrackedMoment> = Vec::new();
+    for r in &rounds {
+        let Some(freeze_end) = r.freeze_end_tick else {
+            continue;
+        };
+        let plant = store
+            .bomb_plant_tick(match_id, r.number)
+            .map_err(|e| e.to_string())?;
+        let side = store
+            .sides_for_round(match_id, r.number)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .find(|(sid, _)| *sid == tracked)
+            .and_then(|(_, s)| side_from_str(&s));
+        let Some(side) = side else {
+            continue;
+        };
+        for (phase, tick) in
+            corpus::phase_moments(freeze_end, r.end_tick, plant, tickrate as f32, &cfg)
+        {
+            let pos = store
+                .positions_at(match_id, tick)
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .find(|p| p.steamid == tracked);
+            if let Some(p) = pos.filter(|p| p.alive) {
+                moments.push(TrackedMoment {
+                    round: r.number,
+                    tick,
+                    side,
+                    phase,
+                    x: p.x,
+                    y: p.y,
+                });
+            }
+        }
+    }
+
+    let findings = corpus::unusual_positions(&moments, &grids, &map, &cfg);
+    let tracked_u64 = tracked
+        .parse::<u64>()
+        .map_err(|_| "tracked steamid is not a number".to_string())?;
+    let insights = corpus::d6_insights(
+        &findings,
+        &map,
+        tracked_u64,
+        total_rounds,
+        tickrate as f32,
+        &cfg,
+    );
+    store
+        .replace_detector_insights(match_id, D6_DETECTOR, &insights)
+        .map_err(|e| e.to_string())?;
+    Ok(insights.len())
+}
+
+#[tauri::command]
+pub fn analyze_positioning(state: State<'_, AppState>, match_id: i64) -> Result<usize, String> {
+    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    run_positioning(&mut store, match_id)
 }

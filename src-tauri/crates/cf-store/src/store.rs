@@ -894,6 +894,39 @@ impl Store {
         Ok(rows)
     }
 
+    /// Lean (steamid, side) pairs for one round; side is "CT" | "T".
+    pub fn sides_for_round(
+        &self,
+        id: i64,
+        number: u32,
+    ) -> Result<Vec<(String, String)>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT steamid, side FROM round_sides
+             WHERE match_id = ?1 AND number = ?2 ORDER BY steamid",
+        )?;
+        let rows = st
+            .query_map(params![id, number], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Lean (map, tickrate) lookup without loading the full match detail.
+    pub fn match_map_tickrate(&self, id: i64) -> Result<Option<(String, f64)>, StoreError> {
+        let v = self
+            .conn
+            .query_row(
+                "SELECT map, tickrate FROM matches WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        Ok(v)
+    }
+
     /// First "planted" bomb event inside the round's tick span, if any.
     pub fn bomb_plant_tick(&self, id: i64, round: u32) -> Result<Option<i32>, StoreError> {
         let v = self.conn.query_row(
@@ -1946,6 +1979,15 @@ mod tests {
         assert_eq!(rounds[0].number, 1);
         assert_eq!(rounds[0].winner, "CT");
         assert_eq!(rounds[0].freeze_end_tick, Some(1100));
+        // Lean sides + meta readers used by corpus phase sampling.
+        let sides = store.sides_for_round(c1, 1).unwrap();
+        assert!(sides.contains(&("1".to_string(), "CT".to_string())));
+        assert!(sides.contains(&("3".to_string(), "T".to_string())));
+        assert_eq!(
+            store.match_map_tickrate(c1).unwrap(),
+            Some(("de_mirage".to_string(), 64.0))
+        );
+        assert_eq!(store.match_map_tickrate(9999).unwrap(), None);
     }
 
     #[test]

@@ -11,10 +11,16 @@
 //   MatchReport (+ NarratedInsight/NarrationDto/DeathClassRow/RoundStat)
 //                  <- src-tauri/src/commands.rs + cf-store store.rs
 //   HabitReport (+ HabitEvidence) <- src-tauri/src/commands.rs
+//   GridDto (src/replay/heatmap.ts) <- GridRow, src-tauri/crates/cf-store/src/store.rs
+//   GridStatus/CorpusMapCount <- src-tauri/crates/cf-store/src/store.rs
+//   CorpusStatus   <- src-tauri/src/commands.rs
 // Conventions: steamids are strings (steamid64 overflows JS number);
 // command names are snake_case; Rust arg names arrive camelCased.
 
 import { Channel, invoke } from "@tauri-apps/api/core";
+import type { GridDto } from "../replay/heatmap";
+
+export type { GridDto };
 
 export interface MatchSummary {
   id: number;
@@ -230,4 +236,63 @@ export function importDemo(
   const channel = new Channel<ProgressEvent>();
   channel.onmessage = onProgress;
   return invoke<ImportResult>("import_demo", { path, onProgress: channel });
+}
+
+// ---- M5: reference corpus + D6 positioning ----
+
+export interface CorpusMapCount {
+  map: string;
+  demos: number;
+}
+
+export interface GridStatus {
+  map: string;
+  side: "CT" | "T";
+  phase: string;
+  demos: number;
+  samples: number;
+  built_at: string;
+}
+
+export interface CorpusStatus {
+  maps: CorpusMapCount[];
+  grids: GridStatus[];
+  min_demos_per_map: number;
+}
+
+export function importCorpusDemo(
+  path: string,
+  onProgress: (e: ProgressEvent) => void,
+): Promise<ImportResult> {
+  const channel = new Channel<ProgressEvent>();
+  channel.onmessage = onProgress;
+  return invoke<ImportResult>("import_corpus_demo", {
+    path,
+    onProgress: channel,
+  });
+}
+
+export function buildCorpus(
+  map: string | null,
+  onProgress: (e: ProgressEvent) => void,
+): Promise<number> {
+  const channel = new Channel<ProgressEvent>();
+  channel.onmessage = onProgress;
+  return invoke<number>("build_corpus", { map, onProgress: channel });
+}
+
+export function corpusStatus(): Promise<CorpusStatus> {
+  return invoke<CorpusStatus>("corpus_status");
+}
+
+export function getGrid(
+  map: string,
+  side: "CT" | "T",
+  phase: string,
+): Promise<GridDto | null> {
+  return invoke<GridDto | null>("get_grid", { map, side, phase });
+}
+
+export function analyzePositioning(matchId: number): Promise<number> {
+  return invoke<number>("analyze_positioning", { matchId });
 }

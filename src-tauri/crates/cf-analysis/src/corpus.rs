@@ -365,6 +365,37 @@ pub fn d6_insights(
         .collect()
 }
 
+/// The phase-sample ticks for one round (PROMPT.md §5 D6 phases): freeze-end,
+/// early and mid offsets from `freeze_end_tick`; post-plant offset from the
+/// plant. A moment past `end_tick` is dropped (the round was already over),
+/// and a plant at or before the mid offset preempts the mid sample — the
+/// round has switched to post-plant positioning by then.
+pub fn phase_moments(
+    freeze_end_tick: i32,
+    end_tick: i32,
+    plant_tick: Option<i32>,
+    tickrate: f32,
+    cfg: &CorpusCfg,
+) -> Vec<(Phase, i32)> {
+    let at = |s: f32| freeze_end_tick + (s * tickrate) as i32;
+    let mut out = Vec::new();
+    let mut push = |phase: Phase, tick: i32| {
+        if tick <= end_tick {
+            out.push((phase, tick));
+        }
+    };
+    push(Phase::FreezeEnd, at(cfg.freeze_sample_s));
+    push(Phase::Early, at(cfg.early_s));
+    let mid_tick = at(cfg.mid_s);
+    if !matches!(plant_tick, Some(p) if p <= mid_tick) {
+        push(Phase::Mid, mid_tick);
+    }
+    if let Some(p) = plant_tick {
+        push(Phase::PostPlant, p + (cfg.post_plant_s * tickrate) as i32);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -643,5 +674,42 @@ mod tests {
         let i1 = d6_insights(&f1, "de_mirage", 42, 30, 64.0, &c);
         let i2 = d6_insights(&f2, "de_mirage", 42, 30, 64.0, &c);
         assert_eq!(i1, i2);
+    }
+
+    #[test]
+    fn phase_moments_full_round_without_plant() {
+        // 64-tick, freeze end at 1000, round runs long: all pre-plant phases.
+        let m = phase_moments(1000, 10000, None, 64.0, &cfg());
+        assert_eq!(
+            m,
+            vec![
+                (Phase::FreezeEnd, 1064), // +1.0 s
+                (Phase::Early, 1640),     // +10 s
+                (Phase::Mid, 3240),       // +35 s
+            ]
+        );
+    }
+
+    #[test]
+    fn phase_moments_plant_preempts_mid_and_adds_post_plant() {
+        // Plant at 2500 (before the +35 s mid moment at 3240): mid is
+        // skipped, post-plant sampled at plant + 5 s.
+        let m = phase_moments(1000, 10000, Some(2500), 64.0, &cfg());
+        assert_eq!(
+            m,
+            vec![
+                (Phase::FreezeEnd, 1064),
+                (Phase::Early, 1640),
+                (Phase::PostPlant, 2820),
+            ]
+        );
+    }
+
+    #[test]
+    fn phase_moments_drops_moments_after_round_end() {
+        // Round over at 1500: only freeze-end survives; a late plant's
+        // post-plant moment lands past end and is dropped too.
+        let m = phase_moments(1000, 1500, Some(1400), 64.0, &cfg());
+        assert_eq!(m, vec![(Phase::FreezeEnd, 1064)]);
     }
 }
