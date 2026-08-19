@@ -10,6 +10,8 @@ target/
 # Node
 node_modules/
 dist/
+dist-ssr/
+*.log
 
 # OS / editor
 .DS_Store
