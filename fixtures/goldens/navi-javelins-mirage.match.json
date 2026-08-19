@@ -232,6 +232,10 @@
   "grenades": 643,
   "bomb_events": 26,
   "tick_rows": 544500,
+  "shots": 3521,
+  "hurts": 642,
+  "reloads": 167,
+  "inventories": 1750,
   "first_kill": "[2827] f6tal -> Angelka [glock]",
   "last_kill": "[204260] <world> -> Angelka [planted_c4]"
 }

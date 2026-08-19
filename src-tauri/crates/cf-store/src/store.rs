@@ -5,6 +5,8 @@
 use std::path::Path;
 
 use cf_parser::extract::derive_score;
+#[cfg(test)]
+use cf_parser::model::{Hurt, InventorySample, Reload, Shot};
 use cf_parser::model::{MatchData, RoundEndReason, Side};
 use rusqlite::{params, Connection};
 
@@ -296,8 +298,9 @@ impl Store {
 
             let mut st = tx.prepare(
                 "INSERT INTO tick_samples (match_id, steamid, tick, x, y, z, yaw, health,
-                                           is_alive, team_num, active_weapon, spotted, last_place)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                                           is_alive, team_num, active_weapon, spotted, last_place,
+                                           is_scoped)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             )?;
             let t = &data.ticks;
             for i in 0..t.len() {
@@ -315,6 +318,49 @@ impl Store {
                     t.active_weapon[i],
                     t.spotted[i],
                     t.last_place[i],
+                    t.is_scoped.get(i).copied(),
+                ])?;
+            }
+
+            let mut st = tx.prepare(
+                "INSERT INTO shots (match_id, tick, player, weapon) VALUES (?1, ?2, ?3, ?4)",
+            )?;
+            for s in &data.shots {
+                st.execute(params![match_id, s.tick, s.player.to_string(), s.weapon])?;
+            }
+
+            let mut st = tx.prepare(
+                "INSERT INTO hurts (match_id, tick, victim, attacker, dmg_health, weapon, hitgroup)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )?;
+            for h in &data.hurts {
+                st.execute(params![
+                    match_id,
+                    h.tick,
+                    h.victim.to_string(),
+                    h.attacker.map(|a| a.to_string()),
+                    h.dmg_health,
+                    h.weapon,
+                    h.hitgroup,
+                ])?;
+            }
+
+            let mut st =
+                tx.prepare("INSERT INTO reloads (match_id, tick, player) VALUES (?1, ?2, ?3)")?;
+            for r in &data.reloads {
+                st.execute(params![match_id, r.tick, r.player.to_string()])?;
+            }
+
+            let mut st = tx.prepare(
+                "INSERT OR REPLACE INTO inventories (match_id, tick, steamid, items_json)
+                 VALUES (?1, ?2, ?3, ?4)",
+            )?;
+            for inv in &data.inventories {
+                st.execute(params![
+                    match_id,
+                    inv.tick,
+                    inv.steamid.to_string(),
+                    serde_json::to_string(&inv.items).expect("items json"),
                 ])?;
             }
         }
@@ -691,6 +737,7 @@ mod tests {
             ticks.active_weapon.push(Some("weapon_ak47".into()));
             ticks.spotted.push(false);
             ticks.last_place.push(Some("BombsiteA".into()));
+            ticks.is_scoped.push(false);
         }
         MatchData {
             map: "de_mirage".into(),
@@ -731,6 +778,28 @@ mod tests {
             }],
             grenades: vec![],
             bomb_events: vec![],
+            shots: vec![Shot {
+                tick: 1190,
+                player: 1,
+                weapon: "weapon_usp_silencer".into(),
+            }],
+            hurts: vec![Hurt {
+                tick: 1195,
+                victim: 3,
+                attacker: Some(1),
+                dmg_health: 27,
+                weapon: "usp_silencer".into(),
+                hitgroup: "chest".into(),
+            }],
+            reloads: vec![Reload {
+                tick: 1400,
+                player: 1,
+            }],
+            inventories: vec![InventorySample {
+                tick: 2200,
+                steamid: 1,
+                items: vec!["Flashbang".into(), "Smoke Grenade".into()],
+            }],
             ticks,
         }
     }
@@ -859,6 +928,36 @@ mod tests {
         assert_eq!(rt2.tick, vec![2100]);
         // Unknown round → empty, not error.
         assert!(store.round_ticks(id, 99).unwrap().tick.is_empty());
+    }
+
+    #[test]
+    fn migration_2_analysis_tables_and_rule_inputs_persist() {
+        let (_dir, mut store) = open_tmp();
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 2);
+        let id = store.save_match("m1.dem", "h1", &sample_match()).unwrap();
+        let q = |sql: &str| -> u32 { store.conn.query_row(sql, [id], |r| r.get(0)).unwrap() };
+        assert_eq!(q("SELECT COUNT(*) FROM shots WHERE match_id = ?1"), 1);
+        assert_eq!(q("SELECT COUNT(*) FROM hurts WHERE match_id = ?1"), 1);
+        assert_eq!(q("SELECT COUNT(*) FROM reloads WHERE match_id = ?1"), 1);
+        assert_eq!(q("SELECT COUNT(*) FROM inventories WHERE match_id = ?1"), 1);
+        let items: String = store
+            .conn
+            .query_row(
+                "SELECT items_json FROM inventories WHERE match_id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(items.contains("Flashbang"));
+        let scoped: Option<bool> = store
+            .conn
+            .query_row(
+                "SELECT is_scoped FROM tick_samples WHERE match_id = ?1 LIMIT 1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(scoped, Some(false));
     }
 
     #[test]

@@ -14,7 +14,8 @@ use demoparser::second_pass::parser_settings::create_huffman_lookup_table;
 use demoparser::second_pass::variants::{VarVec, Variant};
 
 use crate::model::{
-    Blind, BombEvent, GrenadeEvent, Kill, MatchData, PlayerMeta, Round, Side, TickTable,
+    Blind, BombEvent, GrenadeEvent, Hurt, InventorySample, Kill, MatchData, PlayerMeta, Reload,
+    Round, Shot, Side, TickTable,
 };
 use crate::rounds::{normalize_rounds, RawReason, RawRoundEvent, RawWinner};
 
@@ -55,6 +56,9 @@ const WANTED_EVENTS: &[&str] = &[
     "bomb_planted",
     "bomb_defused",
     "bomb_exploded",
+    "weapon_fire",
+    "weapon_reload",
+    "player_hurt",
 ];
 
 const WANTED_PROPS: &[&str] = &[
@@ -68,6 +72,7 @@ const WANTED_PROPS: &[&str] = &[
     "weapon_name", // string name of active weapon (active_weapon is a raw entity handle)
     "spotted",
     "last_place_name",
+    "is_scoped",
 ];
 
 // ---- game-event field helpers (tolerant: wrong/missing → None) ----
@@ -194,8 +199,95 @@ pub fn parse_match(
             .map_err(|e| ParseError::Demo(format!("{e:?}")))?
     };
 
-    progress(ImportStage::Normalizing, 0.85);
-    build_match_data(&events_output, &ticks_output, sample_every)
+    progress(ImportStage::Normalizing, 0.8);
+    let mut data = build_match_data(&events_output, &ticks_output, sample_every)?;
+
+    // Third targeted pass: inventory snapshots at death + round-end ticks only
+    // (the per-tick inventory prop is a StringVec — far too heavy for the full
+    // tick table, tiny for ~200 targeted ticks).
+    progress(ImportStage::Parsing, 0.85);
+    let mut wanted_ticks: Vec<i32> = data
+        .kills
+        .iter()
+        .map(|k| k.tick)
+        .chain(data.rounds.iter().map(|r| r.end_tick))
+        .collect();
+    wanted_ticks.sort_unstable();
+    wanted_ticks.dedup();
+    let inv_output = {
+        let friendly = vec!["inventory".to_string()];
+        let real_props =
+            rm_user_friendly_names(&friendly).map_err(|e| ParseError::Demo(format!("{e:?}")))?;
+        let mut real_name_to_og_name = AHashMap::default();
+        for (real, og) in real_props.iter().zip(friendly.iter()) {
+            real_name_to_og_name.insert(real.clone(), og.clone());
+        }
+        let inputs = ParserInputs {
+            real_name_to_og_name,
+            wanted_players: vec![],
+            wanted_player_props: real_props,
+            wanted_other_props: vec![],
+            wanted_prop_states: AHashMap::default(),
+            wanted_ticks,
+            wanted_events: vec![],
+            parse_ents: true,
+            parse_projectiles: false,
+            parse_grenades: false,
+            only_header: true,
+            only_convars: false,
+            huffman_lookup_table: &huf,
+            order_by_steamid: false,
+            list_props: false,
+            fallback_bytes: None,
+        };
+        let mut parser = Parser::new(inputs, ParsingMode::Normal);
+        parser
+            .parse_demo(&mmap)
+            .map_err(|e| ParseError::Demo(format!("{e:?}")))?
+    };
+    data.inventories = extract_inventories(&inv_output)?;
+
+    progress(ImportStage::Normalizing, 0.9);
+    Ok(data)
+}
+
+fn extract_inventories(output: &DemoOutput) -> Result<Vec<InventorySample>, ParseError> {
+    let by_name: HashMap<&str, &VarVec> = output
+        .prop_controller
+        .prop_infos
+        .iter()
+        .filter_map(|pi| {
+            output
+                .df
+                .get(&pi.id)
+                .and_then(|c| c.data.as_ref())
+                .map(|d| (pi.prop_friendly_name.as_str(), d))
+        })
+        .collect();
+    let (Some(VarVec::I32(ticks)), Some(VarVec::U64(steamids)), Some(VarVec::StringVec(items))) = (
+        by_name.get("tick").copied(),
+        by_name.get("steamid").copied(),
+        by_name.get("inventory").copied(),
+    ) else {
+        // Inventory columns absent (very old demo?) — silence-bias: no samples.
+        return Ok(vec![]);
+    };
+    let mut out = vec![];
+    for i in 0..ticks.len() {
+        let (Some(tick), Some(steamid)) = (ticks[i], steamids[i]) else {
+            continue;
+        };
+        if steamid == 0 {
+            continue;
+        }
+        out.push(InventorySample {
+            tick,
+            steamid,
+            items: items[i].clone(),
+        });
+    }
+    out.sort_by_key(|s| (s.tick, s.steamid));
+    Ok(out)
 }
 
 fn build_match_data(
@@ -223,7 +315,7 @@ fn build_match_data(
     let ticks = build_tick_table(ticks_output, sample_every)?;
     assign_sides(&mut rounds, &ticks);
 
-    let (kills, blinds, grenades, bomb_events) =
+    let (kills, blinds, grenades, bomb_events, shots, hurts, reloads) =
         extract_events(&events_output.game_events, &rounds);
 
     Ok(MatchData {
@@ -235,6 +327,10 @@ fn build_match_data(
         blinds,
         grenades,
         bomb_events,
+        shots,
+        hurts,
+        reloads,
+        inventories: vec![], // filled by the targeted third pass in parse_match
         ticks,
     })
 }
@@ -303,14 +399,24 @@ fn round_for_tick(rounds: &[Round], tick: i32) -> u32 {
     idx as u32
 }
 
-fn extract_events(
-    events: &[GameEvent],
-    rounds: &[Round],
-) -> (Vec<Kill>, Vec<Blind>, Vec<GrenadeEvent>, Vec<BombEvent>) {
+type ExtractedEvents = (
+    Vec<Kill>,
+    Vec<Blind>,
+    Vec<GrenadeEvent>,
+    Vec<BombEvent>,
+    Vec<Shot>,
+    Vec<Hurt>,
+    Vec<Reload>,
+);
+
+fn extract_events(events: &[GameEvent], rounds: &[Round]) -> ExtractedEvents {
     let mut kills = vec![];
     let mut blinds = vec![];
     let mut grenades = vec![];
     let mut bombs = vec![];
+    let mut shots = vec![];
+    let mut hurts = vec![];
+    let mut reloads = vec![];
     for ev in events {
         match ev.name.as_str() {
             "player_death" => {
@@ -365,6 +471,38 @@ fn extract_events(
                     z: field_f32(ev, "z").unwrap_or(0.0),
                 });
             }
+            "weapon_fire" => {
+                let Some(player) = field_steamid(ev, "user_steamid") else {
+                    continue;
+                };
+                shots.push(Shot {
+                    tick: ev.tick,
+                    player,
+                    weapon: field_str(ev, "weapon").unwrap_or_default(),
+                });
+            }
+            "weapon_reload" => {
+                let Some(player) = field_steamid(ev, "user_steamid") else {
+                    continue;
+                };
+                reloads.push(Reload {
+                    tick: ev.tick,
+                    player,
+                });
+            }
+            "player_hurt" => {
+                let Some(victim) = field_steamid(ev, "user_steamid") else {
+                    continue;
+                };
+                hurts.push(Hurt {
+                    tick: ev.tick,
+                    victim,
+                    attacker: field_steamid(ev, "attacker_steamid"),
+                    dmg_health: field_i32(ev, "dmg_health").unwrap_or(0),
+                    weapon: field_str(ev, "weapon").unwrap_or_default(),
+                    hitgroup: field_str(ev, "hitgroup").unwrap_or_default(),
+                });
+            }
             "bomb_planted" | "bomb_defused" | "bomb_exploded" => {
                 let kind = ev.name.trim_start_matches("bomb_");
                 bombs.push(BombEvent {
@@ -380,7 +518,10 @@ fn extract_events(
     blinds.sort_by_key(|b| b.tick);
     grenades.sort_by_key(|g| g.tick);
     bombs.sort_by_key(|b| b.tick);
-    (kills, blinds, grenades, bombs)
+    shots.sort_by_key(|s| s.tick);
+    hurts.sort_by_key(|h| h.tick);
+    reloads.sort_by_key(|r| r.tick);
+    (kills, blinds, grenades, bombs, shots, hurts, reloads)
 }
 
 // ---- tick table ----
@@ -456,6 +597,7 @@ fn build_tick_table(output: &DemoOutput, sample_every: u32) -> Result<TickTable,
     };
     let is_alive = bool_col("is_alive")?;
     let spotted = bool_col("spotted")?;
+    let is_scoped = bool_col("is_scoped")?;
     let team_num = int_col("team_num")?;
     let str_col = |name: &str| -> Result<&Vec<Option<String>>, ParseError> {
         match col(name)? {
@@ -493,6 +635,7 @@ fn build_tick_table(output: &DemoOutput, sample_every: u32) -> Result<TickTable,
         t.active_weapon.push(active_weapon[i].clone());
         t.spotted.push(spotted[i].unwrap_or(false));
         t.last_place.push(last_place[i].clone());
+        t.is_scoped.push(is_scoped[i].unwrap_or(false));
     }
     Ok(t)
 }
@@ -610,6 +753,10 @@ pub struct MatchGolden {
     pub grenades: usize,
     pub bomb_events: usize,
     pub tick_rows: usize,
+    pub shots: usize,
+    pub hurts: usize,
+    pub reloads: usize,
+    pub inventories: usize,
     pub first_kill: Option<String>,
     pub last_kill: Option<String>,
 }
@@ -663,6 +810,10 @@ pub fn golden_from(data: &MatchData) -> MatchGolden {
         grenades: data.grenades.len(),
         bomb_events: data.bomb_events.len(),
         tick_rows: data.ticks.len(),
+        shots: data.shots.len(),
+        hurts: data.hurts.len(),
+        reloads: data.reloads.len(),
+        inventories: data.inventories.len(),
         first_kill: data.kills.first().map(kill_line),
         last_kill: data.kills.last().map(kill_line),
     }

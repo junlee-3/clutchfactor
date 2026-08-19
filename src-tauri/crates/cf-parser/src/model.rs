@@ -83,6 +83,37 @@ pub struct BombEvent {
     pub player: Option<u64>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Shot {
+    pub tick: i32,
+    pub player: u64,
+    pub weapon: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Hurt {
+    pub tick: i32,
+    pub victim: u64,
+    pub attacker: Option<u64>,
+    pub dmg_health: i32,
+    pub weapon: String,
+    pub hitgroup: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Reload {
+    pub tick: i32,
+    pub player: u64,
+}
+
+/// Inventory snapshot at a targeted tick (deaths + round ends only).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct InventorySample {
+    pub tick: i32,
+    pub steamid: u64,
+    pub items: Vec<String>,
+}
+
 /// Column-oriented per-player samples, one row per (sampled tick, player).
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TickTable {
@@ -100,6 +131,7 @@ pub struct TickTable {
     pub active_weapon: Vec<Option<String>>,
     pub spotted: Vec<bool>,
     pub last_place: Vec<Option<String>>,
+    pub is_scoped: Vec<bool>,
 }
 
 impl TickTable {
@@ -121,5 +153,9 @@ pub struct MatchData {
     pub blinds: Vec<Blind>,
     pub grenades: Vec<GrenadeEvent>,
     pub bomb_events: Vec<BombEvent>,
+    pub shots: Vec<Shot>,
+    pub hurts: Vec<Hurt>,
+    pub reloads: Vec<Reload>,
+    pub inventories: Vec<InventorySample>,
     pub ticks: TickTable,
 }

@@ -241,6 +241,10 @@
   "grenades": 319,
   "bomb_events": 13,
   "tick_rows": 379300,
+  "shots": 3325,
+  "hurts": 644,
+  "reloads": 78,
+  "inventories": 1860,
   "first_kill": "[2963] lyra -> NCZ RG [usp_silencer]",
   "last_kill": "[150450] misosoupy3 -> NCZ RG [m4a1]"
 }

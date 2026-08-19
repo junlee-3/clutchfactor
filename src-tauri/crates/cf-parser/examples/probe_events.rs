@@ -8,7 +8,9 @@ use demoparser::second_pass::parser_settings::create_huffman_lookup_table;
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let path = args.next().expect("usage: probe_events <demo.dem> <events> [N]");
+    let path = args
+        .next()
+        .expect("usage: probe_events <demo.dem> <events> [N]");
     let events: Vec<String> = args
         .next()
         .expect("comma-separated event names")
@@ -42,7 +44,11 @@ fn main() {
 
     for name in &events {
         let mut count = 0usize;
-        let total = output.game_events.iter().filter(|e| &e.name == name).count();
+        let total = output
+            .game_events
+            .iter()
+            .filter(|e| &e.name == name)
+            .count();
         println!("== {name} (total {total}) ==");
         for ev in output.game_events.iter().filter(|e| &e.name == name) {
             if count >= n {

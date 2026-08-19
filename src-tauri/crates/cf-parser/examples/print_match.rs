@@ -70,6 +70,13 @@ fn main() {
         data.ticks.len()
     );
 
+    if args.iter().any(|a| a == "--inventories") {
+        println!("-- first 12 inventory samples --");
+        for inv in data.inventories.iter().take(12) {
+            println!("[{}] {} {:?}", inv.tick, inv.steamid, inv.items);
+        }
+    }
+
     if let Some(p) = golden_out {
         let golden = golden_from(&data);
         std::fs::write(&p, serde_json::to_string_pretty(&golden).unwrap()).unwrap();
