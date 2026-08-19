@@ -781,8 +781,8 @@ impl Store {
     }
 
     /// Own matches chronologically with the tracked player's deaths and
-    /// class-13 (unclassified) share — the Trends screen's x-axis and its
-    /// baseline series.
+    /// class-13 (outaimed in a fair duel — the taxonomy's good-news class)
+    /// share — the Trends screen's x-axis and its baseline series.
     pub fn trend_matches(&self, tracked: &str) -> Result<Vec<TrendMatchRow>, StoreError> {
         let mut st = self.conn.prepare(
             "SELECT m.id, m.imported_at, m.map,
