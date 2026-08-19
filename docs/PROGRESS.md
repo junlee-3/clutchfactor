@@ -4,36 +4,30 @@ The resume file. A fresh session reads CLAUDE.md → this file → the active pl
 
 ## Now
 
-M3 complete (tagged `m3`). Next: M4 — Match Report (PROMPT.md §13): insight feed UI (grouping by category, severity × confidence ranking + recurrence, evidence chips → replay deep links), round timeline strip, TemplateNarrator v1 (§8 quality bar — cf-narrator crate is still empty), D4 + D5 detectors (H1 man-count + H6-info + H11 rotation ⇒ classes 8/11), **plus §5A cross-demo habit promotion** (patterns across matches — H4_REPEAT_HOTSPOT is natively cross-demo). DoD: owner reviews one of their own matches end-to-end and finds ≥1 insight they agree is real. Start with superpowers:writing-plans → `docs/plans/M4-report.md`; invoke frontend-design + dataviz for the feed/timeline UI.
+M4 complete (tag `m4` pending owner DoD sign-off — the milestone's DoD is literally "the owner reviews one of their own matches and agrees ≥1 insight is real and actionable"; the ask is out). Next: M5 — Reference corpus & D6 (PROMPT.md §13): Corpus screen + ingestion, occupancy grids per map/side/phase, D6 with honesty rules + minimum-corpus gate (default 8 demos/map), heatmap rendering (invoke dataviz first). Start with superpowers:writing-plans → docs/plans/M5-corpus.md.
 
 ## Next
 
-1. M4 plan (above). Insights are already persisted with EvidenceRefs; the UI reads insights_for_match/death_classes_for_match (cf-store readers exist).
-2. M4 narration inputs: rule `details` JSONs carry steamids as strings + distances/places — TemplateNarrator resolves names Rust-side.
-3. M6 debt: Settings UI for tracked-player override; re-analyze command for old imports (analysis runs only at import today).
-4. Perf: import incl. analysis ≈ well under budget (~3 s parse+analyze release); nightly §10.4 integration test still unbuilt.
+1. M5 plan. CARRY-INS flagged at M4 final review: corpus demos will land in the same `matches` table — habit windows/death_positions must exclude non-tracked-player matches (filter on players-contains-tracked or a match kind column); H2 insight should carry the non-following teammate so baited captions can name them (ticketed M5).
+2. M6 debt: Settings UI (tracked-player override), re-analyze command for old imports, deferred minors list in `.superpowers/sdd/M4-report/progress.md`-style records (hardcoded TICKRATE in Report.tsx, per-round kills include teamkills, habits loading-state mislabel, ad-hoc hotspot score).
+3. Perf budgets (§10.4) nightly integration still unbuilt.
 
 ## Done
 
-- 2026-08-19: **M3 complete** — §5A rule engine: cf-analysis foundation (types/config-YAML/context/scenario-builder/classifier, priority order + class-14 pre-emption + 13-vs-15 fair-duel split); five families built by parallel subagents in worktrees, reviewed & merged (H2 trade spacing, H3 utility vulnerability, H4 Tier-1 exposure, H16 utility damage, flash+utility economy) — 99 cf-analysis tests; parser gained shots/hurts/reloads/is_scoped + targeted pre-death inventory pass; schema migration 2 (death_class/rule_flags/insights + inputs); import pipeline analyzes + persists; print_insights tool; analysis goldens w/ class-13 share as CI metric; §12 hand-verification via independent SQL cross-checks + replay spot check (see fixtures/goldens/README.md). Tag `m3`.
-- 2026-08-19: **M2 complete** — replay viewer (radar assets ADR-0004, 60 fps canvas, scrubber, evidence deep links, Windows CI). Tag `m2`.
-- 2026-08-19: **M1 complete** — ingest pipeline & Library (tag `m1`). **M0 complete** — skeleton + parser proof (tag `m0`).
+- 2026-08-20: **M4 complete** — Match Report screen (narrated insight feed grouped/ranked, death-class breakdown w/ honesty note, round strip → replay, evidence chips → replay deep links); cf-narrator TemplateNarrator v1 (§8 voice, deterministic variants, 46 exact-string tests); D4 entry-structure + D5 timing families (class 11 live); cross-demo habit promotion + H4_REPEAT_HOTSPOT clustering (store migration 3: flag evidence). Executed via superpowers:subagent-driven-development (3 worktree implementers + per-task reviews + 1 narrator fix round + final whole-branch review + 1 fix wave, all clean; ledger at .superpowers/sdd/M4-report/). E2E: 5 UI imports, report verified via AX (real coaching text incl. "left trades on the table in 5 of your last 10 matches — 35 times"), chip → replay at exact evidence tick.
+- 2026-08-19: **M3 complete** (tag `m3`) — §5A rule engine, taxonomy classes 1–7/9/13–15, hand-verified. **M2 complete** (`m2`) — replay viewer. **M1 complete** (`m1`) — ingest + Library. **M0 complete** (`m0`) — skeleton + parser proof.
 
 ## Decisions
 
-- ADR-0001 demoparser2 git dep (proven). ADR-0002 sample_every=4. ADR-0003 schema v1 (+migration 2 at M3). ADR-0004 awpy radar assets.
-- Rules-as-data: YAML-driven DetectorConfig thresholds/severities (predicate DSL deliberately deferred — spec principle 3 partially satisfied, revisit if rule authoring by non-devs ever matters).
-- tauri-specta still not adopted (RC) — hand-mirrored TS types under MIRROR CHECKLIST.
-- Subagent-driven development works well for rule families: isolated worktrees, disjoint module files, coordinator merges + reviews. Registration lines merged by coordinator, not agents.
+- ADR-0001 demoparser2 git dep · ADR-0002 16 Hz sampling · ADR-0003 schema v1 (+m2 analysis, +m3 flag evidence) · ADR-0004 awpy radar assets.
+- Narrator: deterministic template variants via content hash (no RNG); ClaudeNarrator seam intact (§8).
+- Habit scoring: severity × confidence × (matches_hit/window) × ln(1+total); baited never promoted alone; one hotspot card per map.
+- SDD process notes: worktree-isolated parallel implementers + coordinator merge works well; reviewers scoped to diff packages; models sonnet(families)/opus(taste)/fable(final review).
 
 ## Gotchas
 
-- **Death-tick inventory is always empty** (items drop at death; a living player always holds ≥ a knife) → parser samples 0.25 s pre-death; `inventory_at` skips empty samples as death artifacts.
-- Steamids as JSON numbers lose precision in JS (2^53) — `EvidenceRef.focus_players` serializes as strings; rule `details` steamids are stringified by convention.
-- demoparser2 skips per-tick props when events are wanted (two passes; third targeted pass for inventory via `wanted_ticks`). `active_weapon` = entity handle; the string prop is `weapon_name`. Numeric round_end reasons are winner-relative (9 = CTs eliminated).
-- MM vs GOTV round-event dialects differ; normalize_rounds handles both (goldens for each).
-- Identity modal fallback can pick a constant queue-mate — owner's DB has settings.tracked_steamid override; M6 Settings UI must expose it. Tracked setting must exist BEFORE import for analysis to use it (set via sqlite3 in dev).
-- E2E via macOS AX: pause before reading (10 Hz updates race the tree); round chips are AX "radio buttons"; kill-feed rows are buttons; canvas content is invisible to AX — verify via SQL cross-checks + kill feed/roster text.
-- Keyboard transport must be window-scoped (round chips live outside the player subtree).
-- `.claude/` (agent worktrees) must stay excluded from git/eslint/vitest — vitest silently picked up worktree test copies (33→198 tests).
-- CI: protoc via arduino/setup-protoc; `packageManager` pinned for pnpm/action-setup; `cargo`/`rustc` need `source "$HOME/.cargo/env"`.
+- **Corpus-demo dilution risk (M5 blocker-aware):** habit windows + death_positions query ALL matches; corpus imports must be excluded from tracked-player analytics.
+- Death-tick inventory always empty (pre-death sampling); steamids as strings at JS boundaries (EvidenceRef serializer); demoparser two-pass (events gate ticks) + targeted inventory pass; numeric round reasons winner-relative; MM vs GOTV dialects.
+- AX E2E: pause before reading; kill-feed rows/round chips are buttons/radio buttons; canvas invisible to AX; `.claude/` excluded from git/eslint/vitest.
+- Rust changes under tauri dev auto-rebuild+relaunch the app; frontend hot-reloads. Port 1420 orphans: `lsof -ti :1420 | xargs kill`.
+- CI: protoc via arduino/setup-protoc; pnpm pinned via packageManager; `source "$HOME/.cargo/env"`.

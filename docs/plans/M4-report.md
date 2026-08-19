@@ -33,7 +33,7 @@ pub struct HabitCfg { pub min_matches: usize /*3*/, pub window_matches: usize /*
 ```
 Classifier: insert `(11, &["H6_PUSH_WITHOUT_INFO"])` into `PRIORITY` between the `(9, …)` entry and nothing (append — order in the array is class-priority order: after 7 comes 9, then 11). CAREFUL: spec priority is class-number order 1..12, so the tuple goes after `(9, …)`. Update `print_insights` CLASS_NAMES: 11 loses "[not built]".
 
-- [ ] Config structs + severity fields + defaults test extension (assert new defaults incl. early_aggression_s 20.0); classifier PRIORITY insert + a test (`push_without_info_flag_classifies_as_11_below_crossfire`: crossfire + info flags on same death → class 9 wins, info in tags; info alone → 11). `cargo test -p cf-analysis` green; fmt/clippy; commit `feat(analysis): config + classifier slots for D4/D5 (class 11)`, push.
+- [x] Config structs + severity fields + defaults test extension (assert new defaults incl. early_aggression_s 20.0); classifier PRIORITY insert + a test (`push_without_info_flag_classifies_as_11_below_crossfire`: crossfire + info flags on same death → class 9 wins, info in tags; info alone → 11). `cargo test -p cf-analysis` green; fmt/clippy; commit `feat(analysis): config + classifier slots for D4/D5 (class 11)`, push.
 
 ### Task 1 (inline): Store — cross-demo aggregation queries
 
@@ -57,7 +57,7 @@ pub struct RoundStat { pub number: u32, pub winner: String, pub tracked_side: Op
 ```
 SQL notes: `first_evidence_json` = `(SELECT evidence_json… )` no — flags store evidence inside details? No: rule_flags has no evidence column! Flags' evidence lives only in insights. FIX: habit evidence = for each match, the first flag's (round,tick) rebuilt into an EvidenceRef client-side is wrong (no focus). CORRECT approach: add `evidence_json` column to rule_flags in **migration 3** (`ALTER TABLE rule_flags ADD COLUMN evidence_json TEXT`), and make `save_analysis` write `f.evidence`; old rows NULL → habit uses (round, tick±5 s, focus=[tracked]) fallback built in Rust. death_positions: `SELECT k.match_id, m.map, k.round, k.tick, t.x, t.y FROM kills k JOIN matches m ON m.id=k.match_id JOIN tick_samples t ON t.match_id=k.match_id AND t.steamid=k.victim AND t.tick=(SELECT MAX(tick) FROM tick_samples WHERE match_id=k.match_id AND steamid=k.victim AND tick<=k.tick) WHERE k.victim=?1`.
 
-- [ ] Migration 3 (rule_flags evidence_json) + save_analysis writes it; tests: migration v3 applies; rule_counts window/ordering; death_positions returns nearest-sample coords (extend `sample_match`); per_round_stats winner/K-D correctness; flagged_rule_ids distinct. fmt/clippy/test; commit `feat(store): cross-demo aggregation queries + flag evidence (migration 3)`, push.
+- [x] Migration 3 (rule_flags evidence_json) + save_analysis writes it; tests: migration v3 applies; rule_counts window/ordering; death_positions returns nearest-sample coords (extend `sample_match`); per_round_stats winner/K-D correctness; flagged_rule_ids distinct. fmt/clippy/test; commit `feat(store): cross-demo aggregation queries + flag evidence (migration 3)`, push.
 
 ### Task 2 (SUBAGENT, worktree): D4 family — `families/h14_entry.rs`
 
@@ -67,7 +67,7 @@ Rules (register `pub struct H14EntryStructure` in families/mod.rs in own worktre
 - insights(): `D4_ENTRY_PROFILE` (match-level, category Positioning, ALWAYS when tracked took ≥3 T-side entries): metrics {entries, entry_wins, supported, unsupported, team_entries, team_entry_wins}; plus count of rounds where tracked was the closest teammate to a dying entry and did not commit (reuse pattern: check H2_FAILED_TRADE flags at opening-kill ticks — flags of other families aren't visible to this one, so compute directly: teammate entry died, tracked within support_distance_u, tracked fired no shot/dealt no damage to the killer within trade window) → metrics.non_trading_on_entries; evidence = up to 8 unsupported-entry refs.
 - TDD: entry detection (first kill only; second kill of round ignored); T-side selection (kill with T attacker vs T victim); supported suppression (teammate 400 u); unsupported fires with details naming nearest teammate; won-but-unsupported still fires; tracked-not-involved rounds silent; CT-side tracked rounds silent for the flag but counted in team metrics; insight gating ≥3 entries; non_trading_on_entries counting.
 
-- [ ] Dispatch, review report + code, merge, run suite, commit `feat(analysis): D4 entry structure family (subagent-built, reviewed)`, push.
+- [x] Dispatch, review report + code, merge, run suite, commit `feat(analysis): D4 entry structure family (subagent-built, reviewed)`, push.
 
 ### Task 3 (SUBAGENT, worktree): D5 family — `families/h11_timing.rs`
 
@@ -78,7 +78,7 @@ Rules (`pub struct H11Timing`):
 - insights(): `D5_TIMING` match-level when ≥2 flags across the two H11 rules: metrics {early_aggressive_deaths, slow_rotations, push_without_info}; evidence cap 8. Category Timing.
 - TDD: early-aggro fires (die at 15 s, 900 u from spawn, no support); suppressed at 25 s; suppressed near spawn; suppressed with teammate close; push-without-info fires only when info-proxy empty; suppressed when an enemy was spotted before death; suppressed when team exchanged damage first; slow-rotation fires (CT alive far from plant, never arrives, round lost); suppressed when round won / when arrives in time / when tracked dead at plant; insight gating.
 
-- [ ] Dispatch, review, merge, suite, commit `feat(analysis): D5 timing family (subagent-built, reviewed)`, push.
+- [x] Dispatch, review, merge, suite, commit `feat(analysis): D5 timing family (subagent-built, reviewed)`, push.
 
 ### Task 4 (SUBAGENT, worktree): cf-narrator — trait + TemplateNarrator
 
@@ -97,7 +97,7 @@ pub struct TemplateNarrator;
 Behavior: template per detector id (H2_ISOLATED_DEATH, H2_FAILED_TRADE, H2_BAITED_TRADE, H3_VULNERABLE_DEATHS, H3_WASTED_UTILITY, H4_KILLED_WITHOUT_CONTACT, H4_CAUGHT_IN_CROSSFIRE, H16_UTILITY_EXPOSURE, D2_FLASH_EFFECTIVENESS, H6_UTIL_TEAM_DAMAGE, H6_UNUSED_UTIL_AT_ROUND_END, H6_DEAD_TIME_SMOKE, D4_ENTRY_PROFILE, D5_TIMING, HABIT_* handled generically via a habit template taking label data) + a neutral fallback naming the detector and count (never empty output). ≥2 phrasing variants per high-frequency template (isolated, failed-trade, vulnerable, without-contact), variant = hash(detector, round, count) % n. Facts come from insight.title_data/metrics (counts, pct) — numbers formatted plainly ("7 of 19 deaths"), steamid strings resolved via ctx.names (fallback to the raw id). Quality bar examples to match (§8): coach voice, specific, actionable second sentence ("Either arrive with the Connector player or hold one step deeper."). H2_BAITED: MUST name the teammate + "you did the right thing — the follow-up never came; this is a team spacing problem" tone; when title_data.team_pattern == true say the failed/baited combination is a team problem. summarize(): 2–3 sentence match summary from class-13 share + top category + score result.
 TDD: exact-string tests for fixed inputs per template (≥12 tests), variant determinism (same input twice = same output; different round = may differ), baited names teammate + contains no blame words ("your fault" absent, teammate name present), fallback for unknown detector, summarize composition.
 
-- [ ] Dispatch, review (READ the template text against the §8 quality bar — this one is taste-checked, not just test-checked), merge, suite, commit `feat(narrator): CoachingNarrator trait + TemplateNarrator v1 (subagent-built, reviewed)`, push.
+- [x] Dispatch, review (READ the template text against the §8 quality bar — this one is taste-checked, not just test-checked), merge, suite, commit `feat(narrator): CoachingNarrator trait + TemplateNarrator v1 (subagent-built, reviewed)`, push.
 
 ### Task 5 (inline): Habits — promotion + hotspots (pure) and wiring
 
@@ -113,7 +113,7 @@ pub struct Hotspot { pub map: String, pub center: (f32, f32), pub deaths: usize,
 pub fn death_hotspots(points: &[DeathPoint], cfg: &HabitCfg) -> Vec<Hotspot>; // greedy radius clustering per map: seed = earliest unclustered point, member iff within hotspot_radius_u of seed; cluster kept iff deaths >= hotspot_min_deaths AND distinct matches >= hotspot_min_matches; deterministic
 pub struct DeathPoint { pub match_id: i64, pub map: String, pub round: u32, pub tick: i32, pub x: f32, pub y: f32 }
 ```
-- [ ] TDD: promotion at 3/10, not at 2/10; window truncation; baited-alone suppressed / baited+failed both promoted; score ordering; hotspot cluster of 3-across-2-matches found, 3-in-1-match rejected, radius boundary, two separate clusters, deterministic order. fmt/clippy/test; commit `feat(analysis): cross-demo habit promotion + death hotspots`, push.
+- [x] TDD: promotion at 3/10, not at 2/10; window truncation; baited-alone suppressed / baited+failed both promoted; score ordering; hotspot cluster of 3-across-2-matches found, 3-in-1-match rejected, radius boundary, two separate clusters, deterministic order. fmt/clippy/test; commit `feat(analysis): cross-demo habit promotion + death hotspots`, push.
 
 ### Task 6 (inline): Report + habits commands, TS mirrors
 
@@ -126,25 +126,25 @@ pub struct DeathPoint { pub match_id: i64, pub map: String, pub round: u32, pub 
 #[derive(serde::Serialize)] pub struct HabitReport { pub rule_id: String, pub title: String, pub body: String, pub matches_hit: usize, pub window: usize, pub total: u32, pub score: f32, pub evidence: Vec<HabitEvidence> } // HabitEvidence { match_id: i64, map: String, evidence: EvidenceRef }
 #[tauri::command] pub fn get_habits(state) -> Result<Vec<HabitReport>, String>; // flagged_rule_ids → rule_counts_across_matches → promote_habits; hotspots via death_positions → death_hotspots → HabitReport with rule_id "H4_REPEAT_HOTSPOT" narrated ("You've died N times within the same spot on {map} across M matches"); evidence from stored flag evidence_json (fallback tick±5 s)
 ```
-- [ ] Implement + mirror types in ipc.ts (MIRROR CHECKLIST) + `useMatchReport`/`useHabits` hooks; cargo check + typecheck; commit `feat(app): match report + habits commands with narration`, push.
+- [x] Implement + mirror types in ipc.ts (MIRROR CHECKLIST) + `useMatchReport`/`useHabits` hooks; cargo check + typecheck; commit `feat(app): match report + habits commands with narration`, push.
 
 ### Task 7 (inline): Match Report screen
 
 **Files:** `src/screens/Report.tsx`, `src/components/{RoundStripReport,InsightCard,ClassBreakdown,HabitCard}.tsx`, `src/App.tsx` (route `/report/:matchId`), `src/screens/Library.tsx` (row → report; "watch replay" link inside report header), `src/styles.css`.
 
 **Before any code: invoke `frontend-design:frontend-design` (Skill tool) for the screen direction and `dataviz` (Skill tool) for the class breakdown + round strip.** Structure (§7 screen 2): header (map, score colored by result, tracked stats, "Open replay" link); round timeline strip (one cell per round: side-colored winner, tracked K/D dots, click → `/replay/:id?round=N`); death-class breakdown (horizontal bars via dataviz method — counts per class, class-13 called out as "fair duels — good news", honesty footnote listing not-yet-built classes); habits section (cross-match, top 3, evidence chips per match); insight feed grouped Deaths/Utility/Positioning/Timing ranked by score, card = narration title + body, metric chips, evidence chips ("R3 · 0:31" via fmtClock on round spec… chips label = `R{round}` + tick offset) → `evidenceUrl(matchId, ev)` navigation.
-- [ ] Build; pure helpers unit-tested (`groupInsights`, chip label fn); typecheck/lint/vitest; commit `feat(ui): Match Report screen — narrated insight feed, class breakdown, habits, round strip`, push.
+- [x] Build; pure helpers unit-tested (`groupInsights`, chip label fn); typecheck/lint/vitest; commit `feat(ui): Match Report screen — narrated insight feed, class breakdown, habits, round strip`, push.
 
 ### Task 8 (inline): Analysis goldens refresh + docs
 
-- [ ] Regenerate both analysis goldens (new rules change counts); update goldens README (note D4/D5 additions); `print_insights` CLASS_NAMES already updated (Task 0). Full workspace suite + frontend suite green. Commit, push.
+- [x] Regenerate both analysis goldens (new rules change counts); update goldens README (note D4/D5 additions); `print_insights` CLASS_NAMES already updated (Task 0). Full workspace suite + frontend suite green. Commit, push.
 
 ### Task 9 (inline): E2E verification, docs, tag m4 — then OWNER review (the DoD)
 
-- [ ] Fresh DB; set tracked setting; UI-import all 5 own demos (AX); open Report for mirage-tie: read narration texts via AX (title/body present, no template holes like "{}"), click one evidence chip → replay opens at right round (AX: header shows round); habits section shows ≥1 promoted habit (isolated/failed-trade will promote on this corpus); class breakdown renders.
-- [ ] §12 sanity: 3 narrated insights spot-checked against DB facts; D4/D5 flags SQL cross-checked (≥3 instances: unsupported entry distances, early-aggro death timing/distance, slow-rotation distance at plant).
-- [ ] Docs: PROGRESS (M4 done → M5 next), PROMPT §13 checkbox, spec addenda (new rule ids: H14_UNSUPPORTED_ENTRY, H11_EARLY_AGGRESSIVE_DEATH, H11_SLOW_ROTATION + class 11 shipped), CLAUDE.md if commands changed, plan checkboxes. Tag `m4`, push, CI green.
-- [ ] **Hand the DoD to the owner**: final message asks them to open their Mirage report and confirm ≥1 insight is real and actionable — the milestone DoD is theirs to sign off.
+- [x] Fresh DB; set tracked setting; UI-import all 5 own demos (AX); open Report for mirage-tie: read narration texts via AX (title/body present, no template holes like "{}"), click one evidence chip → replay opens at right round (AX: header shows round); habits section shows ≥1 promoted habit (isolated/failed-trade will promote on this corpus); class breakdown renders.
+- [x] §12 sanity: 3 narrated insights spot-checked against DB facts; D4/D5 flags SQL cross-checked (≥3 instances: unsupported entry distances, early-aggro death timing/distance, slow-rotation distance at plant).
+- [x] Docs: PROGRESS (M4 done → M5 next), PROMPT §13 checkbox, spec addenda (new rule ids: H14_UNSUPPORTED_ENTRY, H11_EARLY_AGGRESSIVE_DEATH, H11_SLOW_ROTATION + class 11 shipped), CLAUDE.md if commands changed, plan checkboxes. Tag `m4`, push, CI green.
+- [x] **Hand the DoD to the owner**: final message asks them to open their Mirage report and confirm ≥1 insight is real and actionable — the milestone DoD is theirs to sign off.
 
 ---
 
