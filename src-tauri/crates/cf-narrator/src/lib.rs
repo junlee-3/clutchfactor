@@ -126,7 +126,7 @@ mod tests {
         assert_eq!(
             n.body,
             "You died isolated 5 times with no teammate close enough to punish the kill — \
-             rounds 4, 7, 12, 15 and 1 more. Take those duels one bound closer to a teammate: \
+             rounds 4, 7, 12, 15 and 1 more. Take those duels one angle closer to a teammate: \
              arrive together, or hold until someone can trade you."
         );
     }
@@ -203,7 +203,7 @@ mod tests {
         assert_eq!(
             n.body,
             "You committed to the trade and the follow-up never came — 4 times, rounds 3, 8, \
-             11 and 16. You were third man in a two-man fight; that is a team spacing problem, \
+             11 and 16. You were the only one who re-peeked; that is a team spacing problem, \
              not a reason to stop trading."
         );
         let lower = n.body.to_lowercase();
@@ -419,6 +419,43 @@ mod tests {
             "zero should read as words: {}",
             n.body
         );
+    }
+
+    #[test]
+    fn flash_effectiveness_reinforces_a_good_rate_instead_of_coaching_a_missing_habit() {
+        let n = say(&ins(
+            "D2_FLASH_EFFECTIVENESS",
+            json!({ "flashes": 8, "effective": 7, "team_flashes": 0, "conversions": 4 }),
+            json!({ "flashes": 8, "effective_rate": 0.875, "team_flashes": 0,
+                    "self_flashes": 0, "conversions": 4 }),
+        ));
+        assert_eq!(n.title, "8 flashes, 7 blinded an enemy");
+        assert_eq!(
+            n.body,
+            "You threw 8 flashes: 7 blinded an enemy and 4 led to a kill. That is a rate worth \
+             keeping — throw from behind the man entering and make sure someone moves on every \
+             pop."
+        );
+    }
+
+    #[test]
+    fn flash_effectiveness_only_coaches_self_flashing_when_it_happened() {
+        // Mediocre rate, but nothing landed on the player or his team: the
+        // "not for yourself" line would be coaching a habit he doesn't have.
+        let n = say(&ins(
+            "D2_FLASH_EFFECTIVENESS",
+            json!({ "flashes": 9, "effective": 3, "team_flashes": 0, "conversions": 1 }),
+            json!({ "flashes": 9, "effective_rate": 0.333, "self_flashes": 0 }),
+        ));
+        assert!(
+            n.body.ends_with(
+                "Throw from behind the man entering and over cover, so the flash pops where he \
+                 is already looking."
+            ),
+            "no self-flash jab without self flashes: {}",
+            n.body
+        );
+        assert!(!n.body.contains("not for yourself"), "{}", n.body);
     }
 
     #[test]
@@ -646,6 +683,62 @@ mod tests {
         assert!(TemplateNarrator.summarize(&[], &ctx()).is_none());
     }
 
+    #[test]
+    fn summarize_win_path_exact() {
+        let mut c = ctx();
+        c.tracked_result = Some("win".to_string());
+        c.score = (13, 7);
+        c.total_deaths = 13;
+        c.class_13_share_pct = 61.5;
+        let set = [ins("H2_ISOLATED_DEATH", json!({}), json!({}))];
+        let n = TemplateNarrator.summarize(&set, &c).expect("summary");
+        assert_eq!(n.title, "Mirage, 13-7 win");
+        assert_eq!(
+            n.body,
+            "You won 13-7 on Mirage and died 13 times. 62% of your deaths were fair duels you \
+             lost on mechanics — the rest had a fixable cause. The one insight this match sits \
+             in deaths, so start there."
+        );
+    }
+
+    #[test]
+    fn summarize_tie_path_exact() {
+        let mut c = ctx();
+        c.tracked_result = Some("draw".to_string());
+        c.score = (12, 12);
+        c.total_deaths = 17;
+        c.class_13_share_pct = 40.0;
+        let mut util = ins("H3_WASTED_UTILITY", json!({}), json!({}));
+        util.category = Category::Utility;
+        let set = [util, ins("H2_ISOLATED_DEATH", json!({}), json!({}))];
+        let n = TemplateNarrator.summarize(&set, &c).expect("summary");
+        assert_eq!(n.title, "Mirage, 12-12 draw");
+        assert_eq!(
+            n.body,
+            "You drew 12-12 on Mirage and died 17 times. 40% of your deaths were fair duels you \
+             lost on mechanics — the rest had a fixable cause. Deaths are the biggest group at 1 \
+             of the 2 insights, so start there."
+        );
+    }
+
+    #[test]
+    fn summarize_all_fair_duels_does_not_contradict_itself() {
+        let mut c = ctx();
+        c.class_13_share_pct = 100.0;
+        let set = [ins("H2_ISOLATED_DEATH", json!({}), json!({}))];
+        let n = TemplateNarrator.summarize(&set, &c).expect("summary");
+        assert!(
+            n.body.contains("that is the good version of losing"),
+            "{}",
+            n.body
+        );
+        assert!(
+            !n.body.contains("elsewhere"),
+            "must not say the fix is elsewhere then name where to start: {}",
+            n.body
+        );
+    }
+
     // ---- habits ----------------------------------------------------------
 
     #[test]
@@ -705,6 +798,176 @@ mod tests {
                 n.body
             );
         }
+    }
+
+    // ---- singular counts -------------------------------------------------
+
+    /// Finds "1 rounds" / "1 episodes" — a count next to a plural noun.
+    fn singular_disagreement(text: &str) -> Option<String> {
+        let words: Vec<&str> = text.split_whitespace().collect();
+        for pair in words.windows(2) {
+            if pair[0] != "1" {
+                continue;
+            }
+            let noun = pair[1].trim_matches(|c: char| !c.is_alphanumeric());
+            if noun.len() > 2 && noun.ends_with('s') && !noun.ends_with("ss") {
+                return Some(format!("{} {}", pair[0], pair[1]));
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn timing_at_the_minimum_gate_says_one_round() {
+        // H11 gate is early + slow >= 2, so early=1/slow=1 is reachable.
+        let n = say(&ins(
+            "D5_TIMING",
+            json!({}),
+            json!({ "early_aggressive_deaths": 1, "slow_rotations": 1, "push_without_info": 0 }),
+        ));
+        assert_eq!(
+            n.body,
+            "You died on early aggression in 1 round and rotated late once. Take space after \
+             first contact tells you where they aren't — and rotate on the call, not after the \
+             site falls."
+        );
+    }
+
+    #[test]
+    fn utility_exposure_at_the_minimum_gate_says_one_episode() {
+        // H16 gate is flags.len() >= 2 → one utility death + one fire episode.
+        let n = say(&ins(
+            "H16_UTILITY_EXPOSURE",
+            json!({ "utility_deaths": 1, "fire_linger_episodes": 1 }),
+            json!({ "utility_deaths": 1, "fire_linger_episodes": 1, "total_fire_damage": 22 }),
+        ));
+        assert_eq!(n.title, "Enemy utility cost you 1 death");
+        assert_eq!(
+            n.body,
+            "Enemy grenades killed you once with no duel involved, and you took 22 damage \
+             standing in fire across 1 episode. Move on the first tick of fire damage — the exit \
+             is always cheaper than standing in it."
+        );
+    }
+
+    #[test]
+    fn no_template_renders_a_count_against_a_plural_noun() {
+        let ones = vec![
+            ins(
+                "H2_ISOLATED_DEATH",
+                json!({ "count": 1 }),
+                json!({ "count": 1,
+                "per_round": per_round(&[4]) }),
+            ),
+            ins(
+                "H2_FAILED_TRADE",
+                json!({ "count": 1 }),
+                json!({ "count": 1 }),
+            ),
+            ins(
+                "H2_BAITED_TRADE",
+                json!({ "count": 1 }),
+                json!({ "count": 1 }),
+            ),
+            ins(
+                "H3_VULNERABLE_DEATHS",
+                json!({ "vulnerable": 1, "total_deaths": 1 }),
+                json!({ "pct": 1.0 }),
+            ),
+            ins(
+                "H3_WASTED_UTILITY",
+                json!({ "deaths_holding": 1, "total_deaths": 1 }),
+                json!({ "most_common_item": "Molotov" }),
+            ),
+            ins(
+                "H4_KILLED_WITHOUT_CONTACT",
+                json!({ "smoke_deaths": 1, "wallbang_deaths": 0 }),
+                json!({}),
+            ),
+            ins("H4_CAUGHT_IN_CROSSFIRE", json!({ "count": 1 }), json!({})),
+            ins(
+                "H16_UTILITY_EXPOSURE",
+                json!({ "utility_deaths": 1, "fire_linger_episodes": 1 }),
+                json!({ "total_fire_damage": 15 }),
+            ),
+            ins(
+                "H16_UTILITY_EXPOSURE",
+                json!({ "utility_deaths": 0, "fire_linger_episodes": 1 }),
+                json!({}),
+            ),
+            ins(
+                "D2_FLASH_EFFECTIVENESS",
+                json!({ "flashes": 1, "effective": 1, "team_flashes": 1, "conversions": 1 }),
+                json!({ "self_flashes": 1 }),
+            ),
+            ins(
+                "H6_UTIL_TEAM_DAMAGE",
+                json!({ "events": 1, "total_damage": 12 }),
+                json!({}),
+            ),
+            ins(
+                "H6_UNUSED_UTIL_AT_ROUND_END",
+                json!({ "rounds": 1, "min_nades": 2 }),
+                json!({}),
+            ),
+            ins("H6_DEAD_TIME_SMOKE", json!({ "rounds": 1 }), json!({})),
+            ins(
+                "D4_ENTRY_PROFILE",
+                json!({}),
+                json!({ "entries": 1, "entry_wins": 0, "unsupported": 1, "team_entries": 1,
+                        "non_trading_on_entries": 1 }),
+            ),
+            ins(
+                "D5_TIMING",
+                json!({}),
+                json!({ "early_aggressive_deaths": 1, "slow_rotations": 1,
+                        "push_without_info": 1 }),
+            ),
+            ins("Z9_MYSTERY", json!({ "count": 1 }), json!({})),
+        ];
+        for c in &ones {
+            let n = say(c);
+            let both = format!("{} {}", n.title, n.body);
+            assert!(
+                singular_disagreement(&both).is_none(),
+                "{} renders {:?} in: {both}",
+                c.detector,
+                singular_disagreement(&both).unwrap()
+            );
+        }
+
+        for rule in [
+            "H2_ISOLATED_DEATH",
+            "H4_REPEAT_HOTSPOT",
+            "H11_LATE_ROTATION",
+        ] {
+            let n = narrate_habit(
+                rule,
+                1,
+                1,
+                1,
+                &json!({ "map": "de_nuke", "deaths": 1,
+                                                          "matches": 1 }),
+            );
+            let both = format!("{} {}", n.title, n.body);
+            assert!(
+                singular_disagreement(&both).is_none(),
+                "habit {rule} renders {:?} in: {both}",
+                singular_disagreement(&both).unwrap()
+            );
+        }
+
+        let mut one_ctx = ctx();
+        one_ctx.total_deaths = 1;
+        let n = TemplateNarrator
+            .summarize(&[ins("H2_ISOLATED_DEATH", json!({}), json!({}))], &one_ctx)
+            .expect("summary");
+        let both = format!("{} {}", n.title, n.body);
+        assert!(
+            singular_disagreement(&both).is_none(),
+            "summary renders {:?} in: {both}",
+            singular_disagreement(&both).unwrap()
+        );
     }
 
     // ---- house style sweep ----------------------------------------------

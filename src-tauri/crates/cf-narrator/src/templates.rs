@@ -71,14 +71,14 @@ fn isolated_death(f: &Facts, round: u32) -> Narration {
                     },
                     where_,
                 ),
-                "Take those duels one bound closer to a teammate: arrive together, or hold \
+                "Take those duels one angle closer to a teammate: arrive together, or hold \
                  until someone can trade you."
                     .to_string(),
             ]),
         },
         _ => Narration {
             title: match n {
-                Some(n) => format!("{n} deaths nobody could trade"),
+                Some(n) => format!("{} nobody could trade", plural(n, "death")),
                 None => "Deaths nobody could trade".to_string(),
             },
             body: sentences(&[
@@ -105,7 +105,7 @@ fn failed_trade(f: &Facts, round: u32) -> Narration {
     let mut out = match pick("H2_FAILED_TRADE", round, n, 2) {
         0 => Narration {
             title: match n {
-                Some(n) => format!("{n} trades you were in range for"),
+                Some(n) => format!("{} you were in range for", plural(n, "trade")),
                 None => "Trades you were in range for".to_string(),
             },
             body: sentences(&[
@@ -129,15 +129,15 @@ fn failed_trade(f: &Facts, round: u32) -> Narration {
         },
         _ => Narration {
             title: match n {
-                Some(n) => format!("Missed {n} trades in range"),
+                Some(n) => format!("Missed {} in range", plural(n, "trade")),
                 None => "Missed trades in range".to_string(),
             },
             body: sentences(&[
                 fact(
                     match n {
                         Some(n) => format!(
-                            "You were close enough to trade {n} teammate deaths and stayed on \
-                             your angle"
+                            "You were close enough to trade {} and stayed on your angle",
+                            plural(n, "teammate death")
                         ),
                         None => "You were close enough to trade a teammate's death and stayed \
                                  on your angle"
@@ -181,7 +181,7 @@ fn baited_trade(f: &Facts) -> Narration {
         (None, None) => "You committed to the trade and the follow-up never came.".to_string(),
     };
     let mut body = format!(
-        "{opener} You were third man in a two-man fight; that is a team spacing problem, not a \
+        "{opener} You were the only one who re-peeked; that is a team spacing problem, not a \
          reason to stop trading."
     );
     if f.flag("team_pattern") {
@@ -213,15 +213,17 @@ fn vulnerable_deaths(f: &Facts, round: u32) -> Narration {
         .map(|p| format!(" ({})", pct(p)))
         .unwrap_or_default();
     let of_total = match (n, total) {
-        (Some(n), Some(t)) => format!("{n} of your {t} deaths"),
+        (Some(n), Some(t)) => format!("{n} of your {}", plural(t, "death")),
         (Some(n), None) => format!("{n} of your deaths"),
         (None, _) => "Some of your deaths".to_string(),
     };
     match pick("H3_VULNERABLE_DEATHS", round, n, 2) {
         0 => Narration {
             title: match (n, total) {
-                (Some(n), Some(t)) => format!("{n} of {t} deaths with no way to fight back"),
-                (Some(n), None) => format!("{n} deaths with no way to fight back"),
+                (Some(n), Some(t)) => {
+                    format!("{n} of {} with no way to fight back", plural(t, "death"))
+                }
+                (Some(n), None) => format!("{} with no way to fight back", plural(n, "death")),
                 (None, _) => "Deaths with no way to fight back".to_string(),
             },
             body: format!(
@@ -232,7 +234,7 @@ fn vulnerable_deaths(f: &Facts, round: u32) -> Narration {
         },
         _ => Narration {
             title: match n {
-                Some(n) => format!("Caught mid-animation in {n} deaths"),
+                Some(n) => format!("Caught mid-animation in {}", plural(n, "death")),
                 None => "Caught mid-animation".to_string(),
             },
             body: format!(
@@ -264,7 +266,7 @@ fn wasted_utility(f: &Facts) -> Narration {
             "You died with unthrown grenades in {}{item}. Utility you carry into your own death \
              is utility you paid for and never used: throw it into the fight you are already in.",
             match (n, total) {
-                (Some(n), Some(t)) => format!("{n} of your {t} deaths"),
+                (Some(n), Some(t)) => format!("{n} of your {}", plural(t, "death")),
                 (Some(n), None) => format!("{n} of your deaths"),
                 (None, _) => "several of your deaths".to_string(),
             }
@@ -278,13 +280,16 @@ fn killed_without_contact(f: &Facts, round: u32) -> Narration {
     let total = smoke + wall;
     let mut long = vec![];
     let mut split = vec![];
+    let mut media = vec![];
     if smoke > 0 {
         long.push(format!("through smoke {}", times(smoke)));
         split.push(format!("{smoke} through smoke"));
+        media.push("smoke");
     }
     if wall > 0 {
         long.push(format!("through a wall {}", times(wall)));
         split.push(format!("{wall} through a wall"));
+        media.push("a wall");
     }
     if total == 0 {
         return Narration {
@@ -295,14 +300,27 @@ fn killed_without_contact(f: &Facts, round: u32) -> Narration {
                 .to_string(),
         };
     }
+    // With one medium there is no breakdown to give, so the count is stated
+    // once rather than restated as a total of itself.
+    let single = media.len() == 1;
     match pick("H4_KILLED_WITHOUT_CONTACT", round, Some(total), 2) {
         0 => Narration {
-            title: format!("{total} deaths without a duel"),
+            title: format!("{} without a duel", plural(total, "death")),
             body: format!(
-                "You were killed {} — {total} deaths where you never got to fight. Those are \
-                 lines the enemy sprays for free: cross the gap wide, or hold from a spot they \
-                 don't pre-fire first.",
-                list(&long)
+                "{}. Those are lines the enemy sprays for free: cross the gap wide, or hold \
+                 from a spot they don't pre-fire first.",
+                if single {
+                    format!(
+                        "You were killed {} without ever getting to fight",
+                        list(&long)
+                    )
+                } else {
+                    format!(
+                        "You were killed {} — {} where you never got to fight",
+                        list(&long),
+                        plural(total, "death")
+                    )
+                }
             ),
         },
         _ => Narration {
@@ -312,9 +330,19 @@ fn killed_without_contact(f: &Facts, round: u32) -> Narration {
                 _ => format!("Killed through walls {}", times(total)),
             },
             body: format!(
-                "{total} of your deaths never became a duel — {}. Change where you stand rather \
-                 than how you aim: step off the common spray line before you hold it.",
-                list(&split)
+                "{}. Change where you stand rather than how you aim: step off the common spray \
+                 line before you hold it.",
+                if single {
+                    format!(
+                        "{total} of your deaths never became a duel, every one of them through {}",
+                        media[0]
+                    )
+                } else {
+                    format!(
+                        "{total} of your deaths never became a duel — {}",
+                        list(&split)
+                    )
+                }
             ),
         },
     }
@@ -352,9 +380,15 @@ fn utility_exposure(f: &Facts) -> Narration {
     }
     if episodes > 0 {
         clauses.push(if damage > 0 {
-            format!("you took {damage} damage standing in fire across {episodes} episodes")
+            format!(
+                "you took {damage} damage standing in fire across {}",
+                plural(episodes, "episode")
+            )
         } else {
-            format!("you stood in fire across {episodes} separate episodes")
+            format!(
+                "you stood in fire across {}",
+                plural(episodes, "separate episode")
+            )
         });
     }
     let opener = if clauses.is_empty() {
@@ -364,10 +398,7 @@ fn utility_exposure(f: &Facts) -> Narration {
     };
     Narration {
         title: if deaths > 0 {
-            format!(
-                "Enemy utility cost you {deaths} death{}",
-                if deaths == 1 { "" } else { "s" }
-            )
+            format!("Enemy utility cost you {}", plural(deaths, "death"))
         } else {
             "You keep standing in fire".to_string()
         },
@@ -383,11 +414,22 @@ fn utility_exposure(f: &Facts) -> Narration {
 // Utility usage
 // ---------------------------------------------------------------------------
 
+/// A flash rate at or above this, with nothing landing on your own side, is
+/// good flashing — say so instead of coaching a habit the player doesn't have.
+const FLASH_GOOD_RATE: f64 = 0.6;
+
 fn flash_effectiveness(f: &Facts) -> Narration {
     let flashes = f.int("flashes");
     let effective = f.int("effective");
     let team = f.int("team_flashes").unwrap_or(0);
     let conversions = f.int("conversions").unwrap_or(0);
+    let self_flashes = f.int("self_flashes").unwrap_or(0);
+    let rate = f
+        .float("effective_rate")
+        .or_else(|| match (effective, flashes) {
+            (Some(e), Some(all)) if all > 0 => Some(e as f64 / all as f64),
+            _ => None,
+        });
     let mut clauses = vec![];
     if let Some(e) = effective {
         clauses.push(if e > 0 {
@@ -403,23 +445,31 @@ fn flash_effectiveness(f: &Facts) -> Narration {
         clauses.push(format!("{conversions} led to a kill"));
     }
     let opener = match (flashes, clauses.is_empty()) {
-        (Some(n), false) => format!("You threw {n} flashes: {}", list(&clauses)),
-        (Some(n), true) => format!("You threw {n} flashes this match"),
+        (Some(n), false) => format!("You threw {}: {}", plural(n, "flash"), list(&clauses)),
+        (Some(n), true) => format!("You threw {} this match", plural(n, "flash")),
         (None, false) => format!("Of the flashes you threw, {}", list(&clauses)),
         (None, true) => "Your flashes aren't earning their place in the round".to_string(),
     };
+    // D2 emits at >=3 flashes regardless of quality, so this template sees good
+    // flashing as often as bad. Coach only the habit the numbers show.
     let coach = if team > effective.unwrap_or(0) {
         "More of them landed on your own team than on the enemy — line the flash up over cover \
          and agree who entries before you throw."
-    } else {
+    } else if self_flashes > 0 {
         "Flash for the man entering, not for yourself: throw it over cover from behind him and \
          let him move on the pop."
+    } else if team == 0 && rate.is_some_and(|r| r >= FLASH_GOOD_RATE) {
+        "That is a rate worth keeping — throw from behind the man entering and make sure \
+         someone moves on every pop."
+    } else {
+        "Throw from behind the man entering and over cover, so the flash pops where he is \
+         already looking."
     };
     Narration {
         title: match (flashes, effective) {
-            (Some(n), Some(0)) => format!("{n} flashes, none blinded an enemy"),
-            (Some(n), Some(e)) => format!("{n} flashes, {e} blinded an enemy"),
-            (Some(n), None) => format!("{n} flashes this match"),
+            (Some(n), Some(0)) => format!("{}, none blinded an enemy", plural(n, "flash")),
+            (Some(n), Some(e)) => format!("{}, {e} blinded an enemy", plural(n, "flash")),
+            (Some(n), None) => format!("{} this match", plural(n, "flash")),
             (None, _) => "Flash effectiveness".to_string(),
         },
         body: format!("{opener}. {coach}"),
@@ -434,11 +484,15 @@ fn util_team_damage(f: &Facts, ctx: &MatchContext) -> Narration {
         .map(|n| format!(", most of it on {n}"))
         .unwrap_or_default();
     let opener = match (damage, events) {
-        (Some(d), Some(e)) => {
-            format!("Your grenades did {d} damage to your own team across {e} throws{on_whom}")
-        }
+        (Some(d), Some(e)) => format!(
+            "Your grenades did {d} damage to your own team across {}{on_whom}",
+            plural(e, "throw")
+        ),
         (Some(d), None) => format!("Your grenades did {d} damage to your own team{on_whom}"),
-        (None, Some(e)) => format!("Your grenades hit your own team on {e} throws{on_whom}"),
+        (None, Some(e)) => format!(
+            "Your grenades hit your own team on {}{on_whom}",
+            plural(e, "throw")
+        ),
         (None, None) => format!("Your grenades keep landing on your own team{on_whom}"),
     };
     Narration {
@@ -458,7 +512,7 @@ fn unused_util(f: &Facts) -> Narration {
     let min = f.int("min_nades");
     Narration {
         title: match rounds {
-            Some(r) => format!("Ended {r} rounds holding utility"),
+            Some(r) => format!("Ended {} holding utility", plural(r, "round")),
             None => "Utility left unthrown".to_string(),
         },
         body: format!(
@@ -466,7 +520,7 @@ fn unused_util(f: &Facts) -> Narration {
              spend the smoke on the timing you already committed to, or the flash on the last \
              angle you take.",
             match rounds {
-                Some(r) => format!("{r} rounds"),
+                Some(r) => plural(r, "round"),
                 None => "rounds".to_string(),
             },
             match min {
@@ -481,7 +535,7 @@ fn dead_time_smoke(f: &Facts) -> Narration {
     let n = f.int("rounds").or_else(|| f.int("count"));
     Narration {
         title: match n {
-            Some(n) => format!("{n} smokes thrown after the round"),
+            Some(n) => format!("{} thrown after the round", plural(n, "smoke")),
             None => "Smokes thrown after the round".to_string(),
         },
         body: format!(
@@ -507,12 +561,21 @@ fn entry_profile(f: &Facts) -> Narration {
     let untraded = f.int("non_trading_on_entries").filter(|n| *n > 0);
 
     let took = match (entries, team_entries) {
-        (Some(e), Some(t)) => format!("You took first contact on {e} of your team's {t} entries"),
+        // Taking all of them is the fact; "4 of your team's 4 entries" is not.
+        (Some(e), Some(t)) if e >= t => {
+            "You took first contact on every one of your team's entries".to_string()
+        }
+        (Some(e), Some(t)) => format!(
+            "You took first contact on {e} of your team's {}",
+            plural(t, "entry")
+        ),
         (Some(e), None) => format!("You took first contact {}", times(e)),
         (None, Some(t)) => format!("Your team took first contact {} this match", times(t)),
         (None, None) => "You are taking first contact for your team".to_string(),
     };
     let first = match wins {
+        // Zero has words in this crate — "won 0 of them" reads like a spreadsheet.
+        Some(0) => format!("{took} and won none of them."),
         Some(w) => format!("{took} and won {w} of them."),
         None => format!("{took}."),
     };
@@ -540,8 +603,8 @@ fn entry_profile(f: &Facts) -> Narration {
     };
     Narration {
         title: match (entries, wins) {
-            (Some(e), Some(w)) => format!("{e} entries, {w} won"),
-            (Some(e), None) => format!("{e} entry duels"),
+            (Some(e), Some(w)) => format!("{}, {w} won", plural(e, "entry")),
+            (Some(e), None) => plural(e, "entry duel"),
             (None, _) => "Entry duels".to_string(),
         },
         body: format!("{first} {middle}{coach}"),
@@ -554,7 +617,10 @@ fn timing(f: &Facts) -> Narration {
     let blind = f.int("push_without_info").filter(|n| *n > 0);
     let mut clauses = vec![];
     if let Some(n) = early {
-        clauses.push(format!("died on early aggression in {n} rounds"));
+        clauses.push(format!(
+            "died on early aggression in {}",
+            plural(n, "round")
+        ));
     }
     if let Some(n) = slow {
         clauses.push(format!("rotated late {}", times(n)));
@@ -620,7 +686,21 @@ pub fn narrate_habit(
     total: u32,
     extra: &Value,
 ) -> Narration {
-    let seen = format!("in {matches_hit} of your last {window} matches — {total} times in all");
+    let times_in_all = plural(i64::from(total), "time");
+    let seen = if window <= 1 {
+        format!("in your last match — {times_in_all} in all")
+    } else if matches_hit >= window {
+        // "in every one of your last 5" lands harder than "in 5 of your last 5".
+        format!(
+            "in every one of your last {} — {times_in_all} in all",
+            plural(window as i64, "match")
+        )
+    } else {
+        format!(
+            "in {matches_hit} of your last {} — {times_in_all} in all",
+            plural(window as i64, "match")
+        )
+    };
     match rule_id {
         "H2_ISOLATED_DEATH" => Narration {
             title: "Habit: isolated deaths".to_string(),
@@ -666,14 +746,14 @@ pub fn narrate_habit(
                     None => "Repeat hotspot".to_string(),
                 },
                 body: format!(
-                    "You have died {} at the same spot{} across {matches} matches. They know \
-                     that angle better than you do — hold it from a different position, or stop \
-                     taking that fight.",
+                    "You have died {} at the same spot{} across {}. They know that angle better \
+                     than you do — hold it from a different position, or stop taking that fight.",
                     times(deaths),
                     match &map {
                         Some(m) => format!(" on {m}"),
                         None => String::new(),
-                    }
+                    },
+                    plural(matches, "match")
                 ),
             }
         }
@@ -682,9 +762,8 @@ pub fn narrate_habit(
             Narration {
                 title: format!("Habit: {}", label.to_lowercase()),
                 body: format!(
-                    "{label} recurred in {matches_hit} of your last {window} matches — {total} \
-                     times in all. A mistake that repeats across matches is a habit: watch the \
-                     clips together and find what they share."
+                    "{label} recurred {seen}. A mistake that repeats across matches is a habit: \
+                     watch the clips together and find what they share."
                 ),
             }
         }
@@ -739,8 +818,10 @@ pub(crate) fn summarize(insights: &[Insight], ctx: &MatchContext) -> Option<Narr
     if deaths > 0 {
         let share = f64::from(ctx.class_13_share_pct);
         body.push(if share >= 99.5 {
-            "Every one of your deaths was a fair duel you lost on mechanics — what to fix this \
-             match is elsewhere."
+            // Must not claim the fixes are "elsewhere" — the next sentence names
+            // where to start, and the two would contradict each other.
+            "Every one of your deaths was a fair duel you lost on mechanics — that is the good \
+             version of losing."
                 .to_string()
         } else if share < 0.5 {
             "None of your deaths were fair duels you lost on mechanics — every one of them has \
@@ -764,8 +845,9 @@ pub(crate) fn summarize(insights: &[Insight], ctx: &MatchContext) -> Option<Narr
         )
     } else {
         format!(
-            "{} are the biggest group at {top_n} of the {total} insights, so start there.",
-            top.0
+            "{} are the biggest group at {top_n} of the {}, so start there.",
+            top.0,
+            plural(total as i64, "insight")
         )
     });
 
@@ -909,6 +991,36 @@ fn times(n: i64) -> String {
         2 => "twice".to_string(),
         _ => format!("{n} times"),
     }
+}
+
+/// "1 round" / "3 rounds". **Use this everywhere a count renders next to its
+/// noun** — the detector gates allow 1 far more often than they look like they
+/// do (H16 fires on one utility death plus one fire episode; H11 on one early
+/// death plus one slow rotation), and "1 rounds" in a coaching line reads like
+/// a bug because it is one.
+fn plural(n: i64, noun: &str) -> String {
+    if n == 1 {
+        return format!("{n} {noun}");
+    }
+    let ends_sibilant = noun.ends_with("ch")
+        || noun.ends_with("sh")
+        || noun.ends_with('s')
+        || noun.ends_with('x')
+        || noun.ends_with('z');
+    if ends_sibilant {
+        return format!("{n} {noun}es");
+    }
+    // consonant + y → -ies ("entry" → "entries"), vowel + y stays ("plays").
+    let consonant_y = noun.ends_with('y')
+        && noun
+            .chars()
+            .rev()
+            .nth(1)
+            .is_some_and(|c| !matches!(c.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'));
+    if consonant_y {
+        return format!("{n} {}ies", &noun[..noun.len() - 1]);
+    }
+    format!("{n} {noun}s")
 }
 
 fn pct(share: f64) -> String {
