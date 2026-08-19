@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { ProgressEvent } from "../lib/ipc";
 import { useImportDemo, useMatches, useTrackedPlayer } from "../lib/queries";
@@ -6,6 +7,7 @@ import { formatMatchRow } from "../lib/score";
 import { ImportProgress } from "../components/ImportProgress";
 
 export function Library() {
+  const navigate = useNavigate();
   const matches = useMatches();
   const tracked = useTrackedPlayer();
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
@@ -82,7 +84,12 @@ export function Library() {
               const row = formatMatchRow(m);
               const outcome = row.resultLetter?.toLowerCase() ?? "none";
               return (
-                <li key={m.id} className={`match-row outcome-${outcome}`}>
+                <li key={m.id}>
+                  <button
+                    className={`match-row outcome-${outcome}`}
+                    onClick={() => navigate(`/replay/${m.id}`)}
+                    title="Open replay"
+                  >
                   <span className="map">{row.mapLabel}</span>
                   <span className="score">
                     {row.resultLetter && (
@@ -94,6 +101,7 @@ export function Library() {
                   <span className="stat">{row.hs ?? ""}</span>
                   <span className="meta">{m.rounds} rounds</span>
                   <span className="meta date">{m.imported_at}</span>
+                  </button>
                 </li>
               );
             })}

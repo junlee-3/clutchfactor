@@ -250,6 +250,408 @@ body {
   font-size: 11px;
 }
 
+/* Match rows are buttons now (clickable → replay) */
+.match-list li {
+  display: block;
+}
+
+.match-row {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.match-row:focus-visible {
+  outline: 2px solid var(--ct);
+  outline-offset: -2px;
+}
+
+/* ---- Replay screen ---- */
+.replay-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.replay-player {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  outline: none;
+}
+
+.centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+  color: var(--text-dim);
+  padding: 40px;
+}
+
+.back-link {
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.back-link:hover {
+  color: var(--text);
+}
+
+.replay-title {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.fps-meter {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.round-strip {
+  display: flex;
+  gap: 3px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.round-chip {
+  font-family: var(--mono);
+  font-size: 11px;
+  min-width: 26px;
+  padding: 3px 0;
+  background: var(--bg1);
+  color: var(--text-dim);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.round-chip.winner-ct {
+  border-bottom-color: var(--ct);
+}
+
+.round-chip.winner-t {
+  border-bottom-color: var(--t);
+}
+
+.round-chip.active {
+  background: var(--bg2);
+  color: var(--text);
+}
+
+.round-chip:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+.replay-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 12px;
+  padding: 12px 16px 0;
+}
+
+.radar-wrap {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
+}
+
+.replay-canvas {
+  width: min(100%, calc(100vh - 200px));
+  aspect-ratio: 1;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg0);
+}
+
+.replay-side {
+  width: 250px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.roster-panel h3,
+.killfeed h3 {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 6px;
+}
+
+.roster-side {
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.roster-ct h3 {
+  color: var(--ct);
+}
+
+.roster-t h3 {
+  color: var(--t);
+}
+
+.roster-row {
+  display: grid;
+  grid-template-columns: 1fr auto 28px;
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 0 5px;
+}
+
+.roster-row.dead {
+  opacity: 0.45;
+}
+
+.roster-row.dead .roster-name {
+  text-decoration: line-through;
+}
+
+.roster-name {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roster-weapon {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.roster-hp-num {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.hp-track {
+  grid-column: 1 / -1;
+  height: 3px;
+  background: var(--bg2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.roster-ct .hp-fill {
+  background: color-mix(in srgb, var(--ct) 70%, transparent);
+}
+
+.roster-t .hp-fill {
+  background: color-mix(in srgb, var(--t) 70%, transparent);
+}
+
+.hp-fill {
+  height: 100%;
+  transition: width 150ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hp-fill {
+    transition: none;
+  }
+}
+
+.killfeed {
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.killfeed-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.kill-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 3px 2px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  border-radius: 3px;
+  text-align: left;
+}
+
+.kill-row:hover {
+  background: var(--bg2);
+}
+
+.kill-row:focus-visible {
+  outline: 2px solid var(--ct);
+}
+
+.kill-row.recent {
+  background: color-mix(in srgb, var(--bg2) 70%, var(--ct) 8%);
+}
+
+.side-ct {
+  color: var(--ct);
+}
+
+.side-t {
+  color: var(--t);
+}
+
+.side-none {
+  color: var(--text-dim);
+}
+
+.kill-weapon {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+/* Transport + scrubber */
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px 14px;
+}
+
+.speeds {
+  display: flex;
+  gap: 2px;
+}
+
+.speed-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 4px 8px;
+  background: var(--bg1);
+  color: var(--text-dim);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.speed-btn:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.speed-btn:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.speed-btn.active {
+  background: var(--bg2);
+  color: var(--text);
+}
+
+.speed-btn:focus-visible {
+  outline: 2px solid var(--text);
+}
+
+.scrubber {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.clock {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  min-width: 38px;
+}
+
+.scrubber-body {
+  position: relative;
+  flex: 1;
+  height: 26px;
+}
+
+.scrubber-range {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  accent-color: var(--ct);
+  cursor: pointer;
+}
+
+.scrubber-range:focus-visible {
+  outline: 2px solid var(--ct);
+  outline-offset: 2px;
+}
+
+.pips {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 10px;
+  pointer-events: none;
+}
+
+.pip {
+  position: absolute;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 10px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.pip::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 2px;
+  width: 2px;
+  height: 6px;
+  background: var(--text-dim);
+}
+
+.pip-bomb::after {
+  width: 6px;
+  height: 6px;
+  left: 1px;
+  transform: rotate(45deg);
+  background: var(--loss);
+}
+
+.pip-defused::after {
+  background: var(--win);
+}
+
 /* Empty state */
 .empty-state {
   border: 1px dashed var(--line);
