@@ -79,6 +79,39 @@ fn d_utility_kill_weapons() -> Vec<String> {
 fn d_z_weight() -> f32 {
     2.0
 }
+fn d_support_distance_u() -> f32 {
+    700.0
+}
+fn d_opening_window_s() -> f32 {
+    15.0
+}
+fn d_early_aggression_s() -> f32 {
+    20.0
+}
+fn d_rotate_radius_u() -> f32 {
+    800.0
+}
+fn d_rotate_max_s() -> f32 {
+    25.0
+}
+fn d_min_spawn_distance_u() -> f32 {
+    750.0
+}
+fn d_habit_min_matches() -> usize {
+    3
+}
+fn d_habit_window_matches() -> usize {
+    10
+}
+fn d_hotspot_radius_u() -> f32 {
+    250.0
+}
+fn d_hotspot_min_deaths() -> usize {
+    3
+}
+fn d_hotspot_min_matches() -> usize {
+    2
+}
 fn d_fallthrough_duel_window_s() -> f32 {
     3.0
 }
@@ -145,6 +178,48 @@ pub struct UtilCfg {
     pub utility_kill_weapons: Vec<String>,
 }
 
+/// D4 — opening-duel / entry structure.
+#[derive(Debug, Clone, Deserialize)]
+pub struct EntryCfg {
+    #[serde(default = "d_support_distance_u")]
+    pub support_distance_u: f32,
+    /// The round's first kill counts as an "entry" only within this many
+    /// seconds of freeze end (later first-kills are mid-round picks).
+    #[serde(default = "d_opening_window_s")]
+    pub opening_window_s: f32,
+}
+
+/// D5 — timing & rotation.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TimingCfg {
+    /// §6.4: early aggressive death = within 20 s of round_freeze_end.
+    #[serde(default = "d_early_aggression_s")]
+    pub early_aggression_s: f32,
+    #[serde(default = "d_rotate_radius_u")]
+    pub rotate_radius_u: f32,
+    #[serde(default = "d_rotate_max_s")]
+    pub rotate_max_s: f32,
+    /// Dying closer than this to your own freeze-end position is not
+    /// "aggressive depth".
+    #[serde(default = "d_min_spawn_distance_u")]
+    pub min_spawn_distance_u: f32,
+}
+
+/// §5A cross-demo habit promotion (+ spec H4_REPEAT_HOTSPOT parameters).
+#[derive(Debug, Clone, Deserialize)]
+pub struct HabitCfg {
+    #[serde(default = "d_habit_min_matches")]
+    pub min_matches: usize,
+    #[serde(default = "d_habit_window_matches")]
+    pub window_matches: usize,
+    #[serde(default = "d_hotspot_radius_u")]
+    pub hotspot_radius_u: f32,
+    #[serde(default = "d_hotspot_min_deaths")]
+    pub hotspot_min_deaths: usize,
+    #[serde(default = "d_hotspot_min_matches")]
+    pub hotspot_min_matches: usize,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct GeneralCfg {
     /// Vertical distance weight (spec H2 refinement: z-difference matters more).
@@ -194,6 +269,21 @@ pub struct SeverityCfg {
     pub h6_unused_util_at_round_end: f32,
     #[serde(default = "sev_default")]
     pub h6_util_team_damage: f32,
+    #[serde(default = "sev_default")]
+    pub h14_unsupported_entry: f32,
+    #[serde(default = "sev_slow_rotation")]
+    pub h11_slow_rotation: f32,
+    #[serde(default = "sev_default")]
+    pub h11_early_aggressive_death: f32,
+    #[serde(default = "sev_push_no_info")]
+    pub h6_push_without_info: f32,
+}
+
+fn sev_slow_rotation() -> f32 {
+    0.5
+}
+fn sev_push_no_info() -> f32 {
+    0.7
 }
 
 fn sev_isolated() -> f32 {
@@ -228,6 +318,9 @@ default_impl!(
     H16Cfg,
     H4Cfg,
     UtilCfg,
+    EntryCfg,
+    TimingCfg,
+    HabitCfg,
     GeneralCfg,
     SeverityCfg
 );
@@ -246,6 +339,12 @@ pub struct DetectorConfig {
     pub h4: H4Cfg,
     #[serde(default)]
     pub util: UtilCfg,
+    #[serde(default)]
+    pub entry: EntryCfg,
+    #[serde(default)]
+    pub timing: TimingCfg,
+    #[serde(default)]
+    pub habit: HabitCfg,
     #[serde(default)]
     pub general: GeneralCfg,
     #[serde(default)]
@@ -272,6 +371,11 @@ mod tests {
         assert_eq!(c.flash.conversion_window_s, 2.0);
         assert_eq!(c.h3.switch_window_s, 0.3);
         assert!(c.severity.h2_baited_trade < c.severity.h2_isolated_death / 2.0 + 0.01);
+        // M4 additions (§6.4 early aggression + D4/D5/habit defaults).
+        assert_eq!(c.timing.early_aggression_s, 20.0);
+        assert_eq!(c.entry.support_distance_u, 700.0);
+        assert_eq!(c.habit.min_matches, 3);
+        assert_eq!(c.habit.hotspot_radius_u, 250.0);
     }
 
     #[test]

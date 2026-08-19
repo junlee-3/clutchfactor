@@ -23,6 +23,7 @@ const PRIORITY: &[(u8, &[&str])] = &[
     (6, &["H2_ISOLATED_DEATH"]),
     (7, &["H2_BAITED_TRADE"]),
     (9, &["H4_CAUGHT_IN_CROSSFIRE"]),
+    (11, &["H6_PUSH_WITHOUT_INFO"]),
 ];
 
 pub const CLASS_OUTAIMED_FAIR: u8 = 13;
@@ -248,6 +249,26 @@ mod tests {
         let ctx = AnalysisContext::new(&data, 1);
         let rows = classify_deaths(&ctx, &DetectorConfig::default(), &[]);
         assert_eq!(rows[0].class_id, 13);
+    }
+
+    #[test]
+    fn push_without_info_classifies_as_11_below_crossfire() {
+        let data = base().kill(3, 1, 1, 2000, "ak47").build();
+        let ctx = AnalysisContext::new(&data, 1);
+        let cfg = DetectorConfig::default();
+        // Crossfire (class 9) outranks pushed-without-info (class 11).
+        let both = vec![
+            flag("H4_CAUGHT_IN_CROSSFIRE", 2000, 1, 0.8),
+            flag("H6_PUSH_WITHOUT_INFO", 2000, 1, 0.6),
+        ];
+        let rows = classify_deaths(&ctx, &cfg, &both);
+        assert_eq!(rows[0].class_id, 9);
+        assert_eq!(rows[0].secondary_tags, vec!["H6_PUSH_WITHOUT_INFO"]);
+        // Alone it sources class 11.
+        let alone = vec![flag("H6_PUSH_WITHOUT_INFO", 2000, 1, 0.6)];
+        let rows = classify_deaths(&ctx, &cfg, &alone);
+        assert_eq!(rows[0].class_id, 11);
+        assert_eq!(rows[0].class_source, "H6_PUSH_WITHOUT_INFO");
     }
 
     #[test]

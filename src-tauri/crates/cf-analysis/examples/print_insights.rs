@@ -19,7 +19,7 @@ const CLASS_NAMES: &[(u8, &str)] = &[
     (8, "over-peek in man disadvantage [not built]"),
     (9, "crossfire death"),
     (10, "lost angle-advantage duel [not built]"),
-    (11, "pushed without info [not built]"),
+    (11, "pushed without info"),
     (12, "repeat-hotspot death [not built]"),
     (13, "outaimed in fair duel"),
     (14, "self / world / teammate"),
