@@ -4,34 +4,34 @@ The resume file. A fresh session reads CLAUDE.md → this file → the active pl
 
 ## Now
 
-M0 complete (tagged `m0`). Spec expanded 2026-08-19: owner supplied `docs/spec/death-taxonomy.md` (15-class death taxonomy, H1–H16 rule families, cross-demo habit tracking — see PROMPT.md §5A) + five of their own demos (all verified parsing) + tracked identity (76561199228328773 / misosoupy3). Next: M1 plan via superpowers:writing-plans → `docs/plans/M1-ingest.md`.
+M1 complete (tagged `m1`). Next: M2 — Replay viewer (PROMPT.md §13): radar assets + calibration (ADR on sourcing/licensing — evaluate awpy bundle, spec §5.5), canvas playback with interpolated dots/deaths/utility/bomb/kill feed/roster HP, scrubber, `show_evidence(EvidenceRef)` deep-link API, Windows CI build job. Start with superpowers:writing-plans → `docs/plans/M2-replay.md`. Invoke frontend-design (+dataviz before any timeline/heatmap work).
 
 ## Next
 
-1. M1 plan: MatchData model, round normalization (§6.2 quirks — warmup/knife rounds, round_officially_ended), SQLite schema v1 + migrations (ADR needed — must carry `death_class`, per-rule flags w/ rule_id+confidence+secondary_tags, cross-demo keys per §5A), import command with Progress events, Library screen, player-identity detection (default tracked: 76561199228328773)
-2. M1 per-tick needs driven by §5A: `spotted` (bool only — no spotted_by_mask, see spec §5.1), `active_weapon` (derive weapon_switch by diffing at cache-write, spec §5.3), filter `is_alive` before any per-tick field (spec §5.2), position/yaw/health
-3. Golden-test round normalization against fixture demos (own demos: 17/16/20/24/24 raw round_ends incl. any warmup quirks — verify)
-4. ADRs due during M1: DB schema v1; position downsampling rate (measure first). M2: radar/nav assets — evaluate awpy nav+radar bundle (spec §5.5: no de_cache, no callouts; `last_place_name` prop may cover captions)
+1. M2 plan (above). Replay data source: `tick_samples` (16 Hz, ADR-0002) + exact-tick events; new query commands (get_match_detail, get_round_ticks or similar).
+2. M2 needs radar coordinate math (PROMPT §6.3) — unit-test exhaustively per §10.2.
+3. Re-evaluate tauri-specta (was RC at M1) before hand-mirroring more IPC types.
+4. M6 debt noted: Settings UI must expose tracked-player override (see Gotchas — modal fallback picked a queue-mate on real data).
 
 ## Done
 
-- 2026-08-19: Owner demos verified — all five `fixtures/own/*.dem` parse (de_dust2 17r/127k, de_inferno 16r/118k, de_inferno 20r/153k, de_mirage 24r/183k, de_nuke 24r/192k; both "tie" demos are exactly 12–12); misosoupy3 (76561199228328773) in every roster; proof API extended with players (steamid/name/team), golden regenerated.
-- 2026-08-19: Spec addendum integrated: `docs/spec/death-taxonomy.md` + PROMPT.md §5A + CLAUDE.md conventions (rule ids load-bearing, rules-as-data, confidence, silence bias, class-13 CI metric).
-- 2026-08-19: **M0 complete** — Tauri 2 + React + TS scaffold; cargo workspace (cf-parser/cf-analysis/cf-store/cf-narrator); CI green (macos-14 rust job, ubuntu web job); demoparser2 pinned git dep proven: 222 MB pro demo parsed, kill feed + 23 round ends validated against demofile-net's independent snapshot (exact tick match) + real match result (13–10 NAVI Javelins); golden snapshot + fixture-gated golden test; app window launches. Tag `m0`.
-- 2026-08-19: Fixtures: demofile-net public bundle downloaded (3 full pro demos incl. de_mirage, de_ancient, de_vertigo + small test demos) into fixtures/public/.
-- 2026-08-19: Rust toolchain installed (rustup 1.97.1); context docs + ADR-0001 created.
+- 2026-08-19: **M1 complete** — MatchData model + round normalization (7 unit tests, MM+GOTV encodings); two-pass extraction (events + ticks) with side assignment, roster-following score derivation, goldens for mirage-tie (12–12) and navi (13–10); ADR-0002 sample_every=4; cf-store SQLite schema v1 + migrations (ADR-0003, 6 tests); import_demo with Channel progress + sha256 dedup; Library screen (TanStack Query, 7 vitest tests). E2E through the real UI via accessibility scripting: 3 own demos imported by clicking Import → native dialog, live progress, correct rows (Dust2 L 4–13 6/17, Inferno W 13–7 16/14, Mirage T 12–12 7/19), duplicate re-import rejected with visible error, relaunch persistence confirmed, owner identity set via settings override. Tag `m1`.
+- 2026-08-19: Owner demos verified (5/5 parse, misosoupy3 in every roster); spec addendum integrated (docs/spec/death-taxonomy.md, PROMPT §5A).
+- 2026-08-19: **M0 complete** — scaffold, workspace, CI, demoparser2 proven (tag `m0`).
 
 ## Decisions
 
-- ADR-0001: demoparser2 Rust core as pinned git dep (`package = "parser"`, rev 266a831) — **proven at M0**; R1 fallback (C# sidecar) not needed.
+- ADR-0001: demoparser2 pinned git dep — proven. ADR-0002: tick sampling every 4th tick (16 Hz). ADR-0003: SQLite schema v1 (steamids as TEXT everywhere incl. IPC; death_class/rule tables deferred to migration 2 at M3).
+- tauri-specta still RC → TS types hand-mirrored in `src/lib/ipc.ts` under MIRROR CHECKLIST.
 
 ## Gotchas
 
-- `cargo`/`rustc` need `source "$HOME/.cargo/env"` in fresh non-login shells.
-- demoparser2 Rust API: `ParserInputs` (16 required fields, incl. `huffman_lookup_table: &create_huffman_lookup_table()`) → `Parser::new(inputs, ParsingMode::Normal)` → `parse_demo(&create_mmap(path_string)?)`. `create_mmap` takes `String`, not `&Path`.
-- Event enrichment: `userid`-bearing events get `user_name`/`user_steamid` fields (prefix map: attacker/user/assister/victim in `game_events.rs`); `winner` on `round_end` is `Variant::I32` (2 = T side, 3 = CT side). Set `parse_ents: true` for name enrichment.
-- `pnpm/action-setup@v4` in CI requires `"packageManager"` in package.json — pinned `pnpm@10.33.2`.
-- demoparser's `csgoproto` crate needs `protoc` at build time (prost-build) — CI installs it via `arduino/setup-protoc@v3`; locally it was already present.
-- Release-mode demo parse of a 222 MB demo ≈ 0.2 s warm (rayon); debug mode is much slower — run demo-touching tests with `--release`.
-- demofile-net's committed snapshots (`src/DemoFile.Test/Snapshots/` on GitHub) are independent ground truth for our fixture demos — great for validating round/kill extraction without hand-counting.
-- Shell cwd drifts between Bash calls — use absolute paths or explicit `cd` (a `git add .github` once failed from `src-tauri/`).
+- **demoparser2 skips per-tick prop collection when `wanted_events` is non-empty** (collect_entities gate) → cf-parser does two passes per demo, like upstream's Python bindings. Two passes ≈ 1 s release on a 250 MB demo.
+- `active_weapon` prop = raw entity handle (U32); the weapon-name string prop is **`weapon_name`**. Small int props arrive as I32 *or* U32 per netvar — `int_col` handles both.
+- **Numeric round_end reason codes are winner-relative** (9 = Terrorists_Win ⇒ CTs eliminated); MM string reasons name the eliminated side ("t_killed" = CT win). Decoder maps both to eliminated-side enums; cross-checked vs #SFUI messages.
+- MM vs GOTV round events differ (String vs I32 winner; GOTV round 1 may lack round_start; MM duplicates round_officially_ended ×2). normalize_rounds handles all; don't touch without running both goldens.
+- **Identity modal fallback can pick a constant queue-mate** (it did: xnopyt appears in all 3 imported demos and has a lower steamid). Owner's DB has `settings.tracked_steamid = 76561199228328773`; M6 Settings UI must expose this. Kill counts exclude self-kills (`victim != attacker`) — self/fall deaths show as attacker=self, weapon "world" (class-14 material at M3).
+- E2E technique: the WKWebView exposes DOM via macOS accessibility — `osascript` System Events can click app buttons and read rendered text; native open dialog driven with Cmd+Shift+G + typed path. Screen capture is permission-blocked; AX text dump is the reliable check.
+- Port 1420 leftovers: killing tauri dev can orphan vite — `lsof -ti :1420 | xargs kill` before relaunching.
+- demoparser's `csgoproto` needs `protoc` (CI: arduino/setup-protoc@v3; local via Homebrew).
+- `cargo`/`rustc` need `source "$HOME/.cargo/env"` in fresh shells. Shell cwd drifts between tool calls — use absolute paths.

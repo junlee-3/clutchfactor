@@ -121,9 +121,9 @@ pub fn normalize_rounds(events: &[RawRoundEvent]) -> Vec<Round>;
 
 **Normalization algorithm (implement exactly):** sort by tick; dedup consecutive identical `(variant, tick)` pairs (MM duplicate `OfficiallyEnded`); iterate building one `Round` per `End` event — `number` = count so far + 1 (validate against `Start.round` when present; if they disagree, trust the sequence and keep going); `start_tick` = most recent `Start` after previous `End` (else previous `OfficiallyEnded`, else 0 for round 1 — the GOTV missing-first-start case); `freeze_end_tick` = latest `FreezeEnd` in (start, end); ignore any `End` after `WinPanelMatch`; drop rounds with zero duration (`end <= start` — restart artifacts). Winner decode: `Str("CT")→Ct, Str("T")→T, Num(3)→Ct, Num(2)→T`. Reason decode: strings `t_killed/ct_killed/bomb_defused/bomb_exploded/target_saved` map to variants (anything else → `Other(s)`); numbers `9→TKilled, 8→CtKilled, 7→BombDefused, 1→BombExploded, 12→TargetSaved`, else `Other(n.to_string())`. `ct_steamids`/`t_steamids` left empty here (Task 2 fills them).
 
-- [ ] **Step 1: Write failing unit tests in `rounds.rs`** covering: (a) clean MM stream (string winner/reason, round numbers, dup OfficiallyEnded → 24 rounds, correct winners); (b) GOTV stream (numeric winner/reason, no round numbers, missing first Start → round 1 start_tick 0); (c) End-after-WinPanelMatch dropped; (d) zero-duration round dropped; (e) sequence-vs-round-field disagreement keeps sequence. Build streams with small helper fns. Run `cargo test -p cf-parser` → compile FAIL (types/fn missing).
-- [ ] **Step 2: Implement `model.rs` + `normalize_rounds` per the algorithm above.** Run tests → PASS.
-- [ ] **Step 3: `cargo fmt`, `clippy -D warnings`, commit** `feat(parser): MatchData model + round normalization (MM + GOTV encodings)`, push.
+- [x] **Step 1: Write failing unit tests in `rounds.rs`** covering: (a) clean MM stream (string winner/reason, round numbers, dup OfficiallyEnded → 24 rounds, correct winners); (b) GOTV stream (numeric winner/reason, no round numbers, missing first Start → round 1 start_tick 0); (c) End-after-WinPanelMatch dropped; (d) zero-duration round dropped; (e) sequence-vs-round-field disagreement keeps sequence. Build streams with small helper fns. Run `cargo test -p cf-parser` → compile FAIL (types/fn missing).
+- [x] **Step 2: Implement `model.rs` + `normalize_rounds` per the algorithm above.** Run tests → PASS.
+- [x] **Step 3: `cargo fmt`, `clippy -D warnings`, commit** `feat(parser): MatchData model + round normalization (MM + GOTV encodings)`, push.
 
 ### Task 2: Full extraction — `parse_match()` + goldens + downsampling measurement
 
@@ -141,11 +141,11 @@ pub fn normalize_rounds(events: &[RawRoundEvent]) -> Vec<Round>;
 
 **Implementation notes (verified patterns):** one demoparser2 pass with `wanted_events = [round_start, round_freeze_end, round_end, round_officially_ended, cs_win_panel_match, player_death, player_blind, flashbang_detonate, smokegrenade_detonate, hegrenade_detonate, inferno_startburn, inferno_expire, bomb_planted, bomb_defused, bomb_exploded]` and `wanted_player_props = [X, Y, Z, yaw, health, is_alive, team_num, active_weapon, spotted, last_place_name]` converted via `rm_user_friendly_names` (build `real_name_to_og_name` from the zip, like the python binding); `parse_ents: true`. Read tick columns via `prop_infos` → `output.df[&info.id]` matched on `VarVec` variants; rows where `is_alive == false` keep only tick/steamid/team_num (positions of dead players are spectator junk — write defaults and rely on `is_alive` column). Downsample by `tick % sample_every == 0` at copy time. Round side assignment: for each round, take each player's modal `team_num` over samples in `[freeze_end, end_tick]` (3=CT, 2=T). Tickrate: from header `playback_ticks`/`playback_time` when present else 64.0. Events map to model structs via the existing `field_*` helpers (move them from `proof.rs` into a shared `events.rs` or `pub(crate)` module — keep `proof.rs` compiling or delete it and its golden in the same commit that replaces them with the richer match goldens; **do not keep two parallel proof paths**).
 
-- [ ] **Step 1: Write `extract.rs`** per notes; make `print_match` print a MatchData summary (players, per-round winners with sides, derived score, event counts). Run on `mirage-tie` — verify against known reality: 24 rounds, 12–12, misosoupy3 present, sides swap after round 12.
-- [ ] **Step 2: Downsampling measurement (ADR-0002).** Run extraction at `sample_every` ∈ {2, 4, 8} on mirage-tie; record tick-table row counts and `serde_json` byte size (proxy for storage). Write ADR-0002 choosing the rate (expect 4 ≈ 16 Hz per PROMPT §4 unless data argues otherwise; note replay interpolation budget from §10.4).
-- [ ] **Step 3: Unit tests** for `derive_score` (synthetic rounds with a halftime swap; OT swap pattern) and `detect_tracked_candidates`. Run → PASS.
-- [ ] **Step 4: Goldens.** Add `--golden` mode writing the compact summary struct (`MatchGolden` — define in `extract.rs` with exactly: map, tickrate, players sorted, rounds (number/winner/reason/freeze_end_tick/end_tick/ct+t steamid counts), score line, event counts, tick rows). Generate for mirage-tie (MM) and navi-javelins (GOTV). Gated golden test like M0's (skip when demo absent). Hand-validate: mirage 12–12 with misosoupy3 on the 12-win… (check in replaywatch reality: both halves 12 rounds each side); navi 13–10 matching M0 validation. Record in `fixtures/goldens/README.md`.
-- [ ] **Step 5: fmt/clippy/test, commit** `feat(parser): full MatchData extraction, score/side derivation, goldens (MM+GOTV)`, push.
+- [x] **Step 1: Write `extract.rs`** per notes; make `print_match` print a MatchData summary (players, per-round winners with sides, derived score, event counts). Run on `mirage-tie` — verify against known reality: 24 rounds, 12–12, misosoupy3 present, sides swap after round 12.
+- [x] **Step 2: Downsampling measurement (ADR-0002).** Run extraction at `sample_every` ∈ {2, 4, 8} on mirage-tie; record tick-table row counts and `serde_json` byte size (proxy for storage). Write ADR-0002 choosing the rate (expect 4 ≈ 16 Hz per PROMPT §4 unless data argues otherwise; note replay interpolation budget from §10.4).
+- [x] **Step 3: Unit tests** for `derive_score` (synthetic rounds with a halftime swap; OT swap pattern) and `detect_tracked_candidates`. Run → PASS.
+- [x] **Step 4: Goldens.** Add `--golden` mode writing the compact summary struct (`MatchGolden` — define in `extract.rs` with exactly: map, tickrate, players sorted, rounds (number/winner/reason/freeze_end_tick/end_tick/ct+t steamid counts), score line, event counts, tick rows). Generate for mirage-tie (MM) and navi-javelins (GOTV). Gated golden test like M0's (skip when demo absent). Hand-validate: mirage 12–12 with misosoupy3 on the 12-win… (check in replaywatch reality: both halves 12 rounds each side); navi 13–10 matching M0 validation. Record in `fixtures/goldens/README.md`.
+- [x] **Step 5: fmt/clippy/test, commit** `feat(parser): full MatchData extraction, score/side derivation, goldens (MM+GOTV)`, push.
 
 ### Task 3: cf-store — SQLite schema v1, migrations, save/list/settings
 
@@ -178,10 +178,10 @@ pub struct MatchSummary {
 
 **Schema v1 (0001_schema_v1.sql):** `schema_migrations(version PK, applied_at)`; `settings(key TEXT PK, value TEXT)`; `matches(id INTEGER PK AUTOINCREMENT, file_name, file_hash TEXT UNIQUE, map, tickrate, imported_at, sample_every, score_a, score_b, roster_a_json, roster_b_json)`; `players(match_id, steamid, name, PK(match_id,steamid))`; `rounds(match_id, number, start_tick, freeze_end_tick, end_tick, officially_ended_tick, winner, reason, PK(match_id,number))`; `round_sides(match_id, number, steamid, side, PK(match_id,number,steamid))`; `kills(id PK, match_id, round, tick, attacker, victim, assister, weapon, headshot, penetrated, thru_smoke, attacker_blind, assistedflash)`; `blinds(id PK, match_id, tick, victim, attacker, duration)`; `grenades(id PK, match_id, tick, kind, thrower, x, y, z)`; `bomb_events(id PK, match_id, tick, kind, player)`; `tick_samples(match_id, tick, steamid, x, y, z, yaw, health, is_alive, team_num, active_weapon, spotted, last_place, PK(match_id,steamid,tick)) WITHOUT ROWID`; indexes: `kills(match_id, victim)`, `kills(match_id, attacker)`, `tick_samples` PK covers the replay scan. Foreign keys ON; `PRAGMA journal_mode=WAL`. Migration runner: embedded via `include_str!`, table-driven `[(1, SQL)]`, applies in a transaction, records version — test: fresh open applies v1; reopen applies nothing; version table correct.
 
-- [ ] **Step 1: Failing tests first** (`store.rs` `#[cfg(test)]`, tempfile DBs): migration fresh/reopen; `save_match` with a small synthetic MatchData (2 players, 2 rounds incl. sides, 3 kills, 1 blind, tick rows) then `list_matches` returns correct summary incl. tracked K/D/hs%; duplicate hash → `DuplicateImport`; settings roundtrip; `tracked_steamid` modal fallback across two saved matches.
-- [ ] **Step 2: Implement migrations + store.** Tests PASS.
-- [ ] **Step 3: Write ADR-0003** (schema v1: tables, WITHOUT ROWID tick_samples choice, hash-dedup import, settings kv; death_class/rule-flag tables deliberately deferred to migration 2 at M3 with cross-demo keys already present via steamid+match_id+map).
-- [ ] **Step 4: fmt/clippy/test, commit** `feat(store): SQLite schema v1, migrations, save/list/settings`, push.
+- [x] **Step 1: Failing tests first** (`store.rs` `#[cfg(test)]`, tempfile DBs): migration fresh/reopen; `save_match` with a small synthetic MatchData (2 players, 2 rounds incl. sides, 3 kills, 1 blind, tick rows) then `list_matches` returns correct summary incl. tracked K/D/hs%; duplicate hash → `DuplicateImport`; settings roundtrip; `tracked_steamid` modal fallback across two saved matches.
+- [x] **Step 2: Implement migrations + store.** Tests PASS.
+- [x] **Step 3: Write ADR-0003** (schema v1: tables, WITHOUT ROWID tick_samples choice, hash-dedup import, settings kv; death_class/rule-flag tables deliberately deferred to migration 2 at M3 with cross-demo keys already present via steamid+match_id+map).
+- [x] **Step 4: fmt/clippy/test, commit** `feat(store): SQLite schema v1, migrations, save/list/settings`, push.
 
 ### Task 4: Tauri commands — import with Channel progress, list, identity
 
@@ -205,9 +205,9 @@ pub struct ImportResult { pub match_id: i64, pub map: String, pub score_a: u32, 
 
 **Notes:** Verify `tauri::ipc::Channel` against docs.rs for the pinned tauri 2.x before coding (expected: command arg, `.send(T)`). DB path: `app.path().app_data_dir()?.join("clutchfactor.db")`; `Store` behind `tauri::State<Mutex<Store>>` initialized in `setup`. `import_demo` runs `parse_match` inside `tauri::async_runtime::spawn_blocking`, forwarding the progress closure into the Channel (stages: hashing 0–5 %, parsing 5–80 %, normalizing 80–90 %, saving 90–100 %). Steamids cross IPC as **strings** everywhere (JS Number cannot hold SteamID64 — this is a mirror-checklist rule). Register dialog plugin; keep the template `greet` removed in this task (delete the demo command + its UI usage).
 
-- [ ] **Step 1: Implement commands + wiring; `cargo check` the app crate.**
-- [ ] **Step 2: Manual smoke via `pnpm tauri dev`** console: `window.__TAURI__` invoke `list_matches` (empty array on fresh DB). (Frontend UI lands next task; this step just proves IPC + DB init.)
-- [ ] **Step 3: fmt/clippy/test, commit** `feat(app): import_demo with Channel progress, list_matches, tracked_player`, push.
+- [x] **Step 1: Implement commands + wiring; `cargo check` the app crate.**
+- [x] **Step 2: Manual smoke via `pnpm tauri dev`** console: `window.__TAURI__` invoke `list_matches` (empty array on fresh DB). (Frontend UI lands next task; this step just proves IPC + DB init.)
+- [x] **Step 3: fmt/clippy/test, commit** `feat(app): import_demo with Channel progress, list_matches, tracked_player`, push.
 
 ### Task 5: Library screen + import flow (frontend)
 
@@ -217,17 +217,17 @@ pub struct ImportResult { pub match_id: i64, pub map: String, pub score_a: u32, 
 - Create: `src/lib/score.ts` + `src/lib/score.test.ts` (pure: format result line from summary — "13–4 L · de_dust2" from tracked perspective; first vitest logic tests)
 
 **Steps:**
-- [ ] **Step 1: Invoke `frontend-design:frontend-design` skill** (spec §7 mandate at UI-milestone start) and apply its direction to the Library layout: dark, calm, information-dense; CT `#4aa3ff`-ish / T `#f5b83d`-ish accents only; no charts yet (dataviz skill not needed until real charts appear).
-- [ ] **Step 2: TDD the pure bits:** `score.test.ts` (win/loss/tie from tracked roster membership; steamid-as-string handling) → implement `score.ts`.
-- [ ] **Step 3: Build `ipc.ts` + `queries.ts`** (`useMatches`, `useImportDemo` mutation wiring Channel `onmessage` → progress state, invalidate matches on success).
-- [ ] **Step 4: Library screen:** match list rows (map, date, score with W/L/T color, tracked K/D + HS%, rounds), empty state ("Import your first demo"), Import button → dialog plugin `open({ filters: [{ name: 'CS2 demo', extensions: ['dem'] }] })`, inline progress bar while importing, error surface (corrupt file → readable message).
-- [ ] **Step 5: `pnpm typecheck && pnpm lint && pnpm test:run`; commit** `feat(ui): Library screen with demo import + streaming progress`, push.
+- [x] **Step 1: Invoke `frontend-design:frontend-design` skill** (spec §7 mandate at UI-milestone start) and apply its direction to the Library layout: dark, calm, information-dense; CT `#4aa3ff`-ish / T `#f5b83d`-ish accents only; no charts yet (dataviz skill not needed until real charts appear).
+- [x] **Step 2: TDD the pure bits:** `score.test.ts` (win/loss/tie from tracked roster membership; steamid-as-string handling) → implement `score.ts`.
+- [x] **Step 3: Build `ipc.ts` + `queries.ts`** (`useMatches`, `useImportDemo` mutation wiring Channel `onmessage` → progress state, invalidate matches on success).
+- [x] **Step 4: Library screen:** match list rows (map, date, score with W/L/T color, tracked K/D + HS%, rounds), empty state ("Import your first demo"), Import button → dialog plugin `open({ filters: [{ name: 'CS2 demo', extensions: ['dem'] }] })`, inline progress bar while importing, error surface (corrupt file → readable message).
+- [x] **Step 5: `pnpm typecheck && pnpm lint && pnpm test:run`; commit** `feat(ui): Library screen with demo import + streaming progress`, push.
 
 ### Task 6: End-to-end verification, docs, tag m1
 
-- [ ] **Step 1 (superpowers:verification-before-completion):** full check suite (fmt/clippy/cargo test incl. goldens, typecheck/lint/vitest). Launch app (`run` skill / `pnpm tauri dev`): import `mirage-tie`, `inferno-win`, `dust2-loss` through the UI watching live progress; verify rows show correct map/score/K/D vs known values (24r 12–12 tie, 20r 13–7 W 18/14, 17r 13–4 L 6/17); relaunch app → all three persist; re-import same file → friendly duplicate error.
-- [ ] **Step 2: Docs:** CLAUDE.md dev commands (unchanged commands verified; add anything new), PROGRESS.md (M1 done, gotchas learned, Now → M2), PROMPT.md §13 M1 checkbox, goldens README rows for the two match goldens.
-- [ ] **Step 3: Commit, tag `m1`, push with tags. CI green confirmed before tagging.**
+- [x] **Step 1 (superpowers:verification-before-completion):** full check suite (fmt/clippy/cargo test incl. goldens, typecheck/lint/vitest). Launch app (`run` skill / `pnpm tauri dev`): import `mirage-tie`, `inferno-win`, `dust2-loss` through the UI watching live progress; verify rows show correct map/score/K/D vs known values (24r 12–12 tie, 20r 13–7 W 18/14, 17r 13–4 L 6/17); relaunch app → all three persist; re-import same file → friendly duplicate error.
+- [x] **Step 2: Docs:** CLAUDE.md dev commands (unchanged commands verified; add anything new), PROGRESS.md (M1 done, gotchas learned, Now → M2), PROMPT.md §13 M1 checkbox, goldens README rows for the two match goldens.
+- [x] **Step 3: Commit, tag `m1`, push with tags. CI green confirmed before tagging.**
 
 ---
 
