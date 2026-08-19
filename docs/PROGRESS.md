@@ -4,14 +4,14 @@ The resume file. A fresh session reads CLAUDE.md → this file → the active pl
 
 ## Now
 
-M2 complete (tagged `m2`). Next: M3 — Core detectors (PROMPT.md §13 + §5A taxonomy MVP): D1/D2/D3 as rule families (H2/H3/H16/H4-Tier1/H5-subset), death_class + rule-flag tables (schema migration 2), DetectorConfig with §6.4 defaults, rules-as-data (YAML), scenario builders + TDD per rule, insights persisted with EvidenceRef, hand-verification per §12. Start with superpowers:writing-plans → `docs/plans/M3-detectors.md`.
+M3 in flight (plan: docs/plans/M3-detectors.md). DONE: Tasks 0–2 (parser rule data incl. targeted inventory pass; schema migration 2 + save_analysis/readers; cf-analysis foundation — types/config/context/scenario/classifier, 15 tests) + Task 8 partials (import pipeline runs analyze, print_insights tool). IN FLIGHT: Tasks 3–7 dispatched to five parallel subagents in worktrees under `.claude/worktrees/agent-*` (families h2, h3, h16, h4, flash_util — each creates `cf-analysis/src/families/<x>.rs` + registers in mod.rs in its own worktree). MERGE PROCEDURE when they report: copy each family file into main tree, hand-merge the five mod.rs registrations, run full test suite + clippy, code-review each family against its plan task + spec §2, then Task 9 (analysis goldens for mirage-tie+navi with class-13 share, wipe dev DB, UI re-import, hand-verify ≥3 flags/family via evidence deep links in the replay viewer, docs, tag m3).
 
 ## Next
 
-1. M3 plan (above). Detector trait in cf-analysis; taxonomy classifier (priority order, secondary tags, confidence); TemplateNarrator seam stays M4.
-2. M3 needs per-tick lookups: nearest-teammate distance, tradeable checks — build on TickTable; thresholds in seconds/units via DetectorConfig.
-3. M6 debt: Settings UI must expose tracked-player override (modal fallback picked a queue-mate on real data).
-4. Perf budget check (§10.4) still unmeasured as nightly integration — consider at M3 when analysis lands.
+1. Merge + review family subagent outputs (above).
+2. Task 9 verification (see plan).
+3. M6 debt: Settings UI for tracked-player override.
+4. Perf budget (§10.4) nightly integration still unbuilt; import now includes an analyze stage — timing worth a look at Task 9.
 
 ## Done
 
