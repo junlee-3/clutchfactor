@@ -45,3 +45,7 @@ independently cross-checked against raw DB tables, plus a replay-viewer spot che
   demos (~matches the spec's 0.8 % volume), class-13 share 21–47 % per match, class 15 at
   0–2 per match (deaths with no engagement evidence and no rule match — expected to shrink
   when H1/H5-audio/H8 land).
+
+M4 additions (2026-08-20): analysis goldens include D4/D5 rule counts (H14_UNSUPPORTED_ENTRY,
+H11_EARLY_AGGRESSIVE_DEATH, H11_SLOW_ROTATION, H6_PUSH_WITHOUT_INFO — class 11 live). Volumes on
+refresh: mirage-tie +1 early-aggressive death; navi +1 slow rotation — precision-first, no spam.
