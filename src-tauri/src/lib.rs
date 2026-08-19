@@ -28,6 +28,7 @@ pub fn run() {
             commands::get_match_detail,
             commands::get_match_report,
             commands::get_habits,
+            commands::get_trends,
             commands::get_round_ticks,
             commands::import_corpus_demo,
             commands::build_corpus,

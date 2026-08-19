@@ -7,6 +7,7 @@ import {
   getMatchDetail,
   getMatchReport,
   getRoundTicks,
+  getTrends,
   importCorpusDemo,
   importDemo,
   listMatches,
@@ -23,6 +24,10 @@ export function useMatchReport(matchId: number) {
 
 export function useHabits() {
   return useQuery({ queryKey: ["habits"], queryFn: getHabits });
+}
+
+export function useTrends() {
+  return useQuery({ queryKey: ["trends"], queryFn: getTrends });
 }
 
 export function useMatchDetail(matchId: number) {

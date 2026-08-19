@@ -538,6 +538,88 @@ pub fn get_habits(state: State<'_, AppState>) -> Result<Vec<HabitReport>, String
     Ok(out)
 }
 
+// ---- M6: trends ----
+
+#[derive(serde::Serialize)]
+pub struct RuleSeries {
+    pub rule_id: String,
+    pub title: String,
+    pub counts: Vec<u32>,
+    pub total: u32,
+}
+
+#[derive(serde::Serialize)]
+pub struct TrendsDto {
+    pub matches: Vec<cf_store::store::TrendMatchRow>,
+    pub rules: Vec<RuleSeries>,
+}
+
+/// Chronological deaths/class-13 series for the tracked player's own matches,
+/// plus per-rule flag-count series aligned to the same match order. Single
+/// events (total < 2) are dropped as noise (§7); the rest are capped to the
+/// 8 largest totals.
+#[tauri::command]
+pub fn get_trends(state: State<'_, AppState>) -> Result<TrendsDto, String> {
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    let Some(tracked) = store.tracked_steamid().map_err(|e| e.to_string())? else {
+        return Ok(TrendsDto {
+            matches: vec![],
+            rules: vec![],
+        });
+    };
+
+    let matches = store.trend_matches(&tracked).map_err(|e| e.to_string())?;
+    let window = matches.len();
+    let match_index: HashMap<i64, usize> = matches
+        .iter()
+        .enumerate()
+        .map(|(i, m)| (m.match_id, i))
+        .collect();
+
+    let mut by_rule: HashMap<String, Vec<u32>> = HashMap::new();
+    for cell in store
+        .rule_trend_counts(&tracked)
+        .map_err(|e| e.to_string())?
+    {
+        let Some(&idx) = match_index.get(&cell.match_id) else {
+            continue;
+        };
+        by_rule
+            .entry(cell.rule_id)
+            .or_insert_with(|| vec![0u32; window])[idx] = cell.count;
+    }
+
+    let mut rules: Vec<RuleSeries> = by_rule
+        .into_iter()
+        .map(|(rule_id, counts)| {
+            let matches_hit = counts.iter().filter(|&&c| c > 0).count();
+            let total: u32 = counts.iter().sum();
+            let n = cf_narrator::narrate_habit(
+                &rule_id,
+                matches_hit,
+                window,
+                total,
+                &serde_json::json!({}),
+            );
+            RuleSeries {
+                rule_id,
+                title: n.title,
+                counts,
+                total,
+            }
+        })
+        .filter(|r| r.total >= 2)
+        .collect();
+    rules.sort_by(|a, b| {
+        b.total
+            .cmp(&a.total)
+            .then_with(|| a.rule_id.cmp(&b.rule_id))
+    });
+    rules.truncate(8);
+
+    Ok(TrendsDto { matches, rules })
+}
+
 #[tauri::command]
 pub fn get_round_ticks(
     state: State<'_, AppState>,

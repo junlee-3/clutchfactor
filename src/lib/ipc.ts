@@ -14,6 +14,8 @@
 //   GridDto (src/replay/heatmap.ts) <- GridRow, src-tauri/crates/cf-store/src/store.rs
 //   GridStatus/CorpusMapCount <- src-tauri/crates/cf-store/src/store.rs
 //   CorpusStatus   <- src-tauri/src/commands.rs
+//   TrendMatchRow  <- src-tauri/crates/cf-store/src/store.rs
+//   TrendsDto (+ RuleSeries) <- src-tauri/src/commands.rs
 // Conventions: steamids are strings (steamid64 overflows JS number);
 // command names are snake_case; Rust arg names arrive camelCased.
 
@@ -295,4 +297,30 @@ export function getGrid(
 
 export function analyzePositioning(matchId: number): Promise<number> {
   return invoke<number>("analyze_positioning", { matchId });
+}
+
+// ---- M6: trends ----
+
+export interface TrendMatchRow {
+  match_id: number;
+  imported_at: string;
+  map: string;
+  deaths: number;
+  class13_pct: number;
+}
+
+export interface RuleSeries {
+  rule_id: string;
+  title: string;
+  counts: number[];
+  total: number;
+}
+
+export interface TrendsDto {
+  matches: TrendMatchRow[];
+  rules: RuleSeries[];
+}
+
+export function getTrends(): Promise<TrendsDto> {
+  return invoke<TrendsDto>("get_trends");
 }

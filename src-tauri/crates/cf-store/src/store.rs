@@ -181,6 +181,24 @@ pub struct DeathClassDbRow {
     pub confidence: f32,
 }
 
+/// One own match's trend point (Trends screen chart, PROMPT.md M6).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct TrendMatchRow {
+    pub match_id: i64,
+    pub imported_at: String,
+    pub map: String,
+    pub deaths: u32,
+    pub class13_pct: f32,
+}
+
+/// One (match, rule) flag count for the Trends screen's per-rule series.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct RuleTrendCell {
+    pub match_id: i64,
+    pub rule_id: String,
+    pub count: u32,
+}
+
 /// Own matches feed the tracked player's analytics; corpus matches feed the
 /// reference grids only and stay invisible to library/habits/identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -758,6 +776,64 @@ impl Store {
         )?;
         let rows = st
             .query_map([tracked], |r| r.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Own matches chronologically with the tracked player's deaths and
+    /// class-13 (unclassified) share — the Trends screen's x-axis and its
+    /// baseline series.
+    pub fn trend_matches(&self, tracked: &str) -> Result<Vec<TrendMatchRow>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT m.id, m.imported_at, m.map,
+                    (SELECT COUNT(*) FROM kills k WHERE k.match_id = m.id AND k.victim = ?1),
+                    (SELECT COUNT(*) FROM death_class dc WHERE dc.match_id = m.id),
+                    (SELECT COUNT(*) FROM death_class dc
+                      WHERE dc.match_id = m.id AND dc.class_id = 13)
+             FROM matches m
+             WHERE m.kind = 'own'
+             ORDER BY m.imported_at ASC, m.id ASC",
+        )?;
+        let rows = st
+            .query_map([tracked], |r| {
+                let total_deaths: i64 = r.get(4)?;
+                let class13: i64 = r.get(5)?;
+                let class13_pct = if total_deaths > 0 {
+                    100.0 * class13 as f32 / total_deaths as f32
+                } else {
+                    0.0
+                };
+                Ok(TrendMatchRow {
+                    match_id: r.get(0)?,
+                    imported_at: r.get(1)?,
+                    map: r.get(2)?,
+                    deaths: r.get(3)?,
+                    class13_pct,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Per-match, per-rule flag counts for the tracked player across own
+    /// matches — the Trends screen's per-rule series (unordered; the caller
+    /// aligns cells to `trend_matches`' chronological order).
+    pub fn rule_trend_counts(&self, tracked: &str) -> Result<Vec<RuleTrendCell>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT f.match_id, f.rule_id, COUNT(*)
+             FROM rule_flags f
+             JOIN matches m ON m.id = f.match_id
+             WHERE f.steamid = ?1 AND m.kind = 'own'
+             GROUP BY f.match_id, f.rule_id",
+        )?;
+        let rows = st
+            .query_map([tracked], |r| {
+                Ok(RuleTrendCell {
+                    match_id: r.get(0)?,
+                    rule_id: r.get(1)?,
+                    count: r.get(2)?,
+                })
+            })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -2105,5 +2181,129 @@ mod tests {
             .filter(|i| i.detector == "OTHER_DETECTOR")
             .count();
         assert_eq!((d6, other), (1, 1));
+    }
+
+    #[test]
+    fn trend_readers_return_exact_values_and_exclude_corpus() {
+        use cf_analysis::{AnalysisOutput, DeathClassRow, EvidenceRef, RuleFlag};
+        let (_dir, mut store) = open_tmp();
+        store.set_setting("tracked_steamid", "1").unwrap();
+
+        let flag = |rule_id: &'static str, round: u32, tick: i32| RuleFlag {
+            rule_id,
+            round,
+            tick,
+            steamid: 1,
+            confidence: 0.7,
+            severity: 0.6,
+            details: serde_json::json!({}),
+            evidence: EvidenceRef {
+                round,
+                tick_start: tick - 320,
+                tick_end: tick + 128,
+                focus_players: vec![1],
+                camera_hint: None,
+            },
+        };
+        let dclass = |tick: i32, class_id: u8| DeathClassRow {
+            round: 2,
+            tick,
+            victim: 1,
+            class_id,
+            class_source: "TEST".into(),
+            secondary_tags: vec![],
+            confidence: 0.7,
+        };
+
+        // m1: 2 death_class rows, 1 class-13 -> 50.0%; two H2_ISOLATED_DEATH flags.
+        let m1 = store
+            .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
+            .unwrap();
+        store
+            .save_analysis(
+                m1,
+                &AnalysisOutput {
+                    flags: vec![
+                        flag("H2_ISOLATED_DEATH", 1, 1200),
+                        flag("H2_ISOLATED_DEATH", 2, 2200),
+                    ],
+                    death_classes: vec![dclass(2100, 13), dclass(2200, 6)],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        // m2: 4 death_class rows, 1 class-13 -> 25.0%; one flag per rule.
+        let m2 = store
+            .save_match("m2.dem", "h2", MatchKind::Own, &sample_match())
+            .unwrap();
+        store
+            .save_analysis(
+                m2,
+                &AnalysisOutput {
+                    flags: vec![
+                        flag("H2_ISOLATED_DEATH", 1, 1200),
+                        flag("H2_FAILED_TRADE", 2, 2200),
+                    ],
+                    death_classes: vec![
+                        dclass(2100, 13),
+                        dclass(2200, 6),
+                        dclass(2300, 5),
+                        dclass(2400, 4),
+                    ],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        // m3: no death_class rows -> 0.0%; no flags.
+        let m3 = store
+            .save_match("m3.dem", "h3", MatchKind::Own, &sample_match())
+            .unwrap();
+
+        // Corpus match: flags/death_classes planted here must never surface.
+        let corpus = store
+            .save_match("pro.dem", "h-pro", MatchKind::Corpus, &sample_match())
+            .unwrap();
+        store
+            .save_analysis(
+                corpus,
+                &AnalysisOutput {
+                    flags: vec![flag("H2_ISOLATED_DEATH", 1, 1200)],
+                    death_classes: vec![dclass(2100, 13)],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let matches = store.trend_matches("1").unwrap();
+        assert_eq!(matches.len(), 3, "corpus match excluded");
+        assert_eq!(
+            matches.iter().map(|m| m.match_id).collect::<Vec<_>>(),
+            vec![m1, m2, m3],
+            "chronological: imported_at ASC, id ASC"
+        );
+        assert_eq!(matches[0].deaths, 1);
+        assert_eq!(matches[0].class13_pct, 50.0);
+        assert_eq!(matches[1].deaths, 1);
+        assert_eq!(matches[1].class13_pct, 25.0);
+        assert_eq!(matches[2].deaths, 1);
+        assert_eq!(matches[2].class13_pct, 0.0, "no death_class rows");
+
+        let cells = store.rule_trend_counts("1").unwrap();
+        assert_eq!(cells.len(), 3, "corpus flags excluded");
+        assert!(cells
+            .iter()
+            .any(|c| c.match_id == m1 && c.rule_id == "H2_ISOLATED_DEATH" && c.count == 2));
+        assert!(cells
+            .iter()
+            .any(|c| c.match_id == m2 && c.rule_id == "H2_ISOLATED_DEATH" && c.count == 1));
+        assert!(cells
+            .iter()
+            .any(|c| c.match_id == m2 && c.rule_id == "H2_FAILED_TRADE" && c.count == 1));
+        assert!(
+            !cells.iter().any(|c| c.match_id == corpus),
+            "corpus match must not appear in rule trend cells"
+        );
     }
 }
