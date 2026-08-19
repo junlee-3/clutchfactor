@@ -34,6 +34,93 @@ pub struct MatchSummary {
     pub tracked_hs_pct: Option<f32>,
 }
 
+// ---- read models for the replay viewer (mirrored in src/lib/ipc.ts) ----
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct RoundInfo {
+    pub number: u32,
+    pub start_tick: i32,
+    pub freeze_end_tick: Option<i32>,
+    pub end_tick: i32,
+    pub officially_ended_tick: Option<i32>,
+    pub winner: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct KillInfo {
+    pub round: u32,
+    pub tick: i32,
+    pub attacker: Option<String>,
+    pub victim: String,
+    pub assister: Option<String>,
+    pub weapon: String,
+    pub headshot: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct GrenadeInfo {
+    pub tick: i32,
+    pub kind: String,
+    pub thrower: Option<String>,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct BombInfo {
+    pub tick: i32,
+    pub kind: String,
+    pub player: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct PlayerInfo {
+    pub steamid: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct RoundSideInfo {
+    pub number: u32,
+    pub steamid: String,
+    pub side: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct MatchDetail {
+    pub id: i64,
+    pub map: String,
+    pub tickrate: f32,
+    pub sample_every: u32,
+    pub score_a: u32,
+    pub score_b: u32,
+    pub players: Vec<PlayerInfo>,
+    pub rounds: Vec<RoundInfo>,
+    pub kills: Vec<KillInfo>,
+    pub grenades: Vec<GrenadeInfo>,
+    pub bomb_events: Vec<BombInfo>,
+    pub round_sides: Vec<RoundSideInfo>,
+}
+
+/// Columnar, sorted by (tick, steamid);
+/// range = [round.start_tick, officially_ended ?? end_tick].
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+pub struct RoundTicks {
+    pub tick: Vec<i32>,
+    pub steamid: Vec<String>,
+    pub x: Vec<f32>,
+    pub y: Vec<f32>,
+    pub z: Vec<f32>,
+    pub yaw: Vec<f32>,
+    pub health: Vec<i32>,
+    pub is_alive: Vec<bool>,
+    pub team_num: Vec<i32>,
+    pub active_weapon: Vec<Option<String>>,
+    pub last_place: Vec<Option<String>>,
+}
+
 pub struct Store {
     conn: Connection,
 }
@@ -347,6 +434,182 @@ impl Store {
         Ok(())
     }
 
+    pub fn match_detail(&self, id: i64) -> Result<Option<MatchDetail>, StoreError> {
+        let head = self
+            .conn
+            .query_row(
+                "SELECT map, tickrate, sample_every, score_a, score_b FROM matches WHERE id = ?1",
+                [id],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, f32>(1)?,
+                        r.get::<_, u32>(2)?,
+                        r.get::<_, u32>(3)?,
+                        r.get::<_, u32>(4)?,
+                    ))
+                },
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        let Some((map, tickrate, sample_every, score_a, score_b)) = head else {
+            return Ok(None);
+        };
+
+        let mut st = self
+            .conn
+            .prepare("SELECT steamid, name FROM players WHERE match_id = ?1 ORDER BY steamid")?;
+        let players = st
+            .query_map([id], |r| {
+                Ok(PlayerInfo {
+                    steamid: r.get(0)?,
+                    name: r.get(1)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut st = self.conn.prepare(
+            "SELECT number, start_tick, freeze_end_tick, end_tick, officially_ended_tick,
+                    winner, reason
+             FROM rounds WHERE match_id = ?1 ORDER BY number",
+        )?;
+        let rounds = st
+            .query_map([id], |r| {
+                Ok(RoundInfo {
+                    number: r.get(0)?,
+                    start_tick: r.get(1)?,
+                    freeze_end_tick: r.get(2)?,
+                    end_tick: r.get(3)?,
+                    officially_ended_tick: r.get(4)?,
+                    winner: r.get(5)?,
+                    reason: r.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut st = self.conn.prepare(
+            "SELECT round, tick, attacker, victim, assister, weapon, headshot
+             FROM kills WHERE match_id = ?1 ORDER BY tick",
+        )?;
+        let kills = st
+            .query_map([id], |r| {
+                Ok(KillInfo {
+                    round: r.get(0)?,
+                    tick: r.get(1)?,
+                    attacker: r.get(2)?,
+                    victim: r.get(3)?,
+                    assister: r.get(4)?,
+                    weapon: r.get(5)?,
+                    headshot: r.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut st = self.conn.prepare(
+            "SELECT tick, kind, thrower, x, y, z FROM grenades WHERE match_id = ?1 ORDER BY tick",
+        )?;
+        let grenades = st
+            .query_map([id], |r| {
+                Ok(GrenadeInfo {
+                    tick: r.get(0)?,
+                    kind: r.get(1)?,
+                    thrower: r.get(2)?,
+                    x: r.get(3)?,
+                    y: r.get(4)?,
+                    z: r.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut st = self.conn.prepare(
+            "SELECT tick, kind, player FROM bomb_events WHERE match_id = ?1 ORDER BY tick",
+        )?;
+        let bomb_events = st
+            .query_map([id], |r| {
+                Ok(BombInfo {
+                    tick: r.get(0)?,
+                    kind: r.get(1)?,
+                    player: r.get(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut st = self.conn.prepare(
+            "SELECT number, steamid, side FROM round_sides WHERE match_id = ?1
+             ORDER BY number, steamid",
+        )?;
+        let round_sides = st
+            .query_map([id], |r| {
+                Ok(RoundSideInfo {
+                    number: r.get(0)?,
+                    steamid: r.get(1)?,
+                    side: r.get(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Some(MatchDetail {
+            id,
+            map,
+            tickrate,
+            sample_every,
+            score_a,
+            score_b,
+            players,
+            rounds,
+            kills,
+            grenades,
+            bomb_events,
+            round_sides,
+        }))
+    }
+
+    pub fn round_ticks(&self, id: i64, round: u32) -> Result<RoundTicks, StoreError> {
+        let range = self
+            .conn
+            .query_row(
+                "SELECT start_tick, COALESCE(officially_ended_tick, end_tick)
+                 FROM rounds WHERE match_id = ?1 AND number = ?2",
+                params![id, round],
+                |r| Ok((r.get::<_, i32>(0)?, r.get::<_, i32>(1)?)),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        let Some((lo, hi)) = range else {
+            return Ok(RoundTicks::default());
+        };
+
+        let mut st = self.conn.prepare(
+            "SELECT tick, steamid, x, y, z, yaw, health, is_alive, team_num,
+                    active_weapon, last_place
+             FROM tick_samples
+             WHERE match_id = ?1 AND tick BETWEEN ?2 AND ?3
+             ORDER BY tick, steamid",
+        )?;
+        let mut out = RoundTicks::default();
+        let mut rows = st.query(params![id, lo, hi])?;
+        while let Some(r) = rows.next()? {
+            out.tick.push(r.get(0)?);
+            out.steamid.push(r.get(1)?);
+            out.x.push(r.get(2)?);
+            out.y.push(r.get(3)?);
+            out.z.push(r.get(4)?);
+            out.yaw.push(r.get(5)?);
+            out.health.push(r.get(6)?);
+            out.is_alive.push(r.get(7)?);
+            out.team_num.push(r.get(8)?);
+            out.active_weapon.push(r.get(9)?);
+            out.last_place.push(r.get(10)?);
+        }
+        Ok(out)
+    }
+
     /// Tracked player: explicit setting wins; otherwise the steamid appearing
     /// in the most imported matches (PROMPT.md §13 M1 identity detection).
     pub fn tracked_steamid(&self) -> Result<Option<String>, StoreError> {
@@ -551,6 +814,51 @@ mod tests {
         ];
         store.save_match("m2.dem", "h2", &second).unwrap();
         assert_eq!(store.tracked_steamid().unwrap().as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn match_detail_returns_full_read_model() {
+        let (_dir, mut store) = open_tmp();
+        let id = store.save_match("m1.dem", "h1", &sample_match()).unwrap();
+        let d = store.match_detail(id).unwrap().expect("detail");
+        assert_eq!(d.map, "de_mirage");
+        assert_eq!((d.score_a, d.score_b), (2, 1));
+        assert_eq!(d.players.len(), 4);
+        assert_eq!(d.rounds.len(), 3);
+        assert_eq!(d.rounds[0].winner, "CT");
+        assert_eq!(d.rounds[0].reason, "t_killed");
+        assert_eq!(d.kills.len(), 3);
+        assert_eq!(d.kills[0].attacker.as_deref(), Some("1"));
+        assert_eq!(d.kills[0].victim, "3");
+        // 3 rounds × 4 players per side rows
+        assert_eq!(d.round_sides.len(), 12);
+        assert!(d
+            .round_sides
+            .iter()
+            .any(|s| s.number == 2 && s.steamid == "1" && s.side == "T"));
+    }
+
+    #[test]
+    fn match_detail_none_for_unknown_id() {
+        let (_dir, store) = open_tmp();
+        assert!(store.match_detail(999).unwrap().is_none());
+    }
+
+    #[test]
+    fn round_ticks_returns_only_in_range_rows_sorted() {
+        let (_dir, mut store) = open_tmp();
+        let id = store.save_match("m1.dem", "h1", &sample_match()).unwrap();
+        // Round 1 range: start 1000 → officially_ended 1950. Samples at 1100 (×2 players).
+        let rt = store.round_ticks(id, 1).unwrap();
+        assert_eq!(rt.tick, vec![1100, 1100]);
+        assert_eq!(rt.steamid, vec!["1".to_string(), "3".to_string()]);
+        assert_eq!(rt.x[0], 100.0);
+        assert!(rt.is_alive[0]);
+        // Round 2 range: 2000 → 2950. Sample at 2100 (player 1 only).
+        let rt2 = store.round_ticks(id, 2).unwrap();
+        assert_eq!(rt2.tick, vec![2100]);
+        // Unknown round → empty, not error.
+        assert!(store.round_ticks(id, 99).unwrap().tick.is_empty());
     }
 
     #[test]
