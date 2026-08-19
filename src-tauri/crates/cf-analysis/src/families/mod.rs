@@ -4,6 +4,7 @@
 use crate::Detector;
 
 pub mod flash_util;
+pub mod h11_timing;
 pub mod h14_entry;
 pub mod h16;
 pub mod h2;
@@ -17,6 +18,7 @@ pub fn all() -> Vec<Box<dyn Detector>> {
         Box::new(h4::H4Exposure),
         Box::new(h16::H16UtilityDamage),
         Box::new(h14_entry::H14EntryStructure),
+        Box::new(h11_timing::H11Timing),
         Box::new(flash_util::FlashAndUtility),
     ]
 }
