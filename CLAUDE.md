@@ -1,6 +1,8 @@
 # ClutchFactor
 
-Desktop CS2 coaching app: parses match demo files (`.dem`) and produces coaching insights backed by a 2D replay viewer — not a stats tracker. **`PROMPT.md` is the approved spec and engineering charter — read it before doing anything else.** This file is session context; keep it ≤120 lines and always correct (§11.1).
+Desktop CS2 coaching app: parses match demo files (`.dem`) and produces coaching insights backed by a 2D replay viewer — not a stats tracker. **`PROMPT.md` is the approved spec and engineering charter — read it before doing anything else.** `docs/spec/death-taxonomy.md` (PROMPT.md §5A) governs death/duel analysis: 15-class taxonomy, H1–H16 rule families, cross-demo habit tracking. This file is session context; keep it ≤120 lines and always correct (§11.1).
+
+Tracked player (owner): SteamID64 `76561199228328773`, in-game name `misosoupy3` — present in all five `fixtures/own/` demos.
 
 ## Stack
 
@@ -41,8 +43,9 @@ fixtures/                      real .dem files, gitignored; see fixtures/README.
 - Conventional commits (`feat(analysis): …`); push after every unit of work; milestone tags `m0`, `m1`, …
 - ADRs in `docs/adr/ADR-NNNN-*.md` for every significant decision — half a page max.
 - **Evidence contract:** every `Insight` carries `EvidenceRef { round, tick_start, tick_end, focus_players, camera_hint }` the replay viewer can jump to. No evidence → detector gets redesigned, not shipped.
-- All detector thresholds live in `DetectorConfig` with documented defaults (PROMPT.md §6.4) — never scatter magic numbers.
+- All detector thresholds live in `DetectorConfig` with documented defaults (PROMPT.md §6.4) — never scatter magic numbers; thresholds in seconds/world units, never ticks.
 - Detectors are pure functions over `MatchData`; TDD with synthetic scenario builders is mandatory.
+- Rule engine (§5A): rule ids (`H2_ISOLATED_DEATH`, …) are load-bearing — never rename/renumber; rules are data (YAML), each emits `confidence`; approximations bias toward silence (false negative ≫ false positive); every rule gets a hand-verified golden clip test; class-13 share is a CI regression metric.
 - Real demos only — no fake match data, no placeholder insights.
 - Verify external APIs (demoparser2, Tauri) against docs/real output before coding against them.
 
