@@ -25,8 +25,8 @@
 
 **Files:** Modify `src-tauri/crates/cf-parser/src/extract.rs` (add `smokegrenade_expired` to `WANTED_EVENTS`, map to kind `"smoke_expired"` in `extract_events`); regenerate both goldens (grenade counts change).
 
-- [ ] Add the event; `cargo test -p cf-parser` (goldens fail) → regenerate via `print_match --golden` for both fixture demos → tests green.
-- [ ] Commit `feat(parser): smoke expiry events for utility lifetimes`, push.
+- [x] Add the event; `cargo test -p cf-parser` (goldens fail) → regenerate via `print_match --golden` for both fixture demos → tests green.
+- [x] Commit `feat(parser): smoke expiry events for utility lifetimes`, push.
 
 ### Task 2: cf-store read models — MatchDetail + RoundTicks
 
@@ -74,8 +74,8 @@ impl Store {
 }
 ```
 
-- [ ] Tests first (extend existing synthetic `sample_match`): `match_detail` returns players/rounds/kills/sides correctly, `None` for unknown id; `round_ticks` returns only in-range rows sorted by tick. Red → implement → green.
-- [ ] Commit `feat(store): MatchDetail + RoundTicks read models`, push.
+- [x] Tests first (extend existing synthetic `sample_match`): `match_detail` returns players/rounds/kills/sides correctly, `None` for unknown id; `round_ticks` returns only in-range rows sorted by tick. Red → implement → green.
+- [x] Commit `feat(store): MatchDetail + RoundTicks read models`, push.
 
 ### Task 3: Commands + TS mirrors
 
@@ -88,17 +88,17 @@ impl Store {
 
 (Note: Rust arg names snake_case — `match_id` — arrive camelCased from JS.)
 
-- [ ] Implement, mirror all structs in `ipc.ts` under the MIRROR CHECKLIST, add invoke wrappers + `useMatchDetail`/`useRoundTicks` queries. `cargo check` + `pnpm typecheck` green.
-- [ ] Commit `feat(app): match detail + round tick commands`, push.
+- [x] Implement, mirror all structs in `ipc.ts` under the MIRROR CHECKLIST, add invoke wrappers + `useMatchDetail`/`useRoundTicks` queries. `cargo check` + `pnpm typecheck` green.
+- [x] Commit `feat(app): match detail + round tick commands`, push.
 
 ### Task 4: Radar assets vendored (ADR-0004)
 
 **Files:** Create `assets/maps/*.png` + `assets/maps/map-data.json` + `assets/maps/ATTRIBUTION.md`; modify `vite.config.ts` (`publicDir: "assets"`); delete template `public/` svgs (move nothing — the template icons are unused); create `docs/adr/ADR-0004-radar-assets.md`.
 
-- [ ] Copy the downloaded awpy bundle (scratchpad `awpy-maps/`) into `assets/maps/`; drop `workshop_preview`/`de_dust` (non-active, keep bundle lean) — keep all `de_*` active-duty + `_lower` variants + cs_italy/cs_office/ar_* (tiny, future-proof). ATTRIBUTION.md: awpy (MIT, pnxenopoulos/awpy), artifact build 17595823, radar imagery derived from CS2 game files © Valve.
-- [ ] `vite.config.ts`: `publicDir: "assets"` so `/maps/de_mirage.png` serves at runtime; verify `pnpm build` includes them.
-- [ ] ADR-0004: sourcing (awpy artifact mirror), licensing posture (MIT tooling; radar imagery is Valve-derived community-standard usage in a local, free tool; swappable per §6.3), update path (new patch → re-download artifact, diff map-data.json).
-- [ ] Commit `feat(assets): vendor awpy radar images + calibration (ADR-0004)`, push.
+- [x] Copy the downloaded awpy bundle (scratchpad `awpy-maps/`) into `assets/maps/`; drop `workshop_preview`/`de_dust` (non-active, keep bundle lean) — keep all `de_*` active-duty + `_lower` variants + cs_italy/cs_office/ar_* (tiny, future-proof). ATTRIBUTION.md: awpy (MIT, pnxenopoulos/awpy), artifact build 17595823, radar imagery derived from CS2 game files © Valve.
+- [x] `vite.config.ts`: `publicDir: "assets"` so `/maps/de_mirage.png` serves at runtime; verify `pnpm build` includes them.
+- [x] ADR-0004: sourcing (awpy artifact mirror), licensing posture (MIT tooling; radar imagery is Valve-derived community-standard usage in a local, free tool; swappable per §6.3), update path (new patch → re-download artifact, diff map-data.json).
+- [x] Commit `feat(assets): vendor awpy radar images + calibration (ADR-0004)`, push.
 
 ### Task 5: Replay math — pure TS, exhaustive TDD
 
@@ -134,9 +134,9 @@ export function fracToTick(spec: TimelineSpec, frac: number): number;
 export function fmtClock(spec: TimelineSpec, tick: number, tickrate: number): string; // "1:23" elapsed
 ```
 
-- [ ] Write failing tests per module first. Required cases: coords — known mirage point round-trips, y-axis inversion sign, nuke z above/below `lower_level_max_units`, no-lower-level maps always "upper"; interp — exact sample hit, mid-gap lerp, yaw wrap 350°→10° goes through 0°, health/weapon step (not lerped — nearest-previous), null outside range, dead player keeps last position with isAlive false; utility — paired expiry shortens smoke, unpaired falls back 19.5 s, two smokes near one expiry consume it once (nearest wins), molly pairing, flash pop window; timeline — frac round-trips, clamping, clock format at 0 and >60 s.
-- [ ] Implement to green. `pnpm test:run` all pass.
-- [ ] Commit `feat(replay): coordinate/interpolation/utility/timeline math (TDD)`, push.
+- [x] Write failing tests per module first. Required cases: coords — known mirage point round-trips, y-axis inversion sign, nuke z above/below `lower_level_max_units`, no-lower-level maps always "upper"; interp — exact sample hit, mid-gap lerp, yaw wrap 350°→10° goes through 0°, health/weapon step (not lerped — nearest-previous), null outside range, dead player keeps last position with isAlive false; utility — paired expiry shortens smoke, unpaired falls back 19.5 s, two smokes near one expiry consume it once (nearest wins), molly pairing, flash pop window; timeline — frac round-trips, clamping, clock format at 0 and >60 s.
+- [x] Implement to green. `pnpm test:run` all pass.
+- [x] Commit `feat(replay): coordinate/interpolation/utility/timeline math (TDD)`, push.
 
 ### Task 6: Replay screen — canvas renderer, panels, scrubber, deep links
 
@@ -154,8 +154,8 @@ export function fmtClock(spec: TimelineSpec, tick: number, tickrate: number): st
 - `RosterPanel.tsx`: per-side player rows — name, HP bar (width = health, side hue at 70 %), dead = struck through; weapon name small.
 - Library row click → `navigate(/replay/{id})`.
 
-- [ ] Build it; `pnpm typecheck && pnpm lint && pnpm test:run` green.
-- [ ] Commit `feat(replay): canvas replay viewer with scrubber, kill feed, deep links`, push.
+- [x] Build it; `pnpm typecheck && pnpm lint && pnpm test:run` green.
+- [x] Commit `feat(replay): canvas replay viewer with scrubber, kill feed, deep links`, push.
 
 ### Task 7: Windows CI build job
 
@@ -180,16 +180,16 @@ export function fmtClock(spec: TimelineSpec, tick: number, tickrate: number): st
         working-directory: src-tauri
 ```
 
-- [ ] Add job, push, `gh run watch` → green (first Windows cargo build is slow; cache warms it).
-- [ ] Commit is the push above (`ci: windows build job`).
+- [x] Add job, push, `gh run watch` → green (first Windows cargo build is slow; cache warms it).
+- [x] Commit is the push above (`ci: windows build job`).
 
 ### Task 8: E2E verification, docs, tag m2
 
-- [ ] Full suite (fmt/clippy/cargo test incl. goldens, typecheck/lint/vitest all green).
-- [ ] Re-import demos into a fresh dev DB (smoke_expired events now needed): delete `~/Library/Application Support/com.clutchfactor.app/clutchfactor.db*`, launch app, import mirage-tie + inferno-win + dust2-loss through the UI (AX scripting), re-set tracked_steamid setting.
-- [ ] Watch a full real round: play round 1 of mirage-tie start→end at 1×; read FPS meter from AX tree ≥ ~58; scrub via keyboard; jump to a kill from the kill feed and from a pip; verify deep-link URL with `?round=&tick=&focus=` opens at the right moment with focus dimming; switch to de_nuke match and verify lower-level radar swap on Z.
-- [ ] Sanity vs demo reality (§12): the round-1 opening kill in the viewer matches the kill feed (attacker/victim/location plausible on Mirage).
-- [ ] Docs: PROGRESS.md (M2 done, gotchas), PROMPT.md §13 checkbox, CLAUDE.md if commands changed, plan checkboxes. Tag `m2`, push --tags, CI green.
+- [x] Full suite (fmt/clippy/cargo test incl. goldens, typecheck/lint/vitest all green).
+- [x] Re-import demos into a fresh dev DB (smoke_expired events now needed): delete `~/Library/Application Support/com.clutchfactor.app/clutchfactor.db*`, launch app, import mirage-tie + inferno-win + dust2-loss through the UI (AX scripting), re-set tracked_steamid setting.
+- [x] Watch a full real round: play round 1 of mirage-tie start→end at 1×; read FPS meter from AX tree ≥ ~58; scrub via keyboard; jump to a kill from the kill feed and from a pip; verify deep-link URL with `?round=&tick=&focus=` opens at the right moment with focus dimming; switch to de_nuke match and verify lower-level radar swap on Z.
+- [x] Sanity vs demo reality (§12): the round-1 opening kill in the viewer matches the kill feed (attacker/victim/location plausible on Mirage).
+- [x] Docs: PROGRESS.md (M2 done, gotchas), PROMPT.md §13 checkbox, CLAUDE.md if commands changed, plan checkboxes. Tag `m2`, push --tags, CI green.
 
 ---
 

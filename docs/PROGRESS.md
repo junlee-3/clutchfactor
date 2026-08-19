@@ -4,17 +4,18 @@ The resume file. A fresh session reads CLAUDE.md → this file → the active pl
 
 ## Now
 
-M1 complete (tagged `m1`). Next: M2 — Replay viewer (PROMPT.md §13): radar assets + calibration (ADR on sourcing/licensing — evaluate awpy bundle, spec §5.5), canvas playback with interpolated dots/deaths/utility/bomb/kill feed/roster HP, scrubber, `show_evidence(EvidenceRef)` deep-link API, Windows CI build job. Start with superpowers:writing-plans → `docs/plans/M2-replay.md`. Invoke frontend-design (+dataviz before any timeline/heatmap work).
+M2 complete (tagged `m2`). Next: M3 — Core detectors (PROMPT.md §13 + §5A taxonomy MVP): D1/D2/D3 as rule families (H2/H3/H16/H4-Tier1/H5-subset), death_class + rule-flag tables (schema migration 2), DetectorConfig with §6.4 defaults, rules-as-data (YAML), scenario builders + TDD per rule, insights persisted with EvidenceRef, hand-verification per §12. Start with superpowers:writing-plans → `docs/plans/M3-detectors.md`.
 
 ## Next
 
-1. M2 plan (above). Replay data source: `tick_samples` (16 Hz, ADR-0002) + exact-tick events; new query commands (get_match_detail, get_round_ticks or similar).
-2. M2 needs radar coordinate math (PROMPT §6.3) — unit-test exhaustively per §10.2.
-3. Re-evaluate tauri-specta (was RC at M1) before hand-mirroring more IPC types.
-4. M6 debt noted: Settings UI must expose tracked-player override (see Gotchas — modal fallback picked a queue-mate on real data).
+1. M3 plan (above). Detector trait in cf-analysis; taxonomy classifier (priority order, secondary tags, confidence); TemplateNarrator seam stays M4.
+2. M3 needs per-tick lookups: nearest-teammate distance, tradeable checks — build on TickTable; thresholds in seconds/units via DetectorConfig.
+3. M6 debt: Settings UI must expose tracked-player override (modal fallback picked a queue-mate on real data).
+4. Perf budget check (§10.4) still unmeasured as nightly integration — consider at M3 when analysis lands.
 
 ## Done
 
+- 2026-08-19: **M2 complete** — awpy radar assets vendored (ADR-0004, build 17595823, served via vite publicDir=assets); MatchDetail/RoundTicks read models + commands; replay math TDD (coords/interp/utility/timeline, 24 tests); canvas replay viewer (rAF, 16 Hz interpolation, utility lifetimes w/ smoke_expired pairing, bomb state, death markers, focus dimming, kill feed, roster HP, scrubber + pips, keyboard transport, evidence deep links); Windows CI build job green. E2E on real demos via AX scripting: mirage round played at steady 60 fps, kill-feed jump verified against DB ground truth (NCZ RG 0:23 / nekoo鸭 0:25 first deaths, live HP 91/87/86 mid-fight), round switch to 12/24, de_nuke (lower-layer map) loads & plays. Tag `m2`.
 - 2026-08-19: **M1 complete** — MatchData model + round normalization (7 unit tests, MM+GOTV encodings); two-pass extraction (events + ticks) with side assignment, roster-following score derivation, goldens for mirage-tie (12–12) and navi (13–10); ADR-0002 sample_every=4; cf-store SQLite schema v1 + migrations (ADR-0003, 6 tests); import_demo with Channel progress + sha256 dedup; Library screen (TanStack Query, 7 vitest tests). E2E through the real UI via accessibility scripting: 3 own demos imported by clicking Import → native dialog, live progress, correct rows (Dust2 L 4–13 6/17, Inferno W 13–7 16/14, Mirage T 12–12 7/19), duplicate re-import rejected with visible error, relaunch persistence confirmed, owner identity set via settings override. Tag `m1`.
 - 2026-08-19: Owner demos verified (5/5 parse, misosoupy3 in every roster); spec addendum integrated (docs/spec/death-taxonomy.md, PROMPT §5A).
 - 2026-08-19: **M0 complete** — scaffold, workspace, CI, demoparser2 proven (tag `m0`).
@@ -25,6 +26,11 @@ M1 complete (tagged `m1`). Next: M2 — Replay viewer (PROMPT.md §13): radar as
 - tauri-specta still RC → TS types hand-mirrored in `src/lib/ipc.ts` under MIRROR CHECKLIST.
 
 ## Gotchas
+
+- react-hooks v7 lint forbids ref writes during render and setState-in-effect: replay playback uses key-based remount per round + a `getScene()` closure read inside rAF; images via useMemo'd `Image` polled with `img.complete` (no state).
+- AX-tree reads race the 10 Hz React panel updates while playing — pause first (Space keystroke), then read; wrap element reads in `try`.
+- Round chips (role=tab buttons) expose as AX "radio button"; kill-feed rows are buttons (invisible to static-text dumps); react-router `<Link>` clicks via AX are unreliable — relaunch to navigate back in E2E scripts.
+- `weapon_name` values are display names ("USP-S", "Bayonet"), not `weapon_*` codes.
 
 - **demoparser2 skips per-tick prop collection when `wanted_events` is non-empty** (collect_entities gate) → cf-parser does two passes per demo, like upstream's Python bindings. Two passes ≈ 1 s release on a 250 MB demo.
 - `active_weapon` prop = raw entity handle (U32); the weapon-name string prop is **`weapon_name`**. Small int props arrive as I32 *or* U32 per netvar — `int_col` handles both.
