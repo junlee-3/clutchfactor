@@ -770,6 +770,42 @@ mod tests {
         );
     }
 
+    /// death-taxonomy §2 H2: the promoted baited habit must read as a team
+    /// spacing problem and must never coach the player out of trading. It only
+    /// ever promotes alongside H2_FAILED_TRADE, so the caption says so.
+    #[test]
+    fn habit_baited_trade_blames_the_spacing_not_the_player() {
+        let n = narrate_habit("H2_BAITED_TRADE", 3, 5, 9, &json!({}));
+        assert_eq!(n.title, "Habit: nobody follows your trade");
+        assert_eq!(
+            n.body,
+            "You were the only one who committed to the trade in 3 of your last 5 matches — 9 \
+             times in all. Failed trades are recurring on your side in the same window, so this \
+             is a team spacing problem, not a habit to unlearn: keep re-peeking, and fix the \
+             timing so the second man leaves with you."
+        );
+        let lower = n.body.to_lowercase();
+        for blame in [
+            "your fault",
+            "you should have",
+            "stop trading",
+            "stop re-peeking",
+            "bad play",
+        ] {
+            assert!(
+                !lower.contains(blame),
+                "blame word {blame:?} in: {}",
+                n.body
+            );
+        }
+        assert!(lower.contains("team"), "must name the team problem");
+        assert!(
+            lower.contains("keep re-peeking"),
+            "must protect the trading instinct: {}",
+            n.body
+        );
+    }
+
     #[test]
     fn habit_generic_fallback_states_the_recurrence() {
         let n = narrate_habit("H11_LATE_ROTATION", 3, 5, 8, &json!({}));
@@ -786,6 +822,7 @@ mod tests {
         for rule in [
             "H2_ISOLATED_DEATH",
             "H2_FAILED_TRADE",
+            "H2_BAITED_TRADE",
             "H3_WASTED_UTILITY",
             "H4_KILLED_WITHOUT_CONTACT",
             "H4_REPEAT_HOTSPOT",
@@ -938,6 +975,7 @@ mod tests {
 
         for rule in [
             "H2_ISOLATED_DEATH",
+            "H2_BAITED_TRADE",
             "H4_REPEAT_HOTSPOT",
             "H11_LATE_ROTATION",
         ] {

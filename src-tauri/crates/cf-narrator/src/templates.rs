@@ -716,6 +716,20 @@ pub fn narrate_habit(
                  re-peeking within two seconds of his death is."
             ),
         },
+        // Promotion only ever reaches here alongside H2_FAILED_TRADE (see
+        // analysis::habits::promote_habits), so the caption leans on the
+        // combination: the player keeps being the only one who commits.
+        // death-taxonomy §2 H2 — never blame, name the *team* spacing problem,
+        // never coach the player out of the trade.
+        "H2_BAITED_TRADE" => Narration {
+            title: "Habit: nobody follows your trade".to_string(),
+            body: format!(
+                "You were the only one who committed to the trade {seen}. Failed trades are \
+                 recurring on your side in the same window, so this is a team spacing problem, \
+                 not a habit to unlearn: keep re-peeking, and fix the timing so the second man \
+                 leaves with you."
+            ),
+        },
         "H3_WASTED_UTILITY" => Narration {
             title: "Habit: dying with utility".to_string(),
             body: format!(

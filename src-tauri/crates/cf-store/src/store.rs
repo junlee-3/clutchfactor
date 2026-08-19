@@ -143,6 +143,11 @@ pub struct RuleMatchCount {
     pub imported_at: String,
     pub count: u32,
     pub first_evidence_json: Option<String>,
+    /// Round/tick of the same first flag. Flags written before migration 3
+    /// have a NULL `evidence_json`; these let the caller rebuild an
+    /// `EvidenceRef` instead of dropping the habit's replay chip.
+    pub first_round: Option<u32>,
+    pub first_tick: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -594,6 +599,12 @@ impl Store {
                       WHERE f.match_id = m.id AND f.rule_id = ?2 AND f.steamid = ?1),
                     (SELECT f.evidence_json FROM rule_flags f
                       WHERE f.match_id = m.id AND f.rule_id = ?2 AND f.steamid = ?1
+                      ORDER BY f.tick LIMIT 1),
+                    (SELECT f.round FROM rule_flags f
+                      WHERE f.match_id = m.id AND f.rule_id = ?2 AND f.steamid = ?1
+                      ORDER BY f.tick LIMIT 1),
+                    (SELECT f.tick FROM rule_flags f
+                      WHERE f.match_id = m.id AND f.rule_id = ?2 AND f.steamid = ?1
                       ORDER BY f.tick LIMIT 1)
              FROM matches m
              ORDER BY m.imported_at DESC, m.id DESC
@@ -607,6 +618,8 @@ impl Store {
                     imported_at: r.get(2)?,
                     count: r.get(3)?,
                     first_evidence_json: r.get(4)?,
+                    first_round: r.get(5)?,
+                    first_tick: r.get(6)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1340,6 +1353,10 @@ mod tests {
             .as_deref()
             .unwrap()
             .contains("\"round\":1"));
+        // The first flag's own round/tick ride along so a caller can rebuild
+        // an EvidenceRef when the stored evidence is missing (below).
+        assert_eq!(counts[1].first_round, Some(1));
+        assert_eq!(counts[1].first_tick, Some(1200));
         // Window truncation.
         assert_eq!(
             store
@@ -1368,6 +1385,60 @@ mod tests {
         assert_eq!(stats[0].deaths, 0);
         assert_eq!(stats[1].deaths, 1);
         assert_eq!(stats[0].freeze_end_tick, Some(1100));
+    }
+
+    /// Flags written before migration 3 have a NULL `evidence_json`. The query
+    /// must still hand back the first flag's round/tick so `get_habits` can
+    /// rebuild an EvidenceRef instead of dropping the replay chip.
+    #[test]
+    fn rule_counts_expose_round_and_tick_when_evidence_json_is_null() {
+        use cf_analysis::{AnalysisOutput, EvidenceRef, RuleFlag};
+        let (_dir, mut store) = open_tmp();
+        store.set_setting("tracked_steamid", "1").unwrap();
+        let flag = |round: u32, tick: i32| RuleFlag {
+            rule_id: "H2_FAILED_TRADE",
+            round,
+            tick,
+            steamid: 1,
+            confidence: 0.7,
+            severity: 0.6,
+            details: serde_json::json!({}),
+            evidence: EvidenceRef {
+                round,
+                tick_start: tick - 320,
+                tick_end: tick + 128,
+                focus_players: vec![1],
+                camera_hint: None,
+            },
+        };
+        let m1 = store.save_match("m1.dem", "h1", &sample_match()).unwrap();
+        store
+            .save_analysis(
+                m1,
+                &AnalysisOutput {
+                    flags: vec![flag(2, 2400), flag(3, 3100)],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        // Simulate pre-migration-3 rows.
+        store
+            .conn
+            .execute("UPDATE rule_flags SET evidence_json = NULL", [])
+            .unwrap();
+
+        let counts = store
+            .rule_counts_across_matches("1", "H2_FAILED_TRADE", 10)
+            .unwrap();
+        assert_eq!(counts.len(), 1);
+        assert_eq!(counts[0].count, 2);
+        assert!(
+            counts[0].first_evidence_json.is_none(),
+            "pre-migration rows carry no evidence"
+        );
+        // Earliest tick wins, and it is the same row the evidence would be on.
+        assert_eq!(counts[0].first_round, Some(2));
+        assert_eq!(counts[0].first_tick, Some(2400));
     }
 
     #[test]

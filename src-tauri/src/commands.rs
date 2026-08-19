@@ -340,6 +340,7 @@ pub fn get_habits(state: State<'_, AppState>) -> Result<Vec<HabitReport>, String
         return Ok(vec![]);
     };
     let cfg = cf_analysis::DetectorConfig::default();
+    let tracked_u64 = tracked.parse::<u64>().ok();
 
     // Rule-recurrence habits.
     let mut inputs = vec![];
@@ -360,11 +361,24 @@ pub fn get_habits(state: State<'_, AppState>) -> Result<Vec<HabitReport>, String
         };
         let mut ev = vec![];
         for c in counts.iter().filter(|c| c.count > 0) {
-            if let Some(e) = c
+            // Flags stored before migration 3 have no evidence_json. Rebuild a
+            // window around the flag's own tick (±5 s / 2 s at 64 tick, same
+            // as the hotspot chips below) rather than dropping the chip.
+            let evidence = c
                 .first_evidence_json
                 .as_ref()
                 .and_then(|j| serde_json::from_str::<cf_analysis::EvidenceRef>(j).ok())
-            {
+                .or_else(|| {
+                    let (round, tick) = c.first_round.zip(c.first_tick)?;
+                    Some(cf_analysis::EvidenceRef {
+                        round,
+                        tick_start: tick - 320,
+                        tick_end: tick + 128,
+                        focus_players: tracked_u64.into_iter().collect(),
+                        camera_hint: None,
+                    })
+                });
+            if let Some(e) = evidence {
                 ev.push(HabitEvidence {
                     match_id: c.match_id,
                     map: c.map.clone(),
@@ -423,7 +437,6 @@ pub fn get_habits(state: State<'_, AppState>) -> Result<Vec<HabitReport>, String
             y: p.y,
         })
         .collect();
-    let tracked_u64 = tracked.parse::<u64>().ok();
     // One card per map: several clusters on the same map read as duplicate
     // titles and crowd out rule habits — keep the deadliest cluster only.
     let mut seen_maps = std::collections::HashSet::new();
