@@ -13,11 +13,6 @@ use cf_parser::model::Side;
 use crate::config::CorpusCfg;
 use crate::types::{Category, EvidenceRef, Insight};
 
-/// cf-parser normalizes every demo to 64-tick (verified on real demos; see
-/// `cf-parser::extract::TICKRATE`). Evidence windows use the same 5 s
-/// pre-roll / 2 s post-roll as `evidence_around` elsewhere in cf-analysis.
-const TICKRATE: f32 = 64.0;
-
 const D6_DETECTOR_ID: &str = "D6_UNUSUAL_POSITIONING";
 /// §5 D6: this measures unusualness, not wrongness — severity/confidence
 /// are fixed, low-stakes constants, never scored as a hard rule violation.
@@ -320,6 +315,7 @@ pub fn d6_insights(
     map: &str,
     tracked: u64,
     total_rounds: u32,
+    tickrate: f32,
     _cfg: &CorpusCfg,
 ) -> Vec<Insight> {
     findings
@@ -335,8 +331,11 @@ pub fn d6_insights(
                 .take(D6_MAX_EVIDENCE)
                 .map(|(&round, &tick)| EvidenceRef {
                     round,
-                    tick_start: tick - (5.0 * TICKRATE) as i32,
-                    tick_end: tick + (2.0 * TICKRATE) as i32,
+                    // Same 5 s pre-roll / 2 s post-roll as evidence_around
+                    // elsewhere in cf-analysis; tickrate comes from the match
+                    // being analyzed, never a constant.
+                    tick_start: tick - (5.0 * tickrate) as i32,
+                    tick_end: tick + (2.0 * tickrate) as i32,
                     focus_players: vec![tracked],
                     camera_hint: camera_hint.clone(),
                 })
@@ -583,7 +582,7 @@ mod tests {
     fn d6_insights_fields_evidence_shape_and_camera_hint() {
         let c = cfg();
         let f = finding(vec![4, 9, 12], vec![5000, 9000, 15000]);
-        let insights = d6_insights(&[f], "de_mirage", 76561199228328773, 24, &c);
+        let insights = d6_insights(&[f], "de_mirage", 76561199228328773, 24, 64.0, &c);
         assert_eq!(insights.len(), 1);
         let ins = &insights[0];
 
@@ -619,7 +618,7 @@ mod tests {
         let rounds: Vec<u32> = (1..=10).collect();
         let ticks: Vec<i32> = (1..=10).map(|r| r * 1000).collect();
         let f = finding(rounds, ticks);
-        let insights = d6_insights(&[f], "de_mirage", 1, 24, &c);
+        let insights = d6_insights(&[f], "de_mirage", 1, 24, 64.0, &c);
         assert_eq!(insights[0].evidence.len(), 8);
         assert_eq!(
             insights[0].title_data["count"], 10,
@@ -641,8 +640,8 @@ mod tests {
         let f2 = unusual_positions(&moments, &[grid], "de_mirage", &c);
         assert_eq!(f1, f2);
 
-        let i1 = d6_insights(&f1, "de_mirage", 42, 30, &c);
-        let i2 = d6_insights(&f2, "de_mirage", 42, 30, &c);
+        let i1 = d6_insights(&f1, "de_mirage", 42, 30, 64.0, &c);
+        let i2 = d6_insights(&f2, "de_mirage", 42, 30, 64.0, &c);
         assert_eq!(i1, i2);
     }
 }
