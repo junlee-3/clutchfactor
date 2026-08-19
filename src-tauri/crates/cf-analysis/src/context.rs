@@ -35,7 +35,7 @@ pub struct AnalysisContext<'a> {
     hurts_by_victim: HashMap<u64, Vec<&'a Hurt>>,
     hurts_by_attacker: HashMap<u64, Vec<&'a Hurt>>,
     blinds_by_victim: HashMap<u64, Vec<&'a Blind>>,
-    inventories: HashMap<(i32, u64), &'a InventorySample>,
+    inventories: HashMap<u64, Vec<&'a InventorySample>>,
     sides: HashMap<(u32, u64), Side>,
 }
 
@@ -71,11 +71,13 @@ impl<'a> AnalysisContext<'a> {
         for b in &data.blinds {
             blinds_by_victim.entry(b.victim).or_default().push(b);
         }
-        let inventories = data
-            .inventories
-            .iter()
-            .map(|inv| ((inv.tick, inv.steamid), inv))
-            .collect();
+        let mut inventories: HashMap<u64, Vec<&InventorySample>> = HashMap::new();
+        for inv in &data.inventories {
+            inventories.entry(inv.steamid).or_default().push(inv);
+        }
+        for v in inventories.values_mut() {
+            v.sort_by_key(|i| i.tick);
+        }
         let mut sides = HashMap::new();
         for r in &data.rounds {
             for s in &r.ct_steamids {
@@ -260,8 +262,24 @@ impl<'a> AnalysisContext<'a> {
     }
 
     /// Exact-tick inventory sample (present only at death/round-end ticks).
+    /// Nearest inventory sample at-or-shortly-before `tick`. Samples exist
+    /// only at targeted ticks (deaths, ~0.25 s pre-death, round ends); the
+    /// half-second lookback covers the pre-death sample without ever reading
+    /// a different moment's inventory. At the death tick itself the victim's
+    /// items are already dropped — hence the pre-death sampling.
+    /// Empty samples are skipped: a living player always holds at least a
+    /// knife, so `[]` is the already-dropped-items death artifact (verified
+    /// on real demos — the death-tick sample is always empty).
     pub fn inventory_at(&self, steamid: u64, tick: i32) -> Option<&'a InventorySample> {
-        self.inventories.get(&(tick, steamid)).copied()
+        let max_back = (0.5 * self.data.tickrate) as i32;
+        let v = self.inventories.get(&steamid)?;
+        let idx = v.partition_point(|i| i.tick <= tick);
+        v[..idx]
+            .iter()
+            .rev()
+            .take_while(|i| tick - i.tick <= max_back)
+            .find(|i| !i.items.is_empty())
+            .copied()
     }
 
     pub fn kill_of(&self, victim: u64, round: u32) -> Option<&'a Kill> {

@@ -206,10 +206,14 @@ pub fn parse_match(
     // (the per-tick inventory prop is a StringVec — far too heavy for the full
     // tick table, tiny for ~200 targeted ticks).
     progress(ImportStage::Parsing, 0.85);
+    // Sample shortly BEFORE each death too: at the death tick itself the
+    // dying player's inventory is already dropped/cleared (verified on real
+    // demos — death-tick samples never show the victim's grenades).
+    let pre_death = (0.25 * TICKRATE) as i32;
     let mut wanted_ticks: Vec<i32> = data
         .kills
         .iter()
-        .map(|k| k.tick)
+        .flat_map(|k| [k.tick, k.tick - pre_death])
         .chain(data.rounds.iter().map(|r| r.end_tick))
         .collect();
     wanted_ticks.sort_unstable();

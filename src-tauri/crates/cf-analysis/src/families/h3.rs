@@ -149,7 +149,7 @@ impl Detector for H3UtilityVulnerability {
                             "H3_DIED_SCOPED_CLOSE",
                             0.8,
                             cfg.severity.h3_died_scoped_close,
-                            json!({ "nearest_enemy": enemy, "distance_u": dist }),
+                            json!({ "nearest_enemy": enemy.to_string(), "distance_u": dist }),
                         ));
                     }
                 }
@@ -541,7 +541,7 @@ mod tests {
     // ---- H3_WASTED_UTILITY ----
 
     #[test]
-    fn wasted_utility_fires_only_on_exact_death_tick_inventory() {
+    fn wasted_utility_uses_pre_death_inventory_sample() {
         // Inventory sample at the exact kill tick -> fires.
         let with_sample = base()
             .hold(TRACKED, 1000, 2000, 0.0, 0.0, 0.0)
@@ -573,13 +573,24 @@ mod tests {
             .collect();
         assert_eq!(held, vec!["Flashbang", "Smoke Grenade"]);
 
-        // Sample at a different tick -> silent (exact-tick lookup).
-        let wrong_tick = base()
+        // Pre-death sample shortly before the kill tick -> fires (the parser
+        // samples ~0.25 s pre-death because death-tick inventories are
+        // already dropped; inventory_at looks back ≤ 0.5 s).
+        let pre_death = base()
             .hold(TRACKED, 1000, 2000, 0.0, 0.0, 0.0)
             .kill(KILLER, TRACKED, 1, 2000, "ak47")
             .inventory(TRACKED, 1996, &["Flashbang"])
             .build();
-        let (flags, _) = run(&wrong_tick);
+        let (flags, _) = run(&pre_death);
+        assert!(ids(&flags).contains(&"H3_WASTED_UTILITY"));
+
+        // Sample far before the death (> 0.5 s) -> silent.
+        let stale = base()
+            .hold(TRACKED, 1000, 2000, 0.0, 0.0, 0.0)
+            .kill(KILLER, TRACKED, 1, 2000, "ak47")
+            .inventory(TRACKED, 1900, &["Flashbang"])
+            .build();
+        let (flags, _) = run(&stale);
         assert!(!ids(&flags).contains(&"H3_WASTED_UTILITY"));
 
         // Sample with no grenade items -> silent.
