@@ -1255,3 +1255,115 @@ body {
   color: var(--text-dim);
   text-align: center;
 }
+
+/* Trends screen (M6). Quiet instrument panel: the lines are the story. */
+.topnav-link-here {
+  color: var(--text);
+  pointer-events: none;
+}
+
+.map-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.trend-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 18px;
+}
+
+.ribbon-cell {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+.ribbon-note {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-left: 8px;
+}
+
+.trend-panel {
+  margin-bottom: 26px;
+}
+
+.trend-line-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.trend-line {
+  width: min(100%, 560px);
+  height: 72px;
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.trend-note {
+  color: var(--text-dim);
+  font-size: 12px;
+  margin-top: 6px;
+  max-width: 560px;
+}
+
+.trend-rules {
+  list-style: none;
+}
+
+.trend-rule-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) 220px 40px 1fr;
+  gap: 14px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.trend-rule-title {
+  font-size: 13px;
+}
+
+.trend-spark {
+  width: 220px;
+  height: 26px;
+}
+
+.trend-last {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  text-align: right;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+.trend-callout {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+@media (max-width: 860px) {
+  .trend-rule-row {
+    grid-template-columns: 1fr 40px;
+  }
+  .trend-spark {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .trend-callout {
+    grid-column: 1 / -1;
+  }
+}

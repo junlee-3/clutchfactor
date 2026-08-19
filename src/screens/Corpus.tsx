@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { TopNav } from "../components/TopNav";
 import { open } from "@tauri-apps/plugin-dialog";
 import { basename } from "../lib/basename";
 import type { ProgressEvent } from "../lib/ipc";
@@ -77,11 +77,7 @@ export function Corpus() {
     <div className="app-shell">
       <header className="topbar">
         <span className="wordmark">ClutchFactor</span>
-        <nav className="topnav">
-          <Link className="topnav-link" to="/">
-            Library
-          </Link>
-        </nav>
+        <TopNav />
       </header>
 
       <main className="content">
