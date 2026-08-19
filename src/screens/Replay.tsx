@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { KillFeed } from "../components/KillFeed";
@@ -296,24 +296,28 @@ function RoundPlayer({
     [d.tickrate, spec.endTick],
   );
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.code === "Space") {
-      e.preventDefault();
-      setPlaying(!playingRef.current);
-    } else if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
-      e.preventDefault();
-      const dir = e.code === "ArrowRight" ? 1 : -1;
-      const step = (e.shiftKey ? 10 : 2) * d.tickrate;
-      seek(tickRef.current + dir * step);
-    } else if (e.key === "1" || e.key === "2" || e.key === "3") {
-      setSpeed(SPEEDS[Number(e.key) - 1]);
-    }
-  };
+  // Window-scoped so transport works regardless of focus (round chips live
+  // outside this subtree; scrubber/buttons stay individually operable).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        e.preventDefault();
+        setPlaying(!playingRef.current);
+      } else if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
+        e.preventDefault();
+        const dir = e.code === "ArrowRight" ? 1 : -1;
+        const step = (e.shiftKey ? 10 : 2) * d.tickrate;
+        seek(tickRef.current + dir * step);
+      } else if (e.key === "1" || e.key === "2" || e.key === "3") {
+        setSpeed(SPEEDS[Number(e.key) - 1]);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [d.tickrate, seek, setPlaying, setSpeed]);
 
   return (
-    // Keyboard transport works anywhere inside the player (the scrubber and
-    // buttons remain individually focusable/operable).
-    <div className="replay-player" onKeyDown={onKeyDown} tabIndex={-1}>
+    <div className="replay-player">
       <header className="topbar">
         <Link to="/" className="back-link">
           ← Library

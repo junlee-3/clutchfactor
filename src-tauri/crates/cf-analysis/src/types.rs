@@ -92,3 +92,38 @@ pub struct AnalysisOutput {
     pub insights: Vec<Insight>,
     pub death_classes: Vec<DeathClassRow>,
 }
+
+/// Compact snapshot for golden tests (PROMPT.md §10.2): per-rule flag counts,
+/// the death-class distribution, and the class-13 share — the spec's CI
+/// regression metric (a jump after a rule change means a classifier above 13
+/// broke).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct AnalysisGolden {
+    pub deaths: usize,
+    pub rules: std::collections::BTreeMap<String, usize>,
+    pub classes: std::collections::BTreeMap<u8, usize>,
+    pub class_13_share_pct: f32,
+    pub insights: usize,
+}
+
+impl AnalysisGolden {
+    pub fn from_output(out: &AnalysisOutput) -> Self {
+        let mut rules = std::collections::BTreeMap::new();
+        for f in &out.flags {
+            *rules.entry(f.rule_id.to_string()).or_default() += 1;
+        }
+        let mut classes = std::collections::BTreeMap::new();
+        for d in &out.death_classes {
+            *classes.entry(d.class_id).or_default() += 1;
+        }
+        AnalysisGolden {
+            deaths: out.death_classes.len(),
+            rules,
+            classes,
+            class_13_share_pct: (crate::classify::class_13_share(&out.death_classes) * 1000.0)
+                .round()
+                / 10.0,
+            insights: out.insights.len(),
+        }
+    }
+}

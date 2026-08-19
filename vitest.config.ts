@@ -4,5 +4,6 @@ export default defineConfig({
   test: {
     environment: "node",
     passWithNoTests: true, // first logic-bearing components land in M1
+    exclude: ["**/node_modules/**", ".claude/**"],
   },
 });

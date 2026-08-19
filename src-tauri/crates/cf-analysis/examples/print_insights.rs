@@ -41,6 +41,11 @@ fn main() {
         .position(|a| a == "--json")
         .and_then(|i| args.get(i + 1))
         .map(PathBuf::from);
+    let golden_out = args
+        .iter()
+        .position(|a| a == "--golden")
+        .and_then(|i| args.get(i + 1))
+        .map(PathBuf::from);
 
     let mut progress = |_s: cf_parser::extract::ImportStage, _p: f32| {};
     let data = parse_match(&demo, 4, &mut progress).expect("parse failed");
@@ -116,5 +121,10 @@ fn main() {
     if let Some(p) = json_out {
         std::fs::write(&p, serde_json::to_string_pretty(&out).unwrap()).unwrap();
         println!("\nanalysis json written: {}", p.display());
+    }
+    if let Some(p) = golden_out {
+        let golden = cf_analysis::types::AnalysisGolden::from_output(&out);
+        std::fs::write(&p, serde_json::to_string_pretty(&golden).unwrap()).unwrap();
+        println!("golden written: {}", p.display());
     }
 }

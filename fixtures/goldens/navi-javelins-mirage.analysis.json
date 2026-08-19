@@ -1,0 +1,21 @@
+{
+  "deaths": 16,
+  "rules": {
+    "H16_FIRE_LINGER": 2,
+    "H2_FAILED_TRADE": 3,
+    "H2_ISOLATED_DEATH": 7,
+    "H3_DIED_WITH_NADE_OUT": 1,
+    "H3_WASTED_UTILITY": 7,
+    "H4_KILLED_WITHOUT_CONTACT": 6,
+    "H6_FLASH_SELF_OR_TEAM": 5,
+    "H6_UNUSED_UTIL_AT_ROUND_END": 2
+  },
+  "classes": {
+    "1": 1,
+    "5": 6,
+    "6": 3,
+    "13": 6
+  },
+  "class_13_share_pct": 37.5,
+  "insights": 6
+}
