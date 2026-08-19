@@ -87,8 +87,8 @@ export function Library() {
                 <li key={m.id}>
                   <button
                     className={`match-row outcome-${outcome}`}
-                    onClick={() => navigate(`/replay/${m.id}`)}
-                    title="Open replay"
+                    onClick={() => navigate(`/report/${m.id}`)}
+                    title="Open match report"
                   >
                   <span className="map">{row.mapLabel}</span>
                   <span className="score">
