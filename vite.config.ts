@@ -8,6 +8,10 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
 
+  // Static assets (radar images + calibration) live in assets/ per the
+  // repo layout spec; served at e.g. /maps/de_mirage.png (ADR-0004).
+  publicDir: "assets",
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

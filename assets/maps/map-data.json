@@ -1,0 +1,106 @@
+{
+  "ar_baggage": {
+    "lower_level_max_units": -5.0,
+    "pos_x": -1316,
+    "pos_y": 1288,
+    "rotate": 1,
+    "scale": 2.539062,
+    "zoom": 1.3
+  },
+  "ar_shoots": {
+    "lower_level_max_units": -1000000.0,
+    "pos_x": -1368,
+    "pos_y": 1952,
+    "rotate": null,
+    "scale": 2.6875,
+    "zoom": null
+  },
+  "cs_italy": {
+    "lower_level_max_units": -1000000.0,
+    "pos_x": -2647,
+    "pos_y": 2592,
+    "rotate": 1,
+    "scale": 4.6,
+    "zoom": 1.5
+  },
+  "cs_office": {
+    "lower_level_max_units": -1000000.0,
+    "pos_x": -1838,
+    "pos_y": 1858,
+    "rotate": null,
+    "scale": 4.1,
+    "zoom": null
+  },
+  "de_ancient": {
+    "lower_level_max_units": -1000000.0,
+    "pos_x": -2953,
+    "pos_y": 2164,
+    "rotate": 0,
+    "scale": 5.0,
+    "zoom": 0.0
+  },
+  "de_anubis": {
+    "lower_level_max_units": -1000000.0,
+    "pos_x": -2796,
+    "pos_y": 3328,
+    "rotate": null,
+    "scale": 5.22,
+    "zoom": null
+  },
+  "de_dust2": {
+    "lower_level_max_units": -1000000.0,
+    "pos_x": -2476,
+    "pos_y": 3239,
+    "rotate": 1,
+    "scale": 4.4,
+    "zoom": 1.1
+  },
+  "de_inferno": {
+    "lower_level_max_units": -1000000.0,
+    "pos_x": -2087,
+    "pos_y": 3870,
+    "rotate": null,
+    "scale": 4.9,
+    "zoom": null
+  },
+  "de_mirage": {
+    "lower_level_max_units": -1000000.0,
+    "pos_x": -3230,
+    "pos_y": 1713,
+    "rotate": 0,
+    "scale": 5.0,
+    "zoom": 0.0
+  },
+  "de_nuke": {
+    "lower_level_max_units": -495.0,
+    "pos_x": -3453,
+    "pos_y": 2887,
+    "rotate": null,
+    "scale": 7.0,
+    "zoom": null
+  },
+  "de_overpass": {
+    "lower_level_max_units": -1000000.0,
+    "pos_x": -4831,
+    "pos_y": 1781,
+    "rotate": 0,
+    "scale": 5.2,
+    "zoom": 0.0
+  },
+  "de_train": {
+    "lower_level_max_units": -50.0,
+    "pos_x": -2308,
+    "pos_y": 2078,
+    "rotate": null,
+    "scale": 4.082077,
+    "zoom": null
+  },
+  "de_vertigo": {
+    "lower_level_max_units": 11700.0,
+    "pos_x": -3168,
+    "pos_y": 1762,
+    "rotate": null,
+    "scale": 4.0,
+    "zoom": null
+  }
+}
