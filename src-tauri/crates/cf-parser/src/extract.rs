@@ -48,6 +48,7 @@ const WANTED_EVENTS: &[&str] = &[
     "player_blind",
     "flashbang_detonate",
     "smokegrenade_detonate",
+    "smokegrenade_expired",
     "hegrenade_detonate",
     "inferno_startburn",
     "inferno_expire",
@@ -343,12 +344,14 @@ fn extract_events(
             }
             "flashbang_detonate"
             | "smokegrenade_detonate"
+            | "smokegrenade_expired"
             | "hegrenade_detonate"
             | "inferno_startburn"
             | "inferno_expire" => {
                 let kind = match ev.name.as_str() {
                     "flashbang_detonate" => "flashbang",
                     "smokegrenade_detonate" => "smoke",
+                    "smokegrenade_expired" => "smoke_expired",
                     "hegrenade_detonate" => "he",
                     "inferno_startburn" => "molotov_start",
                     _ => "molotov_expire",
