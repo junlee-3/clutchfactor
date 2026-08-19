@@ -43,24 +43,24 @@ fn main() {
     let output = parser.parse_demo(&mmap).expect("parse");
 
     for name in &events {
-        let mut count = 0usize;
         let total = output
             .game_events
             .iter()
             .filter(|e| &e.name == name)
             .count();
         println!("== {name} (total {total}) ==");
-        for ev in output.game_events.iter().filter(|e| &e.name == name) {
-            if count >= n {
-                break;
-            }
+        for ev in output
+            .game_events
+            .iter()
+            .filter(|e| &e.name == name)
+            .take(n)
+        {
             let fields: Vec<String> = ev
                 .fields
                 .iter()
                 .map(|f| format!("{}={:?}", f.name, f.data))
                 .collect();
             println!("[{:>7}] {}", ev.tick, fields.join(" "));
-            count += 1;
         }
     }
 }

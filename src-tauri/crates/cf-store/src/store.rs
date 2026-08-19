@@ -816,11 +816,11 @@ mod tests {
         let path = dir.path().join("test.db");
         {
             let store = Store::open(&path).unwrap();
-            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 1);
+            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 2);
         }
         // Reopen: migrations must not re-apply / error.
         let store = Store::open(&path).unwrap();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 1);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 2);
     }
 
     #[test]
