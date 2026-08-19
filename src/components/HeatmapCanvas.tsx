@@ -24,6 +24,12 @@ export function HeatmapCanvas({ grid, map }: Props) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Guards against a stale, still-pending image load from a previous
+    // run of this effect (rapid grid/map switching can leave an older,
+    // slower-loading image racing a newer one) — without this, a late
+    // onload could clearRect + draw with the OLD grid over the current one.
+    let stale = false;
+
     const drawCells = () => {
       const max = gridMax(grid.counts);
       for (let index = 0; index < grid.counts.length; index++) {
@@ -40,11 +46,16 @@ export function HeatmapCanvas({ grid, map }: Props) {
     // even for a cached image (per the HTML spec) — one draw path suffices.
     const image = new Image();
     image.onload = () => {
+      if (stale) return;
       ctx.clearRect(0, 0, CANVAS_PX, CANVAS_PX);
       ctx.drawImage(image, 0, 0, CANVAS_PX, CANVAS_PX);
       drawCells();
     };
     image.src = radarImageUrl(map, "upper");
+
+    return () => {
+      stale = true;
+    };
   }, [grid, map]);
 
   if (!grid || grid.demos === 0) {
