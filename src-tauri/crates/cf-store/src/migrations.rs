@@ -6,6 +6,7 @@ use rusqlite::Connection;
 const MIGRATIONS: &[(i64, &str)] = &[
     (1, include_str!("../migrations/0001_schema_v1.sql")),
     (2, include_str!("../migrations/0002_analysis.sql")),
+    (3, include_str!("../migrations/0003_flag_evidence.sql")),
 ];
 
 pub fn migrate(conn: &mut Connection) -> Result<(), rusqlite::Error> {

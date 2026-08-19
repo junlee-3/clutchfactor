@@ -137,6 +137,35 @@ pub struct InsightRow {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct RuleMatchCount {
+    pub match_id: i64,
+    pub map: String,
+    pub imported_at: String,
+    pub count: u32,
+    pub first_evidence_json: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct DeathPos {
+    pub match_id: i64,
+    pub map: String,
+    pub round: u32,
+    pub tick: i32,
+    pub x: f32,
+    pub y: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct RoundStat {
+    pub number: u32,
+    pub freeze_end_tick: Option<i32>,
+    pub winner: String,
+    pub tracked_side: Option<String>,
+    pub kills: u32,
+    pub deaths: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct DeathClassDbRow {
     pub round: u32,
     pub tick: i32,
@@ -494,8 +523,8 @@ impl Store {
         {
             let mut st = tx.prepare(
                 "INSERT INTO rule_flags (match_id, rule_id, round, tick, steamid, confidence,
-                                         severity, details_json)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                                         severity, details_json, evidence_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             )?;
             for f in &out.flags {
                 st.execute(params![
@@ -507,6 +536,7 @@ impl Store {
                     f.confidence,
                     f.severity,
                     f.details.to_string(),
+                    serde_json::to_string(&f.evidence).expect("flag evidence json"),
                 ])?;
             }
             let mut st = tx.prepare(
@@ -548,6 +578,110 @@ impl Store {
         }
         tx.commit()?;
         Ok(())
+    }
+
+    /// Per-match flag counts for one rule for the tracked player, newest
+    /// match first, capped to `window` matches (§5A habit promotion input).
+    pub fn rule_counts_across_matches(
+        &self,
+        tracked: &str,
+        rule_id: &str,
+        window: usize,
+    ) -> Result<Vec<RuleMatchCount>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT m.id, m.map, m.imported_at,
+                    (SELECT COUNT(*) FROM rule_flags f
+                      WHERE f.match_id = m.id AND f.rule_id = ?2 AND f.steamid = ?1),
+                    (SELECT f.evidence_json FROM rule_flags f
+                      WHERE f.match_id = m.id AND f.rule_id = ?2 AND f.steamid = ?1
+                      ORDER BY f.tick LIMIT 1)
+             FROM matches m
+             ORDER BY m.imported_at DESC, m.id DESC
+             LIMIT ?3",
+        )?;
+        let rows = st
+            .query_map(params![tracked, rule_id, window as i64], |r| {
+                Ok(RuleMatchCount {
+                    match_id: r.get(0)?,
+                    map: r.get(1)?,
+                    imported_at: r.get(2)?,
+                    count: r.get(3)?,
+                    first_evidence_json: r.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Tracked player's death positions per map across all matches (from the
+    /// nearest tick sample at or before each kill).
+    pub fn death_positions(&self, tracked: &str) -> Result<Vec<DeathPos>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT k.match_id, m.map, k.round, k.tick, t.x, t.y
+             FROM kills k
+             JOIN matches m ON m.id = k.match_id
+             JOIN tick_samples t ON t.match_id = k.match_id AND t.steamid = k.victim
+              AND t.tick = (SELECT MAX(tick) FROM tick_samples
+                             WHERE match_id = k.match_id AND steamid = k.victim
+                               AND tick <= k.tick)
+             WHERE k.victim = ?1
+             ORDER BY k.match_id, k.tick",
+        )?;
+        let rows = st
+            .query_map([tracked], |r| {
+                Ok(DeathPos {
+                    match_id: r.get(0)?,
+                    map: r.get(1)?,
+                    round: r.get(2)?,
+                    tick: r.get(3)?,
+                    x: r.get(4)?,
+                    y: r.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Distinct rule ids that ever flagged for the tracked player.
+    pub fn flagged_rule_ids(&self, tracked: &str) -> Result<Vec<String>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT DISTINCT rule_id FROM rule_flags WHERE steamid = ?1 ORDER BY rule_id",
+        )?;
+        let rows = st
+            .query_map([tracked], |r| r.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Per-round tracked K/D + winner for the report's timeline strip.
+    pub fn per_round_stats(
+        &self,
+        match_id: i64,
+        tracked: &str,
+    ) -> Result<Vec<RoundStat>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT r.number, r.freeze_end_tick, r.winner,
+                    (SELECT side FROM round_sides
+                      WHERE match_id = r.match_id AND number = r.number AND steamid = ?2),
+                    (SELECT COUNT(*) FROM kills k WHERE k.match_id = r.match_id
+                      AND k.round = r.number AND k.attacker = ?2 AND k.victim != ?2),
+                    (SELECT COUNT(*) FROM kills k WHERE k.match_id = r.match_id
+                      AND k.round = r.number AND k.victim = ?2)
+             FROM rounds r WHERE r.match_id = ?1 ORDER BY r.number",
+        )?;
+        let rows = st
+            .query_map(params![match_id, tracked], |r| {
+                Ok(RoundStat {
+                    number: r.get(0)?,
+                    freeze_end_tick: r.get(1)?,
+                    winner: r.get(2)?,
+                    tracked_side: r.get(3)?,
+                    kills: r.get(4)?,
+                    deaths: r.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     /// Insight rows for a match, JSON fields as raw strings (UI decodes).
@@ -959,11 +1093,11 @@ mod tests {
         let path = dir.path().join("test.db");
         {
             let store = Store::open(&path).unwrap();
-            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 2);
+            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 3);
         }
         // Reopen: migrations must not re-apply / error.
         let store = Store::open(&path).unwrap();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 2);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 3);
     }
 
     #[test]
@@ -1133,9 +1267,94 @@ mod tests {
     }
 
     #[test]
+    fn cross_demo_queries_aggregate_flags_positions_and_rounds() {
+        use cf_analysis::{AnalysisOutput, EvidenceRef, RuleFlag};
+        let (_dir, mut store) = open_tmp();
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 3);
+        store.set_setting("tracked_steamid", "1").unwrap();
+        let flag = |round: u32, tick: i32| RuleFlag {
+            rule_id: "H2_ISOLATED_DEATH",
+            round,
+            tick,
+            steamid: 1,
+            confidence: 0.75,
+            severity: 0.8,
+            details: serde_json::json!({}),
+            evidence: EvidenceRef {
+                round,
+                tick_start: tick - 320,
+                tick_end: tick + 128,
+                focus_players: vec![1],
+                camera_hint: None,
+            },
+        };
+        let m1 = store.save_match("m1.dem", "h1", &sample_match()).unwrap();
+        store
+            .save_analysis(
+                m1,
+                &AnalysisOutput {
+                    flags: vec![flag(1, 1200), flag(2, 2200)],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let m2 = store.save_match("m2.dem", "h2", &sample_match()).unwrap();
+        store
+            .save_analysis(
+                m2,
+                &AnalysisOutput {
+                    flags: vec![flag(1, 1300)],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let counts = store
+            .rule_counts_across_matches("1", "H2_ISOLATED_DEATH", 10)
+            .unwrap();
+        assert_eq!(counts.len(), 2);
+        assert_eq!(counts[0].match_id, m2, "newest first");
+        assert_eq!(counts[0].count, 1);
+        assert_eq!(counts[1].count, 2);
+        assert!(counts[1]
+            .first_evidence_json
+            .as_deref()
+            .unwrap()
+            .contains("\"round\":1"));
+        // Window truncation.
+        assert_eq!(
+            store
+                .rule_counts_across_matches("1", "H2_ISOLATED_DEATH", 1)
+                .unwrap()
+                .len(),
+            1
+        );
+
+        let ids = store.flagged_rule_ids("1").unwrap();
+        assert_eq!(ids, vec!["H2_ISOLATED_DEATH".to_string()]);
+
+        // Death positions: sample_match kills player 1 at tick 2200 (round 2);
+        // nearest sample at 2100 has x=100, y=-50.
+        let pos = store.death_positions("1").unwrap();
+        assert_eq!(pos.len(), 2, "one death per saved match");
+        assert_eq!(pos[0].x, 100.0);
+        assert_eq!(pos[0].y, -50.0);
+        assert_eq!(pos[0].map, "de_mirage");
+
+        let stats = store.per_round_stats(m1, "1").unwrap();
+        assert_eq!(stats.len(), 3);
+        assert_eq!(stats[0].winner, "CT");
+        assert_eq!(stats[0].tracked_side.as_deref(), Some("CT"));
+        assert_eq!(stats[0].kills, 2);
+        assert_eq!(stats[0].deaths, 0);
+        assert_eq!(stats[1].deaths, 1);
+        assert_eq!(stats[0].freeze_end_tick, Some(1100));
+    }
+
+    #[test]
     fn migration_2_analysis_tables_and_rule_inputs_persist() {
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 2);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 3);
         let id = store.save_match("m1.dem", "h1", &sample_match()).unwrap();
         let q = |sql: &str| -> u32 { store.conn.query_row(sql, [id], |r| r.get(0)).unwrap() };
         assert_eq!(q("SELECT COUNT(*) FROM shots WHERE match_id = ?1"), 1);
