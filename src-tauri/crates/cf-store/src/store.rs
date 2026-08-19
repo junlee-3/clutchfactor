@@ -204,6 +204,39 @@ pub struct CorpusMapCount {
     pub demos: u32,
 }
 
+/// One cached occupancy grid; `counts` is decoded from the LE-u32 row-major
+/// blob (migration 5). Side/phase are strings at the DB boundary — commands
+/// map them to/from `cf_analysis::corpus` enums.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct GridRow {
+    pub map: String,
+    pub side: String,
+    pub phase: String,
+    pub size: usize,
+    pub counts: Vec<u32>,
+    pub demos: u32,
+    pub samples: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct GridStatus {
+    pub map: String,
+    pub side: String,
+    pub phase: String,
+    pub demos: u32,
+    pub samples: u64,
+    pub built_at: String,
+}
+
+/// A player's most recent sampled position at or before some tick.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayerPos {
+    pub steamid: String,
+    pub x: f32,
+    pub y: f32,
+    pub alive: bool,
+}
+
 pub struct Store {
     conn: Connection,
 }
@@ -213,6 +246,20 @@ fn side_str(s: Side) -> &'static str {
         Side::Ct => "CT",
         Side::T => "T",
     }
+}
+
+fn counts_to_blob(counts: &[u32]) -> Vec<u8> {
+    let mut b = Vec::with_capacity(counts.len() * 4);
+    for c in counts {
+        b.extend_from_slice(&c.to_le_bytes());
+    }
+    b
+}
+
+fn blob_to_counts(blob: &[u8]) -> Vec<u32> {
+    blob.chunks_exact(4)
+        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
 }
 
 fn reason_str(r: &RoundEndReason) -> String {
@@ -812,6 +859,186 @@ impl Store {
         Ok(rows)
     }
 
+    /// Ids of corpus-kind matches on one map, oldest first.
+    pub fn corpus_match_ids(&self, map: &str) -> Result<Vec<i64>, StoreError> {
+        let mut st = self
+            .conn
+            .prepare("SELECT id FROM matches WHERE kind = 'corpus' AND map = ?1 ORDER BY id")?;
+        let rows = st
+            .query_map([map], |r| r.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Lean per-match round list (corpus phase sampling — match_detail is
+    /// too heavy to load per corpus demo).
+    pub fn rounds_for_match(&self, id: i64) -> Result<Vec<RoundInfo>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT number, start_tick, freeze_end_tick, end_tick, officially_ended_tick,
+                    winner, reason
+             FROM rounds WHERE match_id = ?1 ORDER BY number",
+        )?;
+        let rows = st
+            .query_map([id], |r| {
+                Ok(RoundInfo {
+                    number: r.get(0)?,
+                    start_tick: r.get(1)?,
+                    freeze_end_tick: r.get(2)?,
+                    end_tick: r.get(3)?,
+                    officially_ended_tick: r.get(4)?,
+                    winner: r.get(5)?,
+                    reason: r.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// First "planted" bomb event inside the round's tick span, if any.
+    pub fn bomb_plant_tick(&self, id: i64, round: u32) -> Result<Option<i32>, StoreError> {
+        let v = self.conn.query_row(
+            "SELECT MIN(be.tick) FROM bomb_events be
+             JOIN rounds r ON r.match_id = be.match_id AND r.number = ?2
+             WHERE be.match_id = ?1 AND be.kind = 'planted'
+               AND be.tick BETWEEN r.start_tick AND r.end_tick",
+            params![id, round],
+            |r| r.get::<_, Option<i32>>(0),
+        )?;
+        Ok(v)
+    }
+
+    /// Every player's most recent sample at or before `tick` (players with
+    /// no sample yet are absent).
+    pub fn positions_at(&self, id: i64, tick: i32) -> Result<Vec<PlayerPos>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT ts.steamid, ts.x, ts.y, ts.is_alive
+             FROM tick_samples ts
+             WHERE ts.match_id = ?1
+               AND ts.tick = (SELECT MAX(t2.tick) FROM tick_samples t2
+                              WHERE t2.match_id = ?1 AND t2.steamid = ts.steamid
+                                AND t2.tick <= ?2)
+             ORDER BY ts.steamid",
+        )?;
+        let rows = st
+            .query_map(params![id, tick], |r| {
+                Ok(PlayerPos {
+                    steamid: r.get(0)?,
+                    x: r.get::<_, f64>(1)? as f32,
+                    y: r.get::<_, f64>(2)? as f32,
+                    alive: r.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Upserts grid rows in one transaction; counts stored as an LE-u32
+    /// row-major blob.
+    pub fn save_grids(&mut self, grids: &[GridRow]) -> Result<(), StoreError> {
+        let tx = self.conn.transaction()?;
+        {
+            let mut st = tx.prepare(
+                "INSERT INTO corpus_grids (map, side, phase, size, counts, demos, samples, built_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))
+                 ON CONFLICT(map, side, phase) DO UPDATE SET
+                   size = excluded.size, counts = excluded.counts, demos = excluded.demos,
+                   samples = excluded.samples, built_at = excluded.built_at",
+            )?;
+            for g in grids {
+                st.execute(params![
+                    g.map,
+                    g.side,
+                    g.phase,
+                    g.size as i64,
+                    counts_to_blob(&g.counts),
+                    g.demos,
+                    g.samples as i64,
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn load_grids(&self, map: &str) -> Result<Vec<GridRow>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT map, side, phase, size, counts, demos, samples
+             FROM corpus_grids WHERE map = ?1 ORDER BY side, phase",
+        )?;
+        let rows = st
+            .query_map([map], |r| {
+                Ok(GridRow {
+                    map: r.get(0)?,
+                    side: r.get(1)?,
+                    phase: r.get(2)?,
+                    size: r.get::<_, i64>(3)? as usize,
+                    counts: blob_to_counts(&r.get::<_, Vec<u8>>(4)?),
+                    demos: r.get(5)?,
+                    samples: r.get::<_, i64>(6)? as u64,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn grid_status(&self) -> Result<Vec<GridStatus>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT map, side, phase, demos, samples, built_at
+             FROM corpus_grids ORDER BY map, side, phase",
+        )?;
+        let rows = st
+            .query_map([], |r| {
+                Ok(GridStatus {
+                    map: r.get(0)?,
+                    side: r.get(1)?,
+                    phase: r.get(2)?,
+                    demos: r.get(3)?,
+                    samples: r.get::<_, i64>(4)? as u64,
+                    built_at: r.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Replaces one detector's insights for a match (D6 re-analysis after a
+    /// corpus rebuild) without touching other analysis rows.
+    pub fn replace_detector_insights(
+        &mut self,
+        match_id: i64,
+        detector: &str,
+        insights: &[cf_analysis::Insight],
+    ) -> Result<(), StoreError> {
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "DELETE FROM insights WHERE match_id = ?1 AND detector = ?2",
+            params![match_id, detector],
+        )?;
+        {
+            let mut st = tx.prepare(
+                "INSERT INTO insights (match_id, detector, category, severity, confidence, round,
+                                       player, title_data_json, metrics_json, evidence_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            )?;
+            for i in insights {
+                st.execute(params![
+                    match_id,
+                    i.detector,
+                    i.category.as_str(),
+                    i.severity,
+                    i.confidence,
+                    i.round,
+                    i.player.to_string(),
+                    i.title_data.to_string(),
+                    i.metrics.to_string(),
+                    serde_json::to_string(&i.evidence).expect("evidence json"),
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn get_setting(&self, key: &str) -> Result<Option<String>, StoreError> {
         let v = self
             .conn
@@ -1173,11 +1400,11 @@ mod tests {
         let path = dir.path().join("test.db");
         {
             let store = Store::open(&path).unwrap();
-            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 4);
+            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 5);
         }
         // Reopen: migrations must not re-apply / error.
         let store = Store::open(&path).unwrap();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 4);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 5);
     }
 
     #[test]
@@ -1360,7 +1587,7 @@ mod tests {
     fn cross_demo_queries_aggregate_flags_positions_and_rounds() {
         use cf_analysis::{AnalysisOutput, EvidenceRef, RuleFlag};
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 4);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 5);
         store.set_setting("tracked_steamid", "1").unwrap();
         let flag = |round: u32, tick: i32| RuleFlag {
             rule_id: "H2_ISOLATED_DEATH",
@@ -1508,7 +1735,7 @@ mod tests {
     #[test]
     fn migration_2_analysis_tables_and_rule_inputs_persist() {
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 4);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 5);
         let id = store
             .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
             .unwrap();
@@ -1620,5 +1847,152 @@ mod tests {
             )
             .unwrap();
         assert_eq!(n, 3);
+    }
+
+    #[test]
+    fn grid_blob_roundtrip_and_upsert() {
+        let (_dir, mut store) = open_tmp();
+        let g = GridRow {
+            map: "de_mirage".into(),
+            side: "CT".into(),
+            phase: "early".into(),
+            size: 2,
+            counts: vec![0, 1, 7, u32::MAX],
+            demos: 8,
+            samples: 4321,
+        };
+        store.save_grids(std::slice::from_ref(&g)).unwrap();
+        let loaded = store.load_grids("de_mirage").unwrap();
+        assert_eq!(loaded, vec![g.clone()]);
+        // Upsert replaces, not duplicates.
+        let g2 = GridRow {
+            counts: vec![9, 9, 9, 9],
+            demos: 9,
+            samples: 5000,
+            ..g
+        };
+        store.save_grids(std::slice::from_ref(&g2)).unwrap();
+        let loaded = store.load_grids("de_mirage").unwrap();
+        assert_eq!(loaded, vec![g2]);
+        assert!(store.load_grids("de_dust2").unwrap().is_empty());
+        let status = store.grid_status().unwrap();
+        assert_eq!(status.len(), 1);
+        assert_eq!(
+            (status[0].demos, status[0].samples),
+            (9, 5000),
+            "status mirrors the upserted row"
+        );
+        assert!(!status[0].built_at.is_empty());
+    }
+
+    #[test]
+    fn positions_at_takes_nearest_sample_at_or_before_tick() {
+        let (_dir, mut store) = open_tmp();
+        // sample_match ticks: (1100, sid 1), (1100, sid 3), (2100, sid 1).
+        let id = store
+            .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
+            .unwrap();
+        let at_1150 = store.positions_at(id, 1150).unwrap();
+        assert_eq!(
+            at_1150
+                .iter()
+                .map(|p| p.steamid.as_str())
+                .collect::<Vec<_>>(),
+            vec!["1", "3"]
+        );
+        assert!(at_1150
+            .iter()
+            .all(|p| p.alive && p.x == 100.0 && p.y == -50.0));
+        // Later tick: sid 1 advances to its 2100 sample, sid 3 keeps 1100.
+        assert_eq!(store.positions_at(id, 2150).unwrap().len(), 2);
+        // Before any sample: nobody has a position yet.
+        assert!(store.positions_at(id, 1000).unwrap().is_empty());
+    }
+
+    #[test]
+    fn bomb_plant_tick_scoped_to_round() {
+        let (_dir, mut store) = open_tmp();
+        let mut md = sample_match();
+        // Round 2 spans ticks 2000..2900 (see round()).
+        md.bomb_events.push(cf_parser::model::BombEvent {
+            tick: 2400,
+            kind: "planted".into(),
+            player: Some(3),
+        });
+        let id = store
+            .save_match("m1.dem", "h1", MatchKind::Own, &md)
+            .unwrap();
+        assert_eq!(store.bomb_plant_tick(id, 2).unwrap(), Some(2400));
+        assert_eq!(store.bomb_plant_tick(id, 1).unwrap(), None);
+    }
+
+    #[test]
+    fn corpus_match_ids_and_lean_rounds() {
+        let (_dir, mut store) = open_tmp();
+        store
+            .save_match("own.dem", "h1", MatchKind::Own, &sample_match())
+            .unwrap();
+        let c1 = store
+            .save_match("pro1.dem", "h2", MatchKind::Corpus, &sample_match())
+            .unwrap();
+        let mut other = sample_match();
+        other.map = "de_dust2".into();
+        store
+            .save_match("pro2.dem", "h3", MatchKind::Corpus, &other)
+            .unwrap();
+        assert_eq!(store.corpus_match_ids("de_mirage").unwrap(), vec![c1]);
+        let rounds = store.rounds_for_match(c1).unwrap();
+        assert_eq!(rounds.len(), 3);
+        assert_eq!(rounds[0].number, 1);
+        assert_eq!(rounds[0].winner, "CT");
+        assert_eq!(rounds[0].freeze_end_tick, Some(1100));
+    }
+
+    #[test]
+    fn replace_detector_insights_leaves_other_detectors_alone() {
+        use cf_analysis::{Category, Insight};
+        let (_dir, mut store) = open_tmp();
+        let id = store
+            .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
+            .unwrap();
+        let mk = |detector: &str| Insight {
+            detector: detector.into(),
+            category: Category::Positioning,
+            severity: 0.5,
+            confidence: 0.6,
+            round: 0,
+            player: 1,
+            title_data: serde_json::json!({}),
+            metrics: serde_json::json!({}),
+            evidence: vec![],
+        };
+        store
+            .replace_detector_insights(id, "OTHER_DETECTOR", &[mk("OTHER_DETECTOR")])
+            .unwrap();
+        store
+            .replace_detector_insights(
+                id,
+                "D6_UNUSUAL_POSITIONING",
+                &[mk("D6_UNUSUAL_POSITIONING"), mk("D6_UNUSUAL_POSITIONING")],
+            )
+            .unwrap();
+        // Re-running replaces D6 rows without duplicating or touching others.
+        store
+            .replace_detector_insights(
+                id,
+                "D6_UNUSUAL_POSITIONING",
+                &[mk("D6_UNUSUAL_POSITIONING")],
+            )
+            .unwrap();
+        let insights = store.insights_for_match(id).unwrap();
+        let d6 = insights
+            .iter()
+            .filter(|i| i.detector == "D6_UNUSUAL_POSITIONING")
+            .count();
+        let other = insights
+            .iter()
+            .filter(|i| i.detector == "OTHER_DETECTOR")
+            .count();
+        assert_eq!((d6, other), (1, 1));
     }
 }
