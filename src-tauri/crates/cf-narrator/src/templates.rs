@@ -40,6 +40,7 @@ pub(crate) fn narrate(insight: &Insight, ctx: &MatchContext) -> Narration {
         "H6_DEAD_TIME_SMOKE" => dead_time_smoke(&f),
         "D4_ENTRY_PROFILE" => entry_profile(&f),
         "D5_TIMING" => timing(&f),
+        "D6_UNUSUAL_POSITIONING" => unusual_positioning(&f),
         other => fallback(other, &f),
     }
 }
@@ -675,6 +676,46 @@ fn timing(f: &Facts) -> Narration {
             _ => "Round timing".to_string(),
         },
         body: format!("{opener}. {coach}"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// D6 — positioning vs the reference corpus. Honesty rule (spec §5): this
+// measures unusualness, never wrongness, so the wording must never scold.
+// ---------------------------------------------------------------------------
+
+fn unusual_positioning(f: &Facts) -> Narration {
+    let count = f.int("count");
+    let side = f.text("side");
+    let phase = f.text("phase").map(|p| match p {
+        "freeze_end" => "freeze end",
+        "early" => "the early push",
+        "mid" => "mid-round",
+        "post_plant" => "post-plant",
+        other => other,
+    });
+    let title = match (side, count) {
+        (Some(s), Some(n)) => format!("Unusual {s}-side positioning — {}", plural(n, "round")),
+        (Some(s), None) => format!("Unusual {s}-side positioning"),
+        (None, Some(n)) => format!("Unusual positioning — {}", plural(n, "round")),
+        (None, None) => "Unusual positioning".to_string(),
+    };
+    let spot = match (phase, side) {
+        (Some(p), Some(s)) => format!("the spot you took at {p} on {s}"),
+        (Some(p), None) => format!("the spot you took at {p}"),
+        (None, Some(s)) => format!("the spot you took on {s}"),
+        (None, None) => "the spots you took".to_string(),
+    };
+    let count_clause = match count {
+        Some(n) => format!(" — {} this match", plural(n, "round")),
+        None => String::new(),
+    };
+    Narration {
+        title,
+        body: format!(
+            "Reference players rarely hold {spot}{count_clause}. This measures unusual, not \
+             wrong: check the heatmap for where they set up instead."
+        ),
     }
 }
 

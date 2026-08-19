@@ -213,6 +213,46 @@ mod tests {
         assert!(!n.body.to_lowercase().contains("your fault"));
     }
 
+    // ---- D6 -------------------------------------------------------------
+
+    #[test]
+    fn d6_positioning_exact_honest_and_blame_free() {
+        let n = say(&ins(
+            "D6_UNUSUAL_POSITIONING",
+            json!({ "phase": "mid", "side": "T", "count": 3, "map": "de_mirage" }),
+            json!({ "rounds": [4, 9, 17], "threshold": 2, "rounds_analyzed": 24 }),
+        ));
+        assert_eq!(n.title, "Unusual T-side positioning — 3 rounds");
+        assert_eq!(
+            n.body,
+            "Reference players rarely hold the spot you took at mid-round on T — 3 rounds this \
+             match. This measures unusual, not wrong: check the heatmap for where they set up \
+             instead."
+        );
+        // Spec §5 honesty invariants: unusualness language, never blame.
+        assert!(n.body.contains("rarely"));
+        assert!(n.body.contains("not wrong"));
+        let lower = n.body.to_lowercase();
+        for word in ["mistake", "bad", "blame", "fault", "wrong spot"] {
+            assert!(!lower.contains(word), "blame word {word:?} in: {}", n.body);
+        }
+    }
+
+    #[test]
+    fn d6_positioning_drops_missing_count_clause() {
+        let n = say(&ins(
+            "D6_UNUSUAL_POSITIONING",
+            json!({ "phase": "post_plant", "side": "CT" }),
+            json!({}),
+        ));
+        assert_eq!(n.title, "Unusual CT-side positioning");
+        assert_eq!(
+            n.body,
+            "Reference players rarely hold the spot you took at post-plant on CT. This measures \
+             unusual, not wrong: check the heatmap for where they set up instead."
+        );
+    }
+
     #[test]
     fn baited_trade_exact_never_blames() {
         let n = say(&ins(
