@@ -424,7 +424,13 @@ pub fn get_habits(state: State<'_, AppState>) -> Result<Vec<HabitReport>, String
         })
         .collect();
     let tracked_u64 = tracked.parse::<u64>().ok();
+    // One card per map: several clusters on the same map read as duplicate
+    // titles and crowd out rule habits — keep the deadliest cluster only.
+    let mut seen_maps = std::collections::HashSet::new();
     for hs in death_hotspots(&points, &cfg.habit) {
+        if !seen_maps.insert(hs.map.clone()) {
+            continue;
+        }
         let n = cf_narrator::narrate_habit(
             "H4_REPEAT_HOTSPOT",
             hs.matches,

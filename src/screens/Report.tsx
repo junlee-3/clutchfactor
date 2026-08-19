@@ -95,7 +95,7 @@ export function Report() {
             <h3>Across your matches</h3>
             {habits.data && habits.data.length > 0 ? (
               habits.data
-                .slice(0, 3)
+                .slice(0, 4)
                 .map((h, i) => <HabitCard key={`${h.rule_id}-${i}`} habit={h} />)
             ) : (
               <p className="empty-note">
