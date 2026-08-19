@@ -93,7 +93,12 @@ pub async fn import_demo(
     let (match_id, map, score_a, score_b, tracked) = {
         let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
         let id = store
-            .save_match(&file_name, &file_hash, &data)
+            .save_match(
+                &file_name,
+                &file_hash,
+                cf_store::store::MatchKind::Own,
+                &data,
+            )
             .map_err(|e| match e {
                 StoreError::DuplicateImport => e.to_string(),
                 other => format!("failed to save match: {other}"),

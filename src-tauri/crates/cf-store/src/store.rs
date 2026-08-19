@@ -181,6 +181,29 @@ pub struct DeathClassDbRow {
     pub confidence: f32,
 }
 
+/// Own matches feed the tracked player's analytics; corpus matches feed the
+/// reference grids only and stay invisible to library/habits/identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchKind {
+    Own,
+    Corpus,
+}
+
+impl MatchKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MatchKind::Own => "own",
+            MatchKind::Corpus => "corpus",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct CorpusMapCount {
+    pub map: String,
+    pub demos: u32,
+}
+
 pub struct Store {
     conn: Connection,
 }
@@ -225,6 +248,7 @@ impl Store {
         &mut self,
         file_name: &str,
         file_hash: &str,
+        kind: MatchKind,
         data: &MatchData,
     ) -> Result<i64, StoreError> {
         if self.has_file_hash(file_hash)? {
@@ -240,8 +264,9 @@ impl Store {
         let tx = self.conn.transaction()?;
         tx.execute(
             "INSERT INTO matches (file_name, file_hash, map, tickrate, imported_at,
-                                  sample_every, score_a, score_b, roster_a_json, roster_b_json)
-             VALUES (?1, ?2, ?3, ?4, datetime('now'), ?5, ?6, ?7, ?8, ?9)",
+                                  sample_every, score_a, score_b, roster_a_json, roster_b_json,
+                                  kind)
+             VALUES (?1, ?2, ?3, ?4, datetime('now'), ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 file_name,
                 file_hash,
@@ -252,6 +277,7 @@ impl Store {
                 wins_b,
                 roster_json(&roster_a),
                 roster_json(&roster_b),
+                kind.as_str(),
             ],
         )?;
         let match_id = tx.last_insert_rowid();
@@ -432,7 +458,7 @@ impl Store {
             "SELECT id, file_name, map, imported_at, score_a, score_b,
                     roster_a_json, roster_b_json,
                     (SELECT COUNT(*) FROM rounds r WHERE r.match_id = m.id) AS rounds
-             FROM matches m ORDER BY imported_at DESC, id DESC",
+             FROM matches m WHERE m.kind = 'own' ORDER BY imported_at DESC, id DESC",
         )?;
         let rows = st.query_map([], |row| {
             Ok((
@@ -607,6 +633,7 @@ impl Store {
                       WHERE f.match_id = m.id AND f.rule_id = ?2 AND f.steamid = ?1
                       ORDER BY f.tick LIMIT 1)
              FROM matches m
+             WHERE m.kind = 'own'
              ORDER BY m.imported_at DESC, m.id DESC
              LIMIT ?3",
         )?;
@@ -637,7 +664,7 @@ impl Store {
               AND t.tick = (SELECT MAX(tick) FROM tick_samples
                              WHERE match_id = k.match_id AND steamid = k.victim
                                AND tick <= k.tick)
-             WHERE k.victim = ?1
+             WHERE k.victim = ?1 AND m.kind = 'own'
              ORDER BY k.match_id, k.tick",
         )?;
         let rows = st
@@ -677,7 +704,9 @@ impl Store {
     /// Distinct rule ids that ever flagged for the tracked player.
     pub fn flagged_rule_ids(&self, tracked: &str) -> Result<Vec<String>, StoreError> {
         let mut st = self.conn.prepare(
-            "SELECT DISTINCT rule_id FROM rule_flags WHERE steamid = ?1 ORDER BY rule_id",
+            "SELECT DISTINCT f.rule_id FROM rule_flags f
+             JOIN matches m ON m.id = f.match_id
+             WHERE f.steamid = ?1 AND m.kind = 'own' ORDER BY f.rule_id",
         )?;
         let rows = st
             .query_map([tracked], |r| r.get(0))?
@@ -760,6 +789,23 @@ impl Store {
                     class_source: r.get(4)?,
                     secondary_tags_json: r.get(5)?,
                     confidence: r.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Corpus demo counts per map (kind='corpus' only).
+    pub fn corpus_summary(&self) -> Result<Vec<CorpusMapCount>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT map, COUNT(*) FROM matches WHERE kind = 'corpus'
+             GROUP BY map ORDER BY map",
+        )?;
+        let rows = st
+            .query_map([], |r| {
+                Ok(CorpusMapCount {
+                    map: r.get(0)?,
+                    demos: r.get(1)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -974,9 +1020,11 @@ impl Store {
         let modal = self
             .conn
             .query_row(
-                "SELECT steamid FROM players
-                 GROUP BY steamid
-                 ORDER BY COUNT(DISTINCT match_id) DESC, steamid ASC
+                "SELECT p.steamid FROM players p
+                 JOIN matches m ON m.id = p.match_id
+                 WHERE m.kind = 'own'
+                 GROUP BY p.steamid
+                 ORDER BY COUNT(DISTINCT p.match_id) DESC, p.steamid ASC
                  LIMIT 1",
                 [],
                 |r| r.get::<_, String>(0),
@@ -1125,11 +1173,11 @@ mod tests {
         let path = dir.path().join("test.db");
         {
             let store = Store::open(&path).unwrap();
-            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 3);
+            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 4);
         }
         // Reopen: migrations must not re-apply / error.
         let store = Store::open(&path).unwrap();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 3);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 4);
     }
 
     #[test]
@@ -1137,7 +1185,7 @@ mod tests {
         let (_dir, mut store) = open_tmp();
         store.set_setting("tracked_steamid", "1").unwrap();
         let id = store
-            .save_match("m1.dem", "hash-1", &sample_match())
+            .save_match("m1.dem", "hash-1", MatchKind::Own, &sample_match())
             .unwrap();
         assert!(id > 0);
         let list = store.list_matches().unwrap();
@@ -1157,9 +1205,9 @@ mod tests {
     fn duplicate_hash_rejected() {
         let (_dir, mut store) = open_tmp();
         store
-            .save_match("m1.dem", "hash-1", &sample_match())
+            .save_match("m1.dem", "hash-1", MatchKind::Own, &sample_match())
             .unwrap();
-        let err = store.save_match("m1-copy.dem", "hash-1", &sample_match());
+        let err = store.save_match("m1-copy.dem", "hash-1", MatchKind::Own, &sample_match());
         assert!(matches!(err, Err(StoreError::DuplicateImport)));
         assert_eq!(store.list_matches().unwrap().len(), 1);
     }
@@ -1177,7 +1225,9 @@ mod tests {
     fn tracked_falls_back_to_modal_steamid_across_matches() {
         let (_dir, mut store) = open_tmp();
         assert_eq!(store.tracked_steamid().unwrap(), None);
-        store.save_match("m1.dem", "h1", &sample_match()).unwrap();
+        store
+            .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
+            .unwrap();
         let mut second = sample_match();
         // Second match: only players 1 and 9 — player 1 now appears twice.
         second.players = vec![
@@ -1190,14 +1240,18 @@ mod tests {
                 name: "eve".into(),
             },
         ];
-        store.save_match("m2.dem", "h2", &second).unwrap();
+        store
+            .save_match("m2.dem", "h2", MatchKind::Own, &second)
+            .unwrap();
         assert_eq!(store.tracked_steamid().unwrap().as_deref(), Some("1"));
     }
 
     #[test]
     fn match_detail_returns_full_read_model() {
         let (_dir, mut store) = open_tmp();
-        let id = store.save_match("m1.dem", "h1", &sample_match()).unwrap();
+        let id = store
+            .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
+            .unwrap();
         let d = store.match_detail(id).unwrap().expect("detail");
         assert_eq!(d.map, "de_mirage");
         assert_eq!((d.score_a, d.score_b), (2, 1));
@@ -1225,7 +1279,9 @@ mod tests {
     #[test]
     fn round_ticks_returns_only_in_range_rows_sorted() {
         let (_dir, mut store) = open_tmp();
-        let id = store.save_match("m1.dem", "h1", &sample_match()).unwrap();
+        let id = store
+            .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
+            .unwrap();
         // Round 1 range: start 1000 → officially_ended 1950. Samples at 1100 (×2 players).
         let rt = store.round_ticks(id, 1).unwrap();
         assert_eq!(rt.tick, vec![1100, 1100]);
@@ -1245,7 +1301,9 @@ mod tests {
             AnalysisOutput, Category, DeathClassRow, EvidenceRef, Insight, RuleFlag,
         };
         let (_dir, mut store) = open_tmp();
-        let id = store.save_match("m1.dem", "h1", &sample_match()).unwrap();
+        let id = store
+            .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
+            .unwrap();
         let out = AnalysisOutput {
             flags: vec![RuleFlag {
                 rule_id: "H2_ISOLATED_DEATH",
@@ -1302,7 +1360,7 @@ mod tests {
     fn cross_demo_queries_aggregate_flags_positions_and_rounds() {
         use cf_analysis::{AnalysisOutput, EvidenceRef, RuleFlag};
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 3);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 4);
         store.set_setting("tracked_steamid", "1").unwrap();
         let flag = |round: u32, tick: i32| RuleFlag {
             rule_id: "H2_ISOLATED_DEATH",
@@ -1320,7 +1378,9 @@ mod tests {
                 camera_hint: None,
             },
         };
-        let m1 = store.save_match("m1.dem", "h1", &sample_match()).unwrap();
+        let m1 = store
+            .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
+            .unwrap();
         store
             .save_analysis(
                 m1,
@@ -1330,7 +1390,9 @@ mod tests {
                 },
             )
             .unwrap();
-        let m2 = store.save_match("m2.dem", "h2", &sample_match()).unwrap();
+        let m2 = store
+            .save_match("m2.dem", "h2", MatchKind::Own, &sample_match())
+            .unwrap();
         store
             .save_analysis(
                 m2,
@@ -1411,7 +1473,9 @@ mod tests {
                 camera_hint: None,
             },
         };
-        let m1 = store.save_match("m1.dem", "h1", &sample_match()).unwrap();
+        let m1 = store
+            .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
+            .unwrap();
         store
             .save_analysis(
                 m1,
@@ -1444,8 +1508,10 @@ mod tests {
     #[test]
     fn migration_2_analysis_tables_and_rule_inputs_persist() {
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 3);
-        let id = store.save_match("m1.dem", "h1", &sample_match()).unwrap();
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 4);
+        let id = store
+            .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
+            .unwrap();
         let q = |sql: &str| -> u32 { store.conn.query_row(sql, [id], |r| r.get(0)).unwrap() };
         assert_eq!(q("SELECT COUNT(*) FROM shots WHERE match_id = ?1"), 1);
         assert_eq!(q("SELECT COUNT(*) FROM hurts WHERE match_id = ?1"), 1);
@@ -1472,9 +1538,79 @@ mod tests {
     }
 
     #[test]
+    fn corpus_matches_are_invisible_to_tracked_analytics() {
+        use cf_analysis::{AnalysisOutput, EvidenceRef, RuleFlag};
+        let (_dir, mut store) = open_tmp();
+        store.set_setting("tracked_steamid", "1").unwrap();
+        let own = store
+            .save_match("own.dem", "h-own", MatchKind::Own, &sample_match())
+            .unwrap();
+        store
+            .save_analysis(
+                own,
+                &AnalysisOutput {
+                    flags: vec![RuleFlag {
+                        rule_id: "H2_ISOLATED_DEATH",
+                        round: 2,
+                        tick: 2200,
+                        steamid: 1,
+                        confidence: 0.75,
+                        severity: 0.8,
+                        details: serde_json::json!({}),
+                        evidence: EvidenceRef {
+                            round: 2,
+                            tick_start: 1880,
+                            tick_end: 2328,
+                            focus_players: vec![1],
+                            camera_hint: None,
+                        },
+                    }],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let habits_before = store
+            .rule_counts_across_matches("1", "H2_ISOLATED_DEATH", 10)
+            .unwrap()
+            .len();
+        let deaths_before = store.death_positions("1").unwrap().len();
+
+        // Import the same synthetic match as CORPUS (players 1..4 included).
+        store
+            .save_match("pro.dem", "h-pro", MatchKind::Corpus, &sample_match())
+            .unwrap();
+
+        assert_eq!(
+            store.list_matches().unwrap().len(),
+            1,
+            "library shows own matches only"
+        );
+        assert_eq!(
+            store
+                .rule_counts_across_matches("1", "H2_ISOLATED_DEATH", 10)
+                .unwrap()
+                .len(),
+            habits_before,
+            "habit window unchanged by corpus import"
+        );
+        assert_eq!(
+            store.death_positions("1").unwrap().len(),
+            deaths_before,
+            "death positions unchanged by corpus import"
+        );
+        assert_eq!(store.tracked_steamid().unwrap().as_deref(), Some("1"));
+        let summary = store.corpus_summary().unwrap();
+        assert_eq!(summary.len(), 1);
+        assert_eq!(summary[0].map, "de_mirage");
+        assert_eq!(summary[0].demos, 1);
+    }
+
+    #[test]
     fn tick_samples_persist() {
         let (_dir, mut store) = open_tmp();
-        let id = store.save_match("m1.dem", "h1", &sample_match()).unwrap();
+        let id = store
+            .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
+            .unwrap();
         let n: u32 = store
             .conn
             .query_row(
