@@ -220,6 +220,62 @@ pub struct HabitCfg {
     pub hotspot_min_matches: usize,
 }
 
+/// D6 / reference corpus (PROMPT.md §5 D6, §6.4).
+#[derive(Debug, Clone, Deserialize)]
+pub struct CorpusCfg {
+    /// Corpus gate: D6 is silent for a map below this many corpus demos.
+    #[serde(default = "d_min_demos_per_map")]
+    pub min_demos_per_map: usize,
+    #[serde(default = "d_grid_size")]
+    pub grid_size: usize,
+    #[serde(default = "d_freeze_sample_s")]
+    pub freeze_sample_s: f32,
+    #[serde(default = "d_early_s")]
+    pub early_s: f32,
+    #[serde(default = "d_mid_s")]
+    pub mid_s: f32,
+    #[serde(default = "d_post_plant_s")]
+    pub post_plant_s: f32,
+    /// Percentile (of non-zero pooled densities) below which a position
+    /// counts as "rarely held by reference players".
+    #[serde(default = "d_low_density_pct")]
+    pub low_density_pct: f32,
+    /// Rounds with low-density positioning before an insight emits.
+    #[serde(default = "d_min_recurrences")]
+    pub min_recurrences: usize,
+    /// Chebyshev radius of cells pooled around the player's cell.
+    #[serde(default = "d_neighborhood")]
+    pub neighborhood: usize,
+}
+
+fn d_min_demos_per_map() -> usize {
+    8
+}
+fn d_grid_size() -> usize {
+    128
+}
+fn d_freeze_sample_s() -> f32 {
+    1.0
+}
+fn d_early_s() -> f32 {
+    10.0
+}
+fn d_mid_s() -> f32 {
+    35.0
+}
+fn d_post_plant_s() -> f32 {
+    5.0
+}
+fn d_low_density_pct() -> f32 {
+    5.0
+}
+fn d_min_recurrences() -> usize {
+    3
+}
+fn d_neighborhood() -> usize {
+    1
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct GeneralCfg {
     /// Vertical distance weight (spec H2 refinement: z-difference matters more).
@@ -319,6 +375,7 @@ default_impl!(
     H4Cfg,
     UtilCfg,
     EntryCfg,
+    CorpusCfg,
     TimingCfg,
     HabitCfg,
     GeneralCfg,
@@ -345,6 +402,8 @@ pub struct DetectorConfig {
     pub timing: TimingCfg,
     #[serde(default)]
     pub habit: HabitCfg,
+    #[serde(default)]
+    pub corpus: CorpusCfg,
     #[serde(default)]
     pub general: GeneralCfg,
     #[serde(default)]
