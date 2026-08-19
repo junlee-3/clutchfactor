@@ -1,0 +1,237 @@
+{
+  "map": "de_mirage",
+  "tickrate": 64.0,
+  "sample_every": 4,
+  "players": [
+    "76561197961799823 t4tty",
+    "76561197965929550 victoria",
+    "76561197989010446 Ksu",
+    "76561197996875761 Liina",
+    "76561198014914403 f6tal",
+    "76561198037661952 Elizabeth-",
+    "76561198070540608 Hanka-",
+    "76561198184979557 LETi-",
+    "76561198191616018 Angelka",
+    "76561198266290430 vicu"
+  ],
+  "rounds": [
+    {
+      "number": 1,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 1240,
+      "end_tick": 5478,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 2,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 7078,
+      "end_tick": 10805,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 3,
+      "winner": "Ct",
+      "reason": "BombDefused",
+      "freeze_end_tick": 12405,
+      "end_tick": 18154,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 4,
+      "winner": "Ct",
+      "reason": "BombDefused",
+      "freeze_end_tick": 19754,
+      "end_tick": 24965,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 5,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 26565,
+      "end_tick": 33042,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 6,
+      "winner": "T",
+      "reason": "BombExploded",
+      "freeze_end_tick": 34642,
+      "end_tick": 41063,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 7,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 44685,
+      "end_tick": 49461,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 8,
+      "winner": "T",
+      "reason": "BombExploded",
+      "freeze_end_tick": 51061,
+      "end_tick": 60084,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 9,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 65383,
+      "end_tick": 71624,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 10,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 73224,
+      "end_tick": 80156,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 11,
+      "winner": "Ct",
+      "reason": "BombDefused",
+      "freeze_end_tick": 84195,
+      "end_tick": 91201,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 12,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 92801,
+      "end_tick": 99593,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 13,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 113444,
+      "end_tick": 118556,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 14,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 120156,
+      "end_tick": 124657,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 15,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 126257,
+      "end_tick": 130333,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 16,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 131933,
+      "end_tick": 139174,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 17,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 142741,
+      "end_tick": 150406,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 18,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 152006,
+      "end_tick": 157631,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 19,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 159231,
+      "end_tick": 164811,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 20,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 168665,
+      "end_tick": 172706,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 21,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 174306,
+      "end_tick": 180637,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 22,
+      "winner": "T",
+      "reason": "BombExploded",
+      "freeze_end_tick": 182237,
+      "end_tick": 190670,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 23,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 194657,
+      "end_tick": 202165,
+      "ct_count": 5,
+      "t_count": 5
+    }
+  ],
+  "wins_a": 13,
+  "wins_b": 10,
+  "roster_a_len": 5,
+  "roster_b_len": 5,
+  "kills": 170,
+  "blinds": 194,
+  "grenades": 518,
+  "bomb_events": 26,
+  "tick_rows": 544500,
+  "first_kill": "[2827] f6tal -> Angelka [glock]",
+  "last_kill": "[204260] <world> -> Angelka [planted_c4]"
+}

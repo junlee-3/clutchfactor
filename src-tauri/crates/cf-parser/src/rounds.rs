@@ -61,9 +61,13 @@ fn decode_reason(r: &RawReason) -> RoundEndReason {
             "target_saved" => RoundEndReason::TargetSaved,
             other => RoundEndReason::Other(other.to_string()),
         },
+        // Numeric codes name the WINNER'S victory ("Terrorists_Win", 9) while
+        // our enum names the eliminated side, matching the MM strings
+        // ("t_killed" = Ts were killed, a CT win). Verified on real demos:
+        // navi r1 winner=T(2) reason=9 "#SFUI_Notice_Terrorists_Win" → CtKilled.
         RawReason::Num(n) => match n {
-            9 => RoundEndReason::TKilled,
-            8 => RoundEndReason::CtKilled,
+            9 => RoundEndReason::CtKilled,
+            8 => RoundEndReason::TKilled,
             7 => RoundEndReason::BombDefused,
             1 => RoundEndReason::BombExploded,
             12 => RoundEndReason::TargetSaved,
@@ -219,7 +223,8 @@ mod tests {
         assert_eq!(rounds[0].number, 1);
         assert_eq!(rounds[0].start_tick, 0, "missing first Start synthesizes 0");
         assert_eq!(rounds[0].winner, Side::T);
-        assert_eq!(rounds[0].reason, RoundEndReason::TKilled);
+        // Numeric 9 = Terrorists_Win = the CTs were eliminated.
+        assert_eq!(rounds[0].reason, RoundEndReason::CtKilled);
         assert_eq!(rounds[1].number, 2);
         assert_eq!(rounds[1].start_tick, 5798);
         assert_eq!(rounds[1].winner, Side::Ct);

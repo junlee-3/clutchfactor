@@ -1,0 +1,246 @@
+{
+  "map": "de_mirage",
+  "tickrate": 64.0,
+  "sample_every": 4,
+  "players": [
+    "76561198050015382 Roland Pryzbylewski",
+    "76561198241093588 dragon mafia prez",
+    "76561198826400404 NCZ RG",
+    "76561198987228442 nekoo鸭",
+    "76561198988858765 tttttssssss",
+    "76561199011427752 xnopyt",
+    "76561199195368572 doctorwu2021",
+    "76561199210928680 Bebita",
+    "76561199228328773 misosoupy3",
+    "76561199261606130 lyra"
+  ],
+  "rounds": [
+    {
+      "number": 1,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 1441,
+      "end_tick": 5120,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 2,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 6528,
+      "end_tick": 8523,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 3,
+      "winner": "Ct",
+      "reason": "BombDefused",
+      "freeze_end_tick": 9931,
+      "end_tick": 17779,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 4,
+      "winner": "Ct",
+      "reason": "BombDefused",
+      "freeze_end_tick": 19187,
+      "end_tick": 25706,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 5,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 27114,
+      "end_tick": 33380,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 6,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 34788,
+      "end_tick": 38308,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 7,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 39716,
+      "end_tick": 42869,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 8,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 44277,
+      "end_tick": 49538,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 9,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 50946,
+      "end_tick": 57028,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 10,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 58436,
+      "end_tick": 63510,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 11,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 64918,
+      "end_tick": 68540,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 12,
+      "winner": "T",
+      "reason": "BombExploded",
+      "freeze_end_tick": 69948,
+      "end_tick": 76013,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 13,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 77933,
+      "end_tick": 80183,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 14,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 81591,
+      "end_tick": 83452,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 15,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 84860,
+      "end_tick": 87466,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 16,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 88874,
+      "end_tick": 94721,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 17,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 99969,
+      "end_tick": 104190,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 18,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 105598,
+      "end_tick": 108836,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 19,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 110244,
+      "end_tick": 114322,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 20,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 120064,
+      "end_tick": 124239,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 21,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 125647,
+      "end_tick": 131247,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 22,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 132655,
+      "end_tick": 138082,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 23,
+      "winner": "Ct",
+      "reason": "TKilled",
+      "freeze_end_tick": 139490,
+      "end_tick": 143266,
+      "ct_count": 5,
+      "t_count": 5
+    },
+    {
+      "number": 24,
+      "winner": "T",
+      "reason": "CtKilled",
+      "freeze_end_tick": 144674,
+      "end_tick": 150450,
+      "ct_count": 5,
+      "t_count": 5
+    }
+  ],
+  "wins_a": 12,
+  "wins_b": 12,
+  "roster_a_len": 5,
+  "roster_b_len": 5,
+  "kills": 183,
+  "blinds": 121,
+  "grenades": 242,
+  "bomb_events": 13,
+  "tick_rows": 379300,
+  "first_kill": "[2963] lyra -> NCZ RG [usp_silencer]",
+  "last_kill": "[150450] misosoupy3 -> NCZ RG [m4a1]"
+}
