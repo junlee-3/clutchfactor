@@ -870,6 +870,18 @@ impl Store {
         Ok(rows)
     }
 
+    /// Ids of the player's own matches on one map (D6 re-analysis after a
+    /// corpus rebuild), oldest first.
+    pub fn own_match_ids(&self, map: &str) -> Result<Vec<i64>, StoreError> {
+        let mut st = self
+            .conn
+            .prepare("SELECT id FROM matches WHERE kind = 'own' AND map = ?1 ORDER BY id")?;
+        let rows = st
+            .query_map([map], |r| r.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// Lean per-match round list (corpus phase sampling — match_detail is
     /// too heavy to load per corpus demo).
     pub fn rounds_for_match(&self, id: i64) -> Result<Vec<RoundInfo>, StoreError> {
@@ -1974,6 +1986,8 @@ mod tests {
             .save_match("pro2.dem", "h3", MatchKind::Corpus, &other)
             .unwrap();
         assert_eq!(store.corpus_match_ids("de_mirage").unwrap(), vec![c1]);
+        assert_eq!(store.own_match_ids("de_mirage").unwrap(), vec![1]);
+        assert!(store.own_match_ids("de_dust2").unwrap().is_empty());
         let rounds = store.rounds_for_match(c1).unwrap();
         assert_eq!(rounds.len(), 3);
         assert_eq!(rounds[0].number, 1);

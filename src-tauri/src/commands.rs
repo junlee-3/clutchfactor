@@ -18,6 +18,27 @@ use tauri::State;
 /// Per ADR-0002.
 const SAMPLE_EVERY: u32 = 4;
 
+/// Detector thresholds: shipped defaults (§6.4), or — when the
+/// `CLUTCHFACTOR_CONFIG` env var names a YAML file — that file merged over
+/// them field-by-field. Dev/testing escape hatch only (e.g. lowering the D6
+/// corpus gate against a small fixture corpus); nothing sets it in a
+/// packaged app, so users always run the documented defaults.
+fn detector_config() -> cf_analysis::DetectorConfig {
+    if let Ok(path) = std::env::var("CLUTCHFACTOR_CONFIG") {
+        match std::fs::read_to_string(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|y| cf_analysis::DetectorConfig::from_yaml(&y))
+        {
+            Ok(cfg) => {
+                eprintln!("detector config override loaded from {path}");
+                return cfg;
+            }
+            Err(e) => eprintln!("ignoring CLUTCHFACTOR_CONFIG ({path}): {e}"),
+        }
+    }
+    cf_analysis::DetectorConfig::default()
+}
+
 pub struct AppState {
     pub store: Mutex<Store>,
 }
@@ -128,7 +149,7 @@ pub async fn import_demo(
     // always yields one for a non-empty library.
     if let Some(tracked) = tracked.and_then(|t| t.parse::<u64>().ok()) {
         send(&on_progress, "analyzing", 0.92, "Running detectors");
-        let cfg = cf_analysis::DetectorConfig::default();
+        let cfg = detector_config();
         let analysis = tauri::async_runtime::spawn_blocking(move || {
             cf_analysis::analyze(&data, tracked, &cfg)
         })
@@ -375,7 +396,7 @@ pub fn get_habits(state: State<'_, AppState>) -> Result<Vec<HabitReport>, String
     let Some(tracked) = store.tracked_steamid().map_err(|e| e.to_string())? else {
         return Ok(vec![]);
     };
-    let cfg = cf_analysis::DetectorConfig::default();
+    let cfg = detector_config();
     let tracked_u64 = tracked.parse::<u64>().ok();
 
     // Rule-recurrence habits.
@@ -620,7 +641,7 @@ pub async fn build_corpus(
     map: Option<String>,
     on_progress: Channel<ProgressEvent>,
 ) -> Result<usize, String> {
-    let cfg = cf_analysis::DetectorConfig::default().corpus;
+    let cfg = detector_config().corpus;
     let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
     let maps: Vec<String> = match map {
         Some(m) => vec![m],
@@ -685,6 +706,11 @@ pub async fn build_corpus(
         let rows: Vec<GridRow> = grids.iter().map(occupancy_to_row).collect();
         store.save_grids(&rows).map_err(|e| e.to_string())?;
         total_grids += rows.len();
+        // Fresh grids make existing D6 results stale: re-run positioning
+        // for the player's own matches on this map.
+        for own_id in store.own_match_ids(map).map_err(|e| e.to_string())? {
+            run_positioning(&mut store, own_id)?;
+        }
     }
     send(&on_progress, "done", 1.0, "Corpus build complete");
     Ok(total_grids)
@@ -696,9 +722,7 @@ pub fn corpus_status(state: State<'_, AppState>) -> Result<CorpusStatus, String>
     Ok(CorpusStatus {
         maps: store.corpus_summary().map_err(|e| e.to_string())?,
         grids: store.grid_status().map_err(|e| e.to_string())?,
-        min_demos_per_map: cf_analysis::DetectorConfig::default()
-            .corpus
-            .min_demos_per_map,
+        min_demos_per_map: detector_config().corpus.min_demos_per_map,
     })
 }
 
@@ -721,7 +745,7 @@ pub fn get_grid(
 /// against this map's grids, and replace the match's D6 insights. Returns
 /// the number of insights written (0 = corpus silent or nothing unusual).
 fn run_positioning(store: &mut Store, match_id: i64) -> Result<usize, String> {
-    let cfg = cf_analysis::DetectorConfig::default().corpus;
+    let cfg = detector_config().corpus;
     let Some((map, tickrate)) = store
         .match_map_tickrate(match_id)
         .map_err(|e| e.to_string())?

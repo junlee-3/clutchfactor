@@ -4,30 +4,32 @@ The resume file. A fresh session reads CLAUDE.md → this file → the active pl
 
 ## Now
 
-M4 complete (tag `m4` pending owner DoD sign-off — the milestone's DoD is literally "the owner reviews one of their own matches and agrees ≥1 insight is real and actionable"; the ask is out). Next: M5 — Reference corpus & D6 (PROMPT.md §13): Corpus screen + ingestion, occupancy grids per map/side/phase, D6 with honesty rules + minimum-corpus gate (default 8 demos/map), heatmap rendering (invoke dataviz first). Start with superpowers:writing-plans → docs/plans/M5-corpus.md.
+M5 complete (tag `m5`). Next: **M6 — Trends, Settings, polish, ship v0** (PROMPT.md §13): Trends screen (per-rule trajectory across matches), Settings (tracked-player override UI, threshold view), empty/error states, app icon, README with screenshots, tagged release (Windows installer + mac app). Owner directive: ship v0 first, improvement list comes after. Start with superpowers:writing-plans → docs/plans/M6-ship.md, then superpowers:subagent-driven-development.
 
 ## Next
 
-1. M5 plan. CARRY-INS flagged at M4 final review: corpus demos will land in the same `matches` table — habit windows/death_positions must exclude non-tracked-player matches (filter on players-contains-tracked or a match kind column); H2 insight should carry the non-following teammate so baited captions can name them (ticketed M5).
-2. M6 debt: Settings UI (tracked-player override), re-analyze command for old imports, deferred minors list in `.superpowers/sdd/M4-report/progress.md`-style records (hardcoded TICKRATE in Report.tsx, per-round kills include teamkills, habits loading-state mislabel, ad-hoc hotspot score).
+1. M6 plan (above). Batched owner ask outstanding: ~8 pro Mirage demos into the corpus (Corpus screen → Add pro demos) to clear the honest D6 gate; dev verification used a documented `CLUTCHFACTOR_CONFIG` override (gate 1) — shipped default stays 8.
+2. M6 debt: Settings UI (tracked-player override), re-analyze command for old imports, hardcoded TICKRATE in Report.tsx, per-round kills include teamkills, habits loading-state mislabel, ad-hoc hotspot score, grid `built_at` shown as unlabeled UTC, report summary "Positioning are" pluralization, D6 severity/confidence as local consts (brief-mandated), calibration_for re-parses embedded JSON per call (cache if corpus ingestion ever calls per-sample).
 3. Perf budgets (§10.4) nightly integration still unbuilt.
 
 ## Done
 
-- 2026-08-20: **M4 complete** — Match Report screen (narrated insight feed grouped/ranked, death-class breakdown w/ honesty note, round strip → replay, evidence chips → replay deep links); cf-narrator TemplateNarrator v1 (§8 voice, deterministic variants, 46 exact-string tests); D4 entry-structure + D5 timing families (class 11 live); cross-demo habit promotion + H4_REPEAT_HOTSPOT clustering (store migration 3: flag evidence). Executed via superpowers:subagent-driven-development (3 worktree implementers + per-task reviews + 1 narrator fix round + final whole-branch review + 1 fix wave, all clean; ledger at .superpowers/sdd/M4-report/). E2E: 5 UI imports, report verified via AX (real coaching text incl. "left trades on the table in 5 of your last 10 matches — 35 times"), chip → replay at exact evidence tick.
-- 2026-08-19: **M3 complete** (tag `m3`) — §5A rule engine, taxonomy classes 1–7/9/13–15, hand-verified. **M2 complete** (`m2`) — replay viewer. **M1 complete** (`m1`) — ingest + Library. **M0 complete** (`m0`) — skeleton + parser proof.
+- 2026-08-20: **M5 complete** (tag `m5`) — reference corpus + D6 positioning. Corpus-blind analytics (matches.kind own|corpus, migration 4); baited insights name non-followers (M4 carry-in); cf-analysis corpus.rs (occupancy grids 128², world→radar via embedded map-data.json, pooled-density + nearest-rank percentile, silence gate <8 demos, recurrence ≥3, phase_moments sampling); grid cache (migration 5, LE-u32 blobs); commands import_corpus_demo/build_corpus (re-runs D6 for own matches on rebuilt maps)/corpus_status/get_grid/analyze_positioning; import_demo auto-runs D6 when grids exist; Corpus screen (gate meter one-cell-per-demo, chronology phase strip, HeatmapCanvas single-hue sqrt-alpha); D6 narrator honesty template ("unusual, not wrong"). SDD: 2 worktree implementers + reviews + 1 fix round (heatmap stale-image race) + tickrate follow-up; ledger .superpowers/sdd/M5-corpus/. E2E: pro mirage demo imported via UI dialog → 8 grids (115 samples = 23 rounds × 5 alive ✓) → 4 D6 insights matching an independent SQL/python recomputation exactly (§12) → report cards with honesty wording → evidence chip → replay round 5; corpus-blindness verified (own list + rule counts byte-identical pre/post).
+- 2026-08-20: **M4 complete** (tag `m4`) — Match Report screen, TemplateNarrator v1, D4/D5, cross-demo habits + hotspots. E2E via AX; ledger .superpowers/sdd/M4-report/.
+- 2026-08-19: **M3 complete** (tag `m3`) — §5A rule engine, classes 1–7/9/13–15, hand-verified. **M2** (`m2`) replay viewer · **M1** (`m1`) ingest + Library · **M0** (`m0`) skeleton + parser proof.
 
 ## Decisions
 
-- ADR-0001 demoparser2 git dep · ADR-0002 16 Hz sampling · ADR-0003 schema v1 (+m2 analysis, +m3 flag evidence) · ADR-0004 awpy radar assets.
-- Narrator: deterministic template variants via content hash (no RNG); ClaudeNarrator seam intact (§8).
+- ADR-0001 demoparser2 git dep · ADR-0002 16 Hz sampling · ADR-0003 schema v1 (+m2 analysis, +m3 flag evidence, +m4 kind, +m5 corpus_grids) · ADR-0004 awpy radar assets.
+- D6: severity 0.5 / confidence 0.6 fixed (unusualness cap); d6_insights takes the match tickrate (no TICKRATE consts); build_corpus re-runs positioning for own matches (fresh grids invalidate old D6); `CLUTCHFACTOR_CONFIG` env = explicit dev threshold override, shipped defaults untouched.
+- Narrator: deterministic template variants via content hash; ClaudeNarrator seam intact (§8).
 - Habit scoring: severity × confidence × (matches_hit/window) × ln(1+total); baited never promoted alone; one hotspot card per map.
-- SDD process notes: worktree-isolated parallel implementers + coordinator merge works well; reviewers scoped to diff packages; models sonnet(families)/opus(taste)/fable(final review).
+- SDD process notes: worktree-isolated parallel implementers + coordinator cherry-pick works well; reviewers scoped to diff packages; models sonnet(implement+review)/fable(final review).
 
 ## Gotchas
 
-- **Corpus-demo dilution risk (M5 blocker-aware):** habit windows + death_positions query ALL matches; corpus imports must be excluded from tracked-player analytics.
-- Death-tick inventory always empty (pre-death sampling); steamids as strings at JS boundaries (EvidenceRef serializer); demoparser two-pass (events gate ticks) + targeted inventory pass; numeric round reasons winner-relative; MM vs GOTV dialects.
-- AX E2E: pause before reading; kill-feed rows/round chips are buttons/radio buttons; canvas invisible to AX; `.claude/` excluded from git/eslint/vitest.
-- Rust changes under tauri dev auto-rebuild+relaunch the app; frontend hot-reloads. Port 1420 orphans: `lsof -ti :1420 | xargs kill`.
+- Corpus rows live in `matches` with kind='corpus' — every tracked-player query filters kind='own' (store tests enforce).
+- Death-tick inventory always empty (pre-death sampling); steamids as strings at JS boundaries; demoparser two-pass + targeted inventory pass; numeric round reasons winner-relative; MM vs GOTV dialects.
+- AX E2E: pause before reading; **a stale dev binary can serve clicks after an edit — kill + relaunch `tauri dev` before trusting E2E results**; round chips are radio buttons; canvas invisible to AX; `.claude/` excluded from git/eslint/vitest.
+- Bash tool cwd persists — a `cd` into a worktree leaks into later commands; use absolute paths or cd back.
 - CI: protoc via arduino/setup-protoc; pnpm pinned via packageManager; `source "$HOME/.cargo/env"`.

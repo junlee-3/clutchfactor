@@ -28,7 +28,7 @@
 Migration 4: `ALTER TABLE matches ADD COLUMN kind TEXT NOT NULL DEFAULT 'own';`
 Store changes: `save_match(file_name, file_hash, kind: MatchKind, data)` (enum Own|Corpus, breaking signature — update all callers incl. tests); `list_matches` gains `WHERE kind='own'`; `rule_counts_across_matches`, `death_positions`, `flagged_rule_ids`, `tracked_steamid` modal fallback, `per_round_stats` unaffected (match-scoped) — add kind filter to the first three + modal; new `corpus_summary() -> Vec<CorpusMapCount { map, demos }>` (kind='corpus' grouped by map) and `corpus_positions(map) -> ...` lands in Task 4 (grid feed).
 
-- [ ] Migration + enum + filters + `corpus_summary`; tests: corpus match invisible in list_matches/habit queries/modal identity; corpus_summary counts; version=4. fmt/clippy/test; commit `feat(store): match kind (own|corpus), corpus-blind analytics filters (migration 4)`, push.
+- [x] Migration + enum + filters + `corpus_summary`; tests: corpus match invisible in list_matches/habit queries/modal identity; corpus_summary counts; version=4. fmt/clippy/test; commit `feat(store): match kind (own|corpus), corpus-blind analytics filters (migration 4)`, push.
 
 ### Task 1 (inline): H2 insight names the non-follower (M4 carry-in b) + narrator uses it
 
@@ -36,7 +36,7 @@ Store changes: `save_match(file_name, file_hash, kind: MatchKind, data)` (enum O
 
 - h2 `insights()`: for the BAITED aggregate, add to title_data `"non_followers": [names… no — steamids as strings]` — collect each baited flag's `details.non_following_teammate` (string steamid), dedupe preserving order, cap 3; key: `title_data.non_following_teammates: Vec<String>`.
 - Narrator baited match-insight template: when `non_following_teammates` present, name up to 2 via ctx (resolve steamid→name, fallback raw id): "…the follow-up never came — N times, usually with {name} nearest." Update exact-string tests; blame-free rules unchanged.
-- [ ] TDD both sides; fmt/clippy/test; commit `feat(analysis+narrator): baited insights name the non-following teammate`, push.
+- [x] TDD both sides; fmt/clippy/test; commit `feat(analysis+narrator): baited insights name the non-following teammate`, push.
 
 ### Task 2 (SUBAGENT, worktree): `cf-analysis/src/corpus.rs` — grids + D6 pure math
 
@@ -69,8 +69,8 @@ pub fn d6_insights(findings: &[PositioningFinding], map: &str, total_rounds: u32
 // qualifying moment (round, tick-5s..tick+2s, focus=[tracked]) capped 8, camera_hint Some("heatmap:{map}:{side}:{phase}")
 ```
 Note: coordinator adds `CorpusCfg` to config.rs + embeds map-data.json BEFORE dispatch (shared files stay coordinator-owned); the subagent implements corpus.rs against them.
-- [ ] TDD (subagent): grid_cell mapping (mirage known point, out-of-bounds None); build_grids per-map demo counts + sample tallies; pooled_density edge clamping; threshold percentile math (uniform grid, spiked grid, empty grid → 0); silence gate (grid with 7 demos produces no findings); qualifying + recurrence gating (2 moments < min_recurrences → silent; 3 → finding); d6_insights honesty text fields + evidence shape + camera_hint format; determinism.
-- [ ] Coordinator merges, reviews, commits `feat(analysis): corpus occupancy grids + D6 positioning math (subagent-built, reviewed)`, push.
+- [x] TDD (subagent): grid_cell mapping (mirage known point, out-of-bounds None); build_grids per-map demo counts + sample tallies; pooled_density edge clamping; threshold percentile math (uniform grid, spiked grid, empty grid → 0); silence gate (grid with 7 demos produces no findings); qualifying + recurrence gating (2 moments < min_recurrences → silent; 3 → finding); d6_insights honesty text fields + evidence shape + camera_hint format; determinism.
+- [x] Coordinator merges, reviews, commits `feat(analysis): corpus occupancy grids + D6 positioning math (subagent-built, reviewed)`, push.
 
 ### Task 3 (SUBAGENT, worktree): heatmap canvas renderer (pure TS + component)
 
@@ -86,7 +86,7 @@ export function cellRect(index: number, size: number, canvasPx: number): { x: nu
 // then per-cell fills using ONE sequential hue (CT-blue family #4aa3ff at computed alpha — magnitude job, single hue
 // per dataviz; no rainbow), on a 512px canvas; renders "n demos · m samples" caption in text ink; empty grid state text.
 ```
-- [ ] TDD the pure fns (alpha ramp incl. zero/max, sqrt monotonicity; cellRect corners for size=128 canvas=512; gridMax empty); component typechecks/lints; commit `feat(ui): heatmap grid renderer (subagent-built, reviewed)`, push (coordinator merges).
+- [x] TDD the pure fns (alpha ramp incl. zero/max, sqrt monotonicity; cellRect corners for size=128 canvas=512; gridMax empty); component typechecks/lints; commit `feat(ui): heatmap grid renderer (subagent-built, reviewed)`, push (coordinator merges).
 
 ### Task 4 (inline): store grid cache + corpus commands
 
@@ -95,28 +95,28 @@ export function cellRect(index: number, size: number, canvasPx: number): { x: nu
 Migration 5: `corpus_grids(map TEXT, side TEXT, phase TEXT, size INTEGER, counts BLOB, demos INTEGER, samples INTEGER, built_at TEXT, PRIMARY KEY (map, side, phase))`.
 Store: `phase_positions_for_corpus(map) -> Vec<(match_id, side, phase, x, y)>`-shaped rows? NO — phase sampling needs rounds+bomb_events+tick lookups; do it in the command with existing readers per corpus match: rounds (`match_detail` is heavy — add lean `rounds_for_match(id)` + reuse `round_ticks`? round_ticks is per round; fine at corpus scale). Simpler store additions: `corpus_match_ids(map) -> Vec<i64>`, `rounds_for_match(id) -> Vec<RoundInfo>`, `bomb_plant_tick(id, round) -> Option<i32>`, `positions_at(id, tick) -> Vec<(steamid String, x, y, alive bool)>` (nearest ≤ tick per player), `save_grids(&[OccupancyGrid])`, `load_grids(map) -> Vec<OccupancyGrid>`, `grid_status() -> Vec<GridStatus {map, side, phase, demos, samples, built_at}>`.
 Commands: `import_corpus_demo(path, on_progress)` (parse → save_match kind Corpus → no analysis); `build_corpus(map: Option<String>, on_progress)` (collect PhaseSamples via store readers + `cf_analysis::corpus` sampling helpers, build_grids, save_grids); `corpus_status() -> {maps: Vec<CorpusMapCount>, grids: Vec<GridStatus>}`; `get_grid(map, side, phase) -> Option<GridDto>` (blob → counts vec); `analyze_positioning(match_id) -> usize` (load own match rounds/sides/tick moments for tracked via store, grids for its map, run unusual_positions+d6_insights, DELETE old D6 insights for match + insert new; returns insight count). import_demo additionally runs analyze_positioning when grids exist for the map.
-- [ ] Store tests (blob roundtrip, grid_status, positions_at nearest-≤); command compile + TS mirrors (GridDto, CorpusMapCount, GridStatus + wrappers/hooks); fmt/clippy/typecheck; commit `feat(app+store): corpus ingestion, grid cache, build + positioning commands`, push.
+- [x] Store tests (blob roundtrip, grid_status, positions_at nearest-≤); command compile + TS mirrors (GridDto, CorpusMapCount, GridStatus + wrappers/hooks); fmt/clippy/typecheck; commit `feat(app+store): corpus ingestion, grid cache, build + positioning commands`, push.
 
 ### Task 5 (inline): Corpus screen
 
 **Files:** `src/screens/Corpus.tsx`, `src/App.tsx` (route `/corpus`), Library topbar link, `src/styles.css`.
 **Before code: invoke `frontend-design:frontend-design` and `dataviz` (Skill tool).**
 Layout (§7 screen 5): header; "Add pro demos" button (multi-select dialog → sequential import_corpus_demo with inline progress); per-map demo counts with the ≥8 gate shown ("5/8 — detector silent until 8"); Build/Rebuild button (build_corpus progress); heatmap viewer: map/side/phase selectors (from grid_status) + `HeatmapCanvas` + caption; empty states per §7 voice.
-- [ ] Build; typecheck/lint/vitest; commit `feat(ui): Corpus screen — ingestion, build status, heatmap viewer`, push.
+- [x] Build; typecheck/lint/vitest; commit `feat(ui): Corpus screen — ingestion, build status, heatmap viewer`, push.
 
 ### Task 6 (inline): D6 narration + goldens
 
 **Files:** `cf-narrator/src/templates.rs` (+test), `cf-analysis` golden refresh only if analyze output changed (it didn't — D6 runs outside `analyze()`; no golden change expected — verify).
 - Narrator arm for `D6_UNUSUAL_POSITIONING` (honesty wording per spec §5 verbatim intent): "Reference players rarely hold the spot you took at {phase} on {side} — {count} rounds this match. This measures unusual, not wrong: check the heatmap for where they set up instead." Exact-string test; no blame words; must contain "rarely" and "not wrong"-equivalent.
-- [ ] TDD; verify analysis goldens unchanged (`cargo test --release` golden suite); commit `feat(narrator): D6 positioning template`, push.
+- [x] TDD; verify analysis goldens unchanged (`cargo test --release` golden suite); commit `feat(narrator): D6 positioning template`, push.
 
 ### Task 7 (inline): E2E verification, docs, tag m5
 
-- [ ] Dev-gate config: verify end-to-end with the demos on hand (1 pro mirage + any others) using a lowered `min_demos_per_map` via a test-only DetectorConfig (documented dev-only — the shipped default stays 8): import the navi pro demo as corpus via UI, build grids, view mirage CT/T heatmaps in the Corpus screen (AX-verify captions/status), run analyze_positioning on the owner's mirage match, verify D6 insights appear in the Match Report with heatmap camera_hint + evidence chips that open the replay at the right rounds.
-- [ ] §12 sanity: SQL cross-check ≥3 qualifying moments (tracked position → grid cell → pooled density ≤ threshold recomputed by hand for one grid).
-- [ ] Corpus-blindness check: after corpus import, Library shows only own matches; habits unchanged (counts identical pre/post corpus import).
-- [ ] Docs: PROGRESS (M5 done → M6), PROMPT §13 checkbox, plan checkboxes, goldens README note. Tag `m5`, push, CI green.
-- [ ] **Batched owner ask** (final message): drop ~8 pro Mirage demos into the corpus (HLTV match pages → demo download, unzip, Add pro demos) to clear the honest gate and exercise the real DoD; flag that dev verification used a lowered gate.
+- [x] Dev-gate config: verify end-to-end with the demos on hand (1 pro mirage + any others) using a lowered `min_demos_per_map` via a test-only DetectorConfig (documented dev-only — the shipped default stays 8): import the navi pro demo as corpus via UI, build grids, view mirage CT/T heatmaps in the Corpus screen (AX-verify captions/status), run analyze_positioning on the owner's mirage match, verify D6 insights appear in the Match Report with heatmap camera_hint + evidence chips that open the replay at the right rounds.
+- [x] §12 sanity: SQL cross-check ≥3 qualifying moments (tracked position → grid cell → pooled density ≤ threshold recomputed by hand for one grid).
+- [x] Corpus-blindness check: after corpus import, Library shows only own matches; habits unchanged (counts identical pre/post corpus import).
+- [x] Docs: PROGRESS (M5 done → M6), PROMPT §13 checkbox, plan checkboxes, goldens README note. Tag `m5`, push, CI green.
+- [x] **Batched owner ask** (final message): drop ~8 pro Mirage demos into the corpus (HLTV match pages → demo download, unzip, Add pro demos) to clear the honest gate and exercise the real DoD; flag that dev verification used a lowered gate.
 
 ---
 

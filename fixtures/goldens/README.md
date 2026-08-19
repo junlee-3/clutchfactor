@@ -49,3 +49,15 @@ independently cross-checked against raw DB tables, plus a replay-viewer spot che
 M4 additions (2026-08-20): analysis goldens include D4/D5 rule counts (H14_UNSUPPORTED_ENTRY,
 H11_EARLY_AGGRESSIVE_DEATH, H11_SLOW_ROTATION, H6_PUSH_WITHOUT_INFO — class 11 live). Volumes on
 refresh: mirage-tie +1 early-aggressive death; navi +1 slow rotation — precision-first, no spam.
+
+## M5 hand-verification (2026-08-20)
+
+D6 corpus pipeline cross-checked end-to-end on the real app DB: the navi
+mirage pro demo produced 8 occupancy grids (freeze_end/early = 115 samples
+= 23 rounds × 5 alive players); an independent Python/SQL recomputation of
+cells, pooled densities, nearest-rank threshold and recurrence gating
+predicted exactly the 4 insights the app wrote ((CT,early) 6 rounds,
+(CT,mid) 5, (T,early) 11 — evidence capped at 8, (T,mid) 7; threshold 1).
+Verified under the documented dev-only `CLUTCHFACTOR_CONFIG` gate override
+(min_demos_per_map 1); dev D6 rows were removed afterwards — the shipped
+gate (8) keeps D6 silent until the owner supplies a real corpus.
