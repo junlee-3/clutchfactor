@@ -8,14 +8,18 @@ Tauri 2 (2.10.x) shell · Rust core (demoparser2 git dep, detectors, rusqlite/SQ
 
 ## Dev commands
 
-Prereqs: Rust stable via rustup (installed: 1.97.x), Node 22 LTS, pnpm 10.
+Prereqs: Rust stable via rustup (installed: 1.97.x), Node 22 LTS, pnpm 10. Fresh shells may need `source "$HOME/.cargo/env"`.
 
 ```sh
-# Rust is on PATH via ~/.cargo/env; if a shell lacks it:
-source "$HOME/.cargo/env"
+pnpm install                 # setup (frontend deps)
+pnpm tauri dev               # run the desktop app (compiles Rust + Vite dev server)
+pnpm typecheck && pnpm lint && pnpm test:run          # frontend checks (tsc, eslint, vitest)
+cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
+cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml --workspace          # add --release to speed up golden demo parse
+# M0 parser proof — kill feed + round scores from a real demo:
+cargo run -p cf-parser --release --example print_match --manifest-path src-tauri/Cargo.toml -- fixtures/public/<demo>.dem
 ```
-
-Project scaffolding is in progress (M0) — build/run/test commands land here in the same commit that makes them work.
 
 ## Architecture map
 

@@ -1,6 +1,6 @@
 # ADR-0001: demoparser2 Rust core as the demo parsing library
 
-Status: accepted (draft — final proof is the M0 fixture parse; update this line when done)
+Status: accepted — **proven at M0** (2026-08-19): parsed `navi-javelins-vs-9-pandas-fearless-m1-mirage.dem` (222 MB) via the pinned git dep; kill feed + 23 round ends hand-validated against demofile-net's independent verified snapshot (exact tick match) and the real match result (13–10). R1 fallback not needed.
 Date: 2026-08-19
 
 ## Context
