@@ -683,7 +683,10 @@ pub async fn build_corpus(
                 for (phase, tick) in
                     corpus::phase_moments(freeze_end, r.end_tick, plant, tickrate as f32, &cfg)
                 {
-                    for p in store.positions_at(*id, tick).map_err(|e| e.to_string())? {
+                    for p in store
+                        .positions_at(*id, tick, r.start_tick)
+                        .map_err(|e| e.to_string())?
+                    {
                         if !p.alive {
                             continue;
                         }
@@ -788,7 +791,7 @@ fn run_positioning(store: &mut Store, match_id: i64) -> Result<usize, String> {
             corpus::phase_moments(freeze_end, r.end_tick, plant, tickrate as f32, &cfg)
         {
             let pos = store
-                .positions_at(match_id, tick)
+                .positions_at(match_id, tick, r.start_tick)
                 .map_err(|e| e.to_string())?
                 .into_iter()
                 .find(|p| p.steamid == tracked);

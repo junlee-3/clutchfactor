@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
+import { basename } from "../lib/basename";
 import type { ProgressEvent } from "../lib/ipc";
 import {
   useBuildCorpus,
@@ -47,7 +48,7 @@ export function Corpus() {
     });
     if (!Array.isArray(paths) || paths.length === 0) return;
     for (const [i, path] of paths.entries()) {
-      const name = path.split("/").pop() ?? path;
+      const name = basename(path);
       setImporting(`${i + 1} of ${paths.length}: ${name}`);
       setProgress(null);
       try {

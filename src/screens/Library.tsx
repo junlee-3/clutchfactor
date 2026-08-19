@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
+import { basename } from "../lib/basename";
 import type { ProgressEvent } from "../lib/ipc";
 import { useImportDemo, useMatches, useTrackedPlayer } from "../lib/queries";
 import { formatMatchRow } from "../lib/score";
@@ -22,7 +23,7 @@ export function Library() {
       filters: [{ name: "CS2 demo", extensions: ["dem"] }],
     });
     if (typeof path !== "string") return;
-    setImportingFile(path.split("/").pop() ?? path);
+    setImportingFile(basename(path));
     setProgress(null);
     try {
       await importDemo.mutateAsync(path);

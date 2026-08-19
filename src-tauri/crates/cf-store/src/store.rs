@@ -739,8 +739,9 @@ impl Store {
         let row = self
             .conn
             .query_row(
-                "SELECT MAX(severity), MIN(confidence) FROM rule_flags
-                 WHERE steamid = ?1 AND rule_id = ?2",
+                "SELECT MAX(rf.severity), MIN(rf.confidence) FROM rule_flags rf
+                 JOIN matches m ON m.id = rf.match_id AND m.kind = 'own'
+                 WHERE rf.steamid = ?1 AND rf.rule_id = ?2",
                 params![tracked, rule_id],
                 |r| Ok((r.get::<_, Option<f32>>(0)?, r.get::<_, Option<f32>>(1)?)),
             )
@@ -952,20 +953,27 @@ impl Store {
         Ok(v)
     }
 
-    /// Every player's most recent sample at or before `tick` (players with
-    /// no sample yet are absent).
-    pub fn positions_at(&self, id: i64, tick: i32) -> Result<Vec<PlayerPos>, StoreError> {
+    /// Every player's most recent sample in `min_tick..=tick` (players with
+    /// no sample in that window are absent). `min_tick` is the round's
+    /// start tick — without it, a player who disconnects keeps "standing"
+    /// at their last sample for the rest of the match.
+    pub fn positions_at(
+        &self,
+        id: i64,
+        tick: i32,
+        min_tick: i32,
+    ) -> Result<Vec<PlayerPos>, StoreError> {
         let mut st = self.conn.prepare(
             "SELECT ts.steamid, ts.x, ts.y, ts.is_alive
              FROM tick_samples ts
              WHERE ts.match_id = ?1
                AND ts.tick = (SELECT MAX(t2.tick) FROM tick_samples t2
                               WHERE t2.match_id = ?1 AND t2.steamid = ts.steamid
-                                AND t2.tick <= ?2)
+                                AND t2.tick <= ?2 AND t2.tick >= ?3)
              ORDER BY ts.steamid",
         )?;
         let rows = st
-            .query_map(params![id, tick], |r| {
+            .query_map(params![id, tick, min_tick], |r| {
                 Ok(PlayerPos {
                     steamid: r.get(0)?,
                     x: r.get::<_, f64>(1)? as f32,
@@ -1875,6 +1883,43 @@ mod tests {
         assert_eq!(summary.len(), 1);
         assert_eq!(summary[0].map, "de_mirage");
         assert_eq!(summary[0].demos, 1);
+
+        // A rule flag saved against the corpus match must not leak into the
+        // severity/confidence reader either (defense in depth — corpus
+        // matches never run analysis in the app, but the query should not
+        // rely on that invariant).
+        let corpus_id = store.corpus_match_ids("de_mirage").unwrap()[0];
+        store
+            .save_analysis(
+                corpus_id,
+                &AnalysisOutput {
+                    flags: vec![RuleFlag {
+                        rule_id: "H2_ISOLATED_DEATH",
+                        round: 1,
+                        tick: 1200,
+                        steamid: 1,
+                        confidence: 0.01,
+                        severity: 0.99,
+                        details: serde_json::json!({}),
+                        evidence: EvidenceRef {
+                            round: 1,
+                            tick_start: 900,
+                            tick_end: 1300,
+                            focus_players: vec![1],
+                            camera_hint: None,
+                        },
+                    }],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .rule_severity_confidence("1", "H2_ISOLATED_DEATH")
+                .unwrap(),
+            Some((0.8, 0.75)),
+            "severity/confidence reader ignores corpus-side flags"
+        );
     }
 
     #[test]
@@ -1937,7 +1982,7 @@ mod tests {
         let id = store
             .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
             .unwrap();
-        let at_1150 = store.positions_at(id, 1150).unwrap();
+        let at_1150 = store.positions_at(id, 1150, 0).unwrap();
         assert_eq!(
             at_1150
                 .iter()
@@ -1949,9 +1994,19 @@ mod tests {
             .iter()
             .all(|p| p.alive && p.x == 100.0 && p.y == -50.0));
         // Later tick: sid 1 advances to its 2100 sample, sid 3 keeps 1100.
-        assert_eq!(store.positions_at(id, 2150).unwrap().len(), 2);
+        assert_eq!(store.positions_at(id, 2150, 0).unwrap().len(), 2);
         // Before any sample: nobody has a position yet.
-        assert!(store.positions_at(id, 1000).unwrap().is_empty());
+        assert!(store.positions_at(id, 1000, 0).unwrap().is_empty());
+        // Round lower bound: sid 3's only sample (1100) predates a round
+        // starting at 2000 — a disconnected player must not ghost forward.
+        let bounded = store.positions_at(id, 2150, 2000).unwrap();
+        assert_eq!(
+            bounded
+                .iter()
+                .map(|p| p.steamid.as_str())
+                .collect::<Vec<_>>(),
+            vec!["1"]
+        );
     }
 
     #[test]
