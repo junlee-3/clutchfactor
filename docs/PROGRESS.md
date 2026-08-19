@@ -28,6 +28,7 @@ M0 complete (tagged `m0`). Next up: M1 — Ingest pipeline & Library (PROMPT.md 
 - demoparser2 Rust API: `ParserInputs` (16 required fields, incl. `huffman_lookup_table: &create_huffman_lookup_table()`) → `Parser::new(inputs, ParsingMode::Normal)` → `parse_demo(&create_mmap(path_string)?)`. `create_mmap` takes `String`, not `&Path`.
 - Event enrichment: `userid`-bearing events get `user_name`/`user_steamid` fields (prefix map: attacker/user/assister/victim in `game_events.rs`); `winner` on `round_end` is `Variant::I32` (2 = T side, 3 = CT side). Set `parse_ents: true` for name enrichment.
 - `pnpm/action-setup@v4` in CI requires `"packageManager"` in package.json — pinned `pnpm@10.33.2`.
+- demoparser's `csgoproto` crate needs `protoc` at build time (prost-build) — CI installs it via `arduino/setup-protoc@v3`; locally it was already present.
 - Release-mode demo parse of a 222 MB demo ≈ 0.2 s warm (rayon); debug mode is much slower — run demo-touching tests with `--release`.
 - demofile-net's committed snapshots (`src/DemoFile.Test/Snapshots/` on GitHub) are independent ground truth for our fixture demos — great for validating round/kill extraction without hand-counting.
 - Shell cwd drifts between Bash calls — use absolute paths or explicit `cd` (a `git add .github` once failed from `src-tauri/`).
