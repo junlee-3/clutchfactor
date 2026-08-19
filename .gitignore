@@ -17,3 +17,6 @@ dist-ssr/
 .DS_Store
 *.local
 .idea/
+
+# Claude agent worktrees
+.claude/
