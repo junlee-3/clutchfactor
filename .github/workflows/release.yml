@@ -1,0 +1,51 @@
+# Tagged releases: build the installable app for both platforms and attach
+# the bundles to a GitHub release (PROMPT.md §13 M6 DoD: the owner installs
+# the Windows build from these artifacts).
+name: release
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-14 # arm64 .app/.dmg
+            args: ""
+          - platform: windows-latest # x64 NSIS installer + MSI
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # demoparser's csgoproto crate builds protos via prost-build
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "ClutchFactor ${{ github.ref_name }}"
+          releaseBody: >
+            Desktop CS2 coaching app. Unsigned builds: macOS will warn on
+            first open (right-click → Open); Windows SmartScreen may ask
+            for "More info → Run anyway".
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

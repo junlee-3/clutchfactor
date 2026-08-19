@@ -39,7 +39,7 @@
    Test: `basename("C:\\demos\\a.dem") === "a.dem"`, `basename("/x/y/b.dem") === "b.dem"`, `basename("plain.dem") === "plain.dem"`. Replace both `path.split("/").pop() ?? path` sites (Library.tsx, Corpus.tsx) with `basename(path)`.
 2. **`rule_severity_confidence` kind filter** (defense in depth): add `JOIN matches m ON m.id = rf.match_id AND m.kind = 'own'` to its SQL; extend `corpus_matches_are_invisible_to_tracked_analytics` to assert a corpus-side rule flag would not surface (insert one rule_flag row for a corpus match id inside the test, assert the fn result is unchanged).
 3. **`positions_at` round bound** (disconnect ghosts): add parameter `min_tick: i32`; subquery gains `AND t2.tick >= ?3`. Callers pass the round's `start_tick` (both build_corpus and run_positioning have the RoundInfo in hand). Update the nearest-≤ test: a sample at tick 1100 must NOT satisfy `positions_at(id, 2150, 2000)` for that player.
-- [ ] TDD each; `cargo test -p cf-store && cargo test -p cf-analysis && pnpm vitest run`; fmt/clippy/tsc/eslint; commit `fix(store+ui): kind-filter severity reader, round-bounded positions, portable basename`, push.
+- [x] TDD each; `cargo test -p cf-store && cargo test -p cf-analysis && pnpm vitest run`; fmt/clippy/tsc/eslint; commit `fix(store+ui): kind-filter severity reader, round-bounded positions, portable basename`, push.
 
 ### Task 2 (SUBAGENT, worktree): trend readers + get_trends command
 
@@ -67,7 +67,7 @@ pub fn rule_trend_counts(&self, tracked: &str) -> Result<Vec<RuleTrendCell>, Sto
 // rules sorted by total desc, capped to the 8 largest totals; rules with total < 2 dropped (single events are noise — §7).
 ```
 TS mirrors `TrendMatchRow`/`RuleSeries`/`TrendsDto` in ipc.ts (+ MIRROR CHECKLIST lines), `getTrends()` wrapper, `useTrends()` hook in queries.ts (queryKey `["trends"]`).
-- [ ] TDD store readers (two matches with known kills/death_class rows → exact deaths/class13_pct/counts; corpus match excluded); command compiles; `cargo test -p cf-store`, tsc/eslint; commit `feat(store+app): trend series readers + get_trends command`, push (coordinator merges).
+- [x] TDD store readers (two matches with known kills/death_class rows → exact deaths/class13_pct/counts; corpus match excluded); command compiles; `cargo test -p cf-store`, tsc/eslint; commit `feat(store+app): trend series readers + get_trends command`, push (coordinator merges).
 
 ### Task 3 (SUBAGENT, worktree): pure trends math
 
@@ -85,14 +85,14 @@ export function streak(values: number[]): { len: number; dir: -1 | 0 | 1 };
  *  Down-streak on a bad-thing metric is good news: prefix "Good news: " when dir < 0. */
 export function streakCallout(title: string, values: number[]): string | null;
 ```
-- [ ] TDD (exact cases above + sparkPoints geometry for [0,10] in 100×20 → first point at y=18 with p=2, last at y=2); vitest + tsc + eslint; commit `feat(ui): trends spark/streak math`, push (coordinator merges).
+- [x] TDD (exact cases above + sparkPoints geometry for [0,10] in 100×20 → first point at y=18 with p=2, last at y=2); vitest + tsc + eslint; commit `feat(ui): trends spark/streak math`, push (coordinator merges).
 
 ### Task 4 (inline): Trends screen
 
 **Files:** `src/screens/Trends.tsx` (create), `src/App.tsx` (route `/trends`), `src/components/TopNav.tsx` (create — shared nav: Library · Trends · Corpus · Settings; replace ad-hoc topnav in Library/Corpus), `src/styles.css`.
 **Before code: invoke `frontend-design:frontend-design` and `dataviz` (Skill tool).**
 Layout (§7 screen 4, §5A): header; class-13 share line ("share of deaths that were pure aim duels" — magnitude, one hue, inline SVG polyline over match index, direct-labeled last value); per-rule spark rows (rule title, sparkline from `sparkPoints`, total, streak callout from `streakCallout` in `--text-dim`); per-map split chips (matches count per map, click filters the series client-side); empty state ("Trends need at least 2 matches — import more demos."). No dual axes; hover tooltip per spark row showing per-match counts (title attr is acceptable v0).
-- [ ] Build; typecheck/lint/vitest; AX-verify vs real DB (5 matches: e.g. H2_FAILED_TRADE series totals match `SELECT` by hand); commit `feat(ui): Trends screen — rule sparklines, class-13 share, streaks`, push.
+- [x] Build; typecheck/lint/vitest; AX-verify vs real DB (5 matches: e.g. H2_FAILED_TRADE series totals match `SELECT` by hand); commit `feat(ui): Trends screen — rule sparklines, class-13 share, streaks`, push.
 
 ### Task 5 (inline): Settings screen + match deletion
 
@@ -110,7 +110,7 @@ Layout (§7 screen 4, §5A): header; class-13 share line ("share of deaths that 
 // delete_match(match_id: i64) -> () — refuses when match kind is 'corpus'? No: allow both; Corpus screen debt post-v0. Library only shows own.
 ```
 Settings layout (§7 screen 6): identity card (effective tracked id + name, override input with Save/Clear, §7-voice note: "Applies to new imports. To re-analyze an existing match, delete it in the Library and import the demo again."); thresholds card (read-only table name/value/unit, note that v0 ships fixed defaults); data card (db path, total matches, corpus demos count). Library rows get a small Delete button (confirm via one inline "Delete? / Cancel" toggle, §7 voice, no browser confirm()).
-- [ ] TDD store delete; command compile + mirrors; AX-verify: set override to a roster mate → new import tracks them (or at minimum settings row updates + tracked chip changes after reload); delete a match → row gone, report/replay routes for it 404-safe; commit `feat(app+ui): Settings (identity override, thresholds view) + match deletion`, push.
+- [x] TDD store delete; command compile + mirrors; AX-verify: set override to a roster mate → new import tracks them (or at minimum settings row updates + tracked chip changes after reload); delete a match → row gone, report/replay routes for it 404-safe; commit `feat(app+ui): Settings (identity override, thresholds view) + match deletion`, push.
 
 ### Task 6 (inline): error/empty states, app icon, branding
 
@@ -119,7 +119,7 @@ Settings layout (§7 screen 6): identity card (effective tracked id + name, over
 1. Error copy pass (§7 voice, errors say what to do next): parse failure → `"Couldn't parse {file}: {err}. If this demo is from a different game or corrupted, re-download it and try again."`; duplicate import already reads well; wrong-extension guard in both pickers already filters `.dem`. Mid-parse crash recovery: verify (test exists?) that a failed parse leaves no partial rows — save_match runs after parse and is transactional; add store test `failed_import_leaves_no_rows` if missing (call save_match with data, roll back scenario n/a — instead assert import_demo error path adds no matches row by checking has_file_hash stays false; do it at store level: duplicate-hash error keeps rowcount).
 2. Empty states: Report with zero insights ("Clean match — nothing recurring to coach. Play more and patterns will show."); Replay for missing match id; Trends <2 matches (Task 4); Corpus done (M5).
 3. App icon: author `app-icon.svg` — dark rounded square `#151a21`, CT-blue crosshair with a spark polyline through it (the product: aim + trend), no text; run `pnpm tauri icon app-icon.svg` (writes src-tauri/icons full set); verify tauri.conf.json references them and `productName` is `ClutchFactor`.
-- [ ] vitest/tsc/eslint + cargo tests; dev-run visual check of icon in dock; commit `feat(app): v0 polish — error voice, empty states, app icon`, push.
+- [x] vitest/tsc/eslint + cargo tests; dev-run visual check of icon in dock; commit `feat(app): v0 polish — error voice, empty states, app icon`, push.
 
 ### Task 7 (inline): release pipeline, README, E2E, ship
 
@@ -130,7 +130,7 @@ Settings layout (§7 screen 6): identity card (effective tracked id + name, over
 3. Full E2E sweep on the dev app: import fresh → report → chip → replay; trends numbers vs SQL; settings override; delete+reimport; corpus screen intact.
 4. Docs: PROGRESS (M6 done, v0 shipped, post-v0 = owner change list), PROMPT §13 M6 checkbox, plan boxes. Tag `m6` + `v0.1.0`, push tags, watch release workflow to green, download + smoke the mac artifact locally (`hdiutil attach` + launch).
 5. Final whole-branch review (fable) + ONE fix wave; then the owner handoff message: Windows install steps from CI artifacts (their DoD), the 8-pro-Mirage-demo corpus ask, and the invitation to send the step-by-step change list.
-- [ ] All checks green; commit `feat(release): v0 release workflow + README`, push, tag, ship.
+- [x] All checks green; commit `feat(release): v0 release workflow + README`, push, tag, ship.
 
 ---
 

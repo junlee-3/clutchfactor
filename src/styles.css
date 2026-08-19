@@ -180,6 +180,7 @@ body {
   align-items: baseline;
   padding: 11px 14px 11px 12px;
   background: var(--bg1);
+  border: none;
   border-left: 2px solid var(--line);
   border-bottom: 1px solid var(--line);
 }
