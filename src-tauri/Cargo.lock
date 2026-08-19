@@ -480,6 +480,7 @@ dependencies = [
 name = "cf-store"
 version = "0.1.0"
 dependencies = [
+ "cf-analysis",
  "cf-parser",
  "rusqlite",
  "serde",
@@ -531,6 +532,7 @@ dependencies = [
 name = "clutchfactor"
 version = "0.1.0"
 dependencies = [
+ "cf-analysis",
  "cf-parser",
  "cf-store",
  "serde",

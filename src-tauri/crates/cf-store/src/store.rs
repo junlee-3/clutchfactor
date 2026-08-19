@@ -123,6 +123,30 @@ pub struct RoundTicks {
     pub last_place: Vec<Option<String>>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct InsightRow {
+    pub detector: String,
+    pub category: String,
+    pub severity: f32,
+    pub confidence: f32,
+    pub round: u32,
+    pub player: String,
+    pub title_data_json: String,
+    pub metrics_json: String,
+    pub evidence_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct DeathClassDbRow {
+    pub round: u32,
+    pub tick: i32,
+    pub victim: String,
+    pub class_id: u8,
+    pub class_source: String,
+    pub secondary_tags_json: String,
+    pub confidence: f32,
+}
+
 pub struct Store {
     conn: Connection,
 }
@@ -455,6 +479,125 @@ impl Store {
             out.push(summary);
         }
         Ok(out)
+    }
+
+    /// Persists a match's analysis output (replaces any previous run).
+    pub fn save_analysis(
+        &mut self,
+        match_id: i64,
+        out: &cf_analysis::AnalysisOutput,
+    ) -> Result<(), StoreError> {
+        let tx = self.conn.transaction()?;
+        tx.execute("DELETE FROM rule_flags WHERE match_id = ?1", [match_id])?;
+        tx.execute("DELETE FROM insights WHERE match_id = ?1", [match_id])?;
+        tx.execute("DELETE FROM death_class WHERE match_id = ?1", [match_id])?;
+        {
+            let mut st = tx.prepare(
+                "INSERT INTO rule_flags (match_id, rule_id, round, tick, steamid, confidence,
+                                         severity, details_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            )?;
+            for f in &out.flags {
+                st.execute(params![
+                    match_id,
+                    f.rule_id,
+                    f.round,
+                    f.tick,
+                    f.steamid.to_string(),
+                    f.confidence,
+                    f.severity,
+                    f.details.to_string(),
+                ])?;
+            }
+            let mut st = tx.prepare(
+                "INSERT INTO insights (match_id, detector, category, severity, confidence, round,
+                                       player, title_data_json, metrics_json, evidence_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            )?;
+            for i in &out.insights {
+                st.execute(params![
+                    match_id,
+                    i.detector,
+                    i.category.as_str(),
+                    i.severity,
+                    i.confidence,
+                    i.round,
+                    i.player.to_string(),
+                    i.title_data.to_string(),
+                    i.metrics.to_string(),
+                    serde_json::to_string(&i.evidence).expect("evidence json"),
+                ])?;
+            }
+            let mut st = tx.prepare(
+                "INSERT INTO death_class (match_id, round, tick, victim, class_id, class_source,
+                                          secondary_tags_json, confidence)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            )?;
+            for d in &out.death_classes {
+                st.execute(params![
+                    match_id,
+                    d.round,
+                    d.tick,
+                    d.victim.to_string(),
+                    d.class_id,
+                    d.class_source,
+                    serde_json::to_string(&d.secondary_tags).expect("tags json"),
+                    d.confidence,
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Insight rows for a match, JSON fields as raw strings (UI decodes).
+    pub fn insights_for_match(&self, match_id: i64) -> Result<Vec<InsightRow>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT detector, category, severity, confidence, round, player,
+                    title_data_json, metrics_json, evidence_json
+             FROM insights WHERE match_id = ?1
+             ORDER BY severity * confidence DESC",
+        )?;
+        let rows = st
+            .query_map([match_id], |r| {
+                Ok(InsightRow {
+                    detector: r.get(0)?,
+                    category: r.get(1)?,
+                    severity: r.get(2)?,
+                    confidence: r.get(3)?,
+                    round: r.get(4)?,
+                    player: r.get(5)?,
+                    title_data_json: r.get(6)?,
+                    metrics_json: r.get(7)?,
+                    evidence_json: r.get(8)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn death_classes_for_match(
+        &self,
+        match_id: i64,
+    ) -> Result<Vec<DeathClassDbRow>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT round, tick, victim, class_id, class_source, secondary_tags_json, confidence
+             FROM death_class WHERE match_id = ?1 ORDER BY tick",
+        )?;
+        let rows = st
+            .query_map([match_id], |r| {
+                Ok(DeathClassDbRow {
+                    round: r.get(0)?,
+                    tick: r.get(1)?,
+                    victim: r.get(2)?,
+                    class_id: r.get(3)?,
+                    class_source: r.get(4)?,
+                    secondary_tags_json: r.get(5)?,
+                    confidence: r.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     pub fn get_setting(&self, key: &str) -> Result<Option<String>, StoreError> {
@@ -928,6 +1071,65 @@ mod tests {
         assert_eq!(rt2.tick, vec![2100]);
         // Unknown round → empty, not error.
         assert!(store.round_ticks(id, 99).unwrap().tick.is_empty());
+    }
+
+    #[test]
+    fn save_analysis_roundtrips_and_replaces() {
+        use cf_analysis::{
+            AnalysisOutput, Category, DeathClassRow, EvidenceRef, Insight, RuleFlag,
+        };
+        let (_dir, mut store) = open_tmp();
+        let id = store.save_match("m1.dem", "h1", &sample_match()).unwrap();
+        let out = AnalysisOutput {
+            flags: vec![RuleFlag {
+                rule_id: "H2_ISOLATED_DEATH",
+                round: 2,
+                tick: 2200,
+                steamid: 1,
+                confidence: 0.75,
+                severity: 0.8,
+                details: serde_json::json!({"distance": 1200.0}),
+                evidence: EvidenceRef {
+                    round: 2,
+                    tick_start: 1880,
+                    tick_end: 2328,
+                    focus_players: vec![1, 3],
+                    camera_hint: None,
+                },
+            }],
+            insights: vec![Insight {
+                detector: "H2_ISOLATED_DEATH".into(),
+                category: Category::Deaths,
+                severity: 0.8,
+                confidence: 0.75,
+                round: 0,
+                player: 1,
+                title_data: serde_json::json!({"count": 1}),
+                metrics: serde_json::json!({"count": 1}),
+                evidence: vec![],
+            }],
+            death_classes: vec![DeathClassRow {
+                round: 2,
+                tick: 2200,
+                victim: 1,
+                class_id: 6,
+                class_source: "H2_ISOLATED_DEATH".into(),
+                secondary_tags: vec!["H3_WASTED_UTILITY".into()],
+                confidence: 0.75,
+            }],
+        };
+        store.save_analysis(id, &out).unwrap();
+        let insights = store.insights_for_match(id).unwrap();
+        assert_eq!(insights.len(), 1);
+        assert_eq!(insights[0].detector, "H2_ISOLATED_DEATH");
+        assert_eq!(insights[0].category, "deaths");
+        let classes = store.death_classes_for_match(id).unwrap();
+        assert_eq!(classes.len(), 1);
+        assert_eq!(classes[0].class_id, 6);
+        assert!(classes[0].secondary_tags_json.contains("H3_WASTED_UTILITY"));
+        // Re-save replaces, not duplicates.
+        store.save_analysis(id, &out).unwrap();
+        assert_eq!(store.insights_for_match(id).unwrap().len(), 1);
     }
 
     #[test]

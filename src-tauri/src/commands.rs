@@ -89,8 +89,8 @@ pub async fn import_demo(
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
 
-    send(&on_progress, "saving", 0.9, "Saving to library");
-    let (match_id, map, score_a, score_b) = {
+    send(&on_progress, "saving", 0.88, "Saving to library");
+    let (match_id, map, score_a, score_b, tracked) = {
         let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
         let id = store
             .save_match(&file_name, &file_hash, &data)
@@ -99,8 +99,25 @@ pub async fn import_demo(
                 other => format!("failed to save match: {other}"),
             })?;
         let (_, _, wa, wb) = cf_parser::extract::derive_score(&data.rounds);
-        (id, data.map.clone(), wa, wb)
+        let tracked = store.tracked_steamid().map_err(|e| e.to_string())?;
+        (id, data.map.clone(), wa, wb, tracked)
     };
+
+    // Analysis needs a tracked player; after save_match the modal fallback
+    // always yields one for a non-empty library.
+    if let Some(tracked) = tracked.and_then(|t| t.parse::<u64>().ok()) {
+        send(&on_progress, "analyzing", 0.92, "Running detectors");
+        let cfg = cf_analysis::DetectorConfig::default();
+        let analysis = tauri::async_runtime::spawn_blocking(move || {
+            cf_analysis::analyze(&data, tracked, &cfg)
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        store
+            .save_analysis(match_id, &analysis)
+            .map_err(|e| e.to_string())?;
+    }
 
     send(&on_progress, "done", 1.0, "Import complete");
     Ok(ImportResult {
