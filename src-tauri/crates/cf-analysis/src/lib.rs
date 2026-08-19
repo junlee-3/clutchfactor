@@ -8,6 +8,7 @@
 pub mod classify;
 pub mod config;
 pub mod context;
+pub mod corpus;
 pub mod families;
 pub mod habits;
 pub mod scenario;
