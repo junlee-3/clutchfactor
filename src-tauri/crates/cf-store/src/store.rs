@@ -642,6 +642,25 @@ impl Store {
         Ok(rows)
     }
 
+    /// (max severity, min confidence) of a rule's stored flags for the
+    /// tracked player — habit scoring inputs, data-driven.
+    pub fn rule_severity_confidence(
+        &self,
+        tracked: &str,
+        rule_id: &str,
+    ) -> Result<Option<(f32, f32)>, StoreError> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT MAX(severity), MIN(confidence) FROM rule_flags
+                 WHERE steamid = ?1 AND rule_id = ?2",
+                params![tracked, rule_id],
+                |r| Ok((r.get::<_, Option<f32>>(0)?, r.get::<_, Option<f32>>(1)?)),
+            )
+            .map(|(s, c)| s.zip(c))?;
+        Ok(row)
+    }
+
     /// Distinct rule ids that ever flagged for the tracked player.
     pub fn flagged_rule_ids(&self, tracked: &str) -> Result<Vec<String>, StoreError> {
         let mut st = self.conn.prepare(

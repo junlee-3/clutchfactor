@@ -1,12 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  getHabits,
   getMatchDetail,
+  getMatchReport,
   getRoundTicks,
   importDemo,
   listMatches,
   trackedPlayer,
 } from "./ipc";
 import type { ProgressEvent } from "./ipc";
+
+export function useMatchReport(matchId: number) {
+  return useQuery({
+    queryKey: ["report", matchId],
+    queryFn: () => getMatchReport(matchId),
+  });
+}
+
+export function useHabits() {
+  return useQuery({ queryKey: ["habits"], queryFn: getHabits });
+}
 
 export function useMatchDetail(matchId: number) {
   return useQuery({

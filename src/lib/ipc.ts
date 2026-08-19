@@ -8,6 +8,9 @@
 //   RoundTicks     <- src-tauri/crates/cf-store/src/store.rs
 //   ProgressEvent  <- src-tauri/src/commands.rs
 //   ImportResult   <- src-tauri/src/commands.rs
+//   MatchReport (+ NarratedInsight/NarrationDto/DeathClassRow/RoundStat)
+//                  <- src-tauri/src/commands.rs + cf-store store.rs
+//   HabitReport (+ HabitEvidence) <- src-tauri/src/commands.rs
 // Conventions: steamids are strings (steamid64 overflows JS number);
 // command names are snake_case; Rust arg names arrive camelCased.
 
@@ -118,6 +121,91 @@ export interface RoundTicks {
 
 export function listMatches(): Promise<MatchSummary[]> {
   return invoke<MatchSummary[]>("list_matches");
+}
+
+export interface EvidenceRefDto {
+  round: number;
+  tick_start: number;
+  tick_end: number;
+  focus_players: string[];
+  camera_hint: string | null;
+}
+
+export interface NarrationDto {
+  title: string;
+  body: string;
+}
+
+export interface NarratedInsight {
+  detector: string;
+  category: "deaths" | "utility" | "positioning" | "timing";
+  severity: number;
+  confidence: number;
+  round: number;
+  score: number;
+  title: string;
+  body: string;
+  metrics: Record<string, unknown>;
+  evidence: EvidenceRefDto[];
+}
+
+export interface DeathClassRow {
+  round: number;
+  tick: number;
+  victim: string;
+  class_id: number;
+  class_source: string;
+  secondary_tags_json: string;
+  confidence: number;
+}
+
+export interface RoundStat {
+  number: number;
+  freeze_end_tick: number | null;
+  winner: "CT" | "T";
+  tracked_side: "CT" | "T" | null;
+  kills: number;
+  deaths: number;
+}
+
+export interface MatchReport {
+  match_id: number;
+  map: string;
+  score_a: number;
+  score_b: number;
+  tracked: string | null;
+  tracked_result: "win" | "loss" | "tie" | null;
+  summary: NarrationDto | null;
+  insights: NarratedInsight[];
+  death_classes: DeathClassRow[];
+  class_13_share_pct: number;
+  per_round: RoundStat[];
+  classes_not_built: number[];
+}
+
+export interface HabitEvidence {
+  match_id: number;
+  map: string;
+  evidence: EvidenceRefDto;
+}
+
+export interface HabitReport {
+  rule_id: string;
+  title: string;
+  body: string;
+  matches_hit: number;
+  window: number;
+  total: number;
+  score: number;
+  evidence: HabitEvidence[];
+}
+
+export function getMatchReport(matchId: number): Promise<MatchReport | null> {
+  return invoke<MatchReport | null>("get_match_report", { matchId });
+}
+
+export function getHabits(): Promise<HabitReport[]> {
+  return invoke<HabitReport[]>("get_habits");
 }
 
 export function getMatchDetail(matchId: number): Promise<MatchDetail | null> {

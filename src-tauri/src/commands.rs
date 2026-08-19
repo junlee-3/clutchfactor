@@ -149,6 +149,319 @@ pub fn get_match_detail(
     store.match_detail(match_id).map_err(|e| e.to_string())
 }
 
+// ---- M4: match report + cross-demo habits ----
+
+#[derive(serde::Serialize)]
+pub struct NarrationDto {
+    pub title: String,
+    pub body: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct NarratedInsight {
+    pub detector: String,
+    pub category: String,
+    pub severity: f32,
+    pub confidence: f32,
+    pub round: u32,
+    pub score: f32,
+    pub title: String,
+    pub body: String,
+    pub metrics: serde_json::Value,
+    pub evidence: Vec<cf_analysis::EvidenceRef>,
+}
+
+#[derive(serde::Serialize)]
+pub struct MatchReport {
+    pub match_id: i64,
+    pub map: String,
+    pub score_a: u32,
+    pub score_b: u32,
+    pub tracked: Option<String>,
+    pub tracked_result: Option<String>,
+    pub summary: Option<NarrationDto>,
+    pub insights: Vec<NarratedInsight>,
+    pub death_classes: Vec<cf_store::store::DeathClassDbRow>,
+    pub class_13_share_pct: f32,
+    pub per_round: Vec<cf_store::store::RoundStat>,
+    pub classes_not_built: Vec<u8>,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct HabitEvidence {
+    pub match_id: i64,
+    pub map: String,
+    pub evidence: cf_analysis::EvidenceRef,
+}
+
+#[derive(serde::Serialize)]
+pub struct HabitReport {
+    pub rule_id: String,
+    pub title: String,
+    pub body: String,
+    pub matches_hit: usize,
+    pub window: usize,
+    pub total: u32,
+    pub score: f32,
+    pub evidence: Vec<HabitEvidence>,
+}
+
+/// Rebuild a cf_analysis::Insight from its stored row (JSON strings → values).
+fn insight_from_row(row: &cf_store::store::InsightRow) -> Option<cf_analysis::Insight> {
+    use cf_analysis::Category;
+    let category = match row.category.as_str() {
+        "deaths" => Category::Deaths,
+        "utility" => Category::Utility,
+        "positioning" => Category::Positioning,
+        "timing" => Category::Timing,
+        _ => return None,
+    };
+    Some(cf_analysis::Insight {
+        detector: row.detector.clone(),
+        category,
+        severity: row.severity,
+        confidence: row.confidence,
+        round: row.round,
+        player: row.player.parse().ok()?,
+        title_data: serde_json::from_str(&row.title_data_json).ok()?,
+        metrics: serde_json::from_str(&row.metrics_json).ok()?,
+        evidence: serde_json::from_str(&row.evidence_json).unwrap_or_default(),
+    })
+}
+
+#[tauri::command]
+pub fn get_match_report(
+    state: State<'_, AppState>,
+    match_id: i64,
+) -> Result<Option<MatchReport>, String> {
+    use cf_narrator::{CoachingNarrator, TemplateNarrator};
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    let Some(detail) = store.match_detail(match_id).map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let tracked = store.tracked_steamid().map_err(|e| e.to_string())?;
+    let tracked_u64 = tracked.as_ref().and_then(|t| t.parse::<u64>().ok());
+
+    let death_classes = store
+        .death_classes_for_match(match_id)
+        .map_err(|e| e.to_string())?;
+    let class_13 = death_classes.iter().filter(|d| d.class_id == 13).count();
+    let class_13_share_pct = if death_classes.is_empty() {
+        0.0
+    } else {
+        (class_13 as f32 / death_classes.len() as f32 * 1000.0).round() / 10.0
+    };
+
+    let tracked_result = store
+        .list_matches()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|m| m.id == match_id)
+        .and_then(|m| m.tracked_result);
+
+    let ctx = cf_narrator::MatchContext {
+        map: detail.map.clone(),
+        tracked: tracked_u64.unwrap_or(0),
+        names: detail
+            .players
+            .iter()
+            .filter_map(|p| Some((p.steamid.parse::<u64>().ok()?, p.name.clone())))
+            .collect(),
+        score: (detail.score_a, detail.score_b),
+        tracked_result: tracked_result.clone(),
+        total_deaths: death_classes.len(),
+        class_13_share_pct,
+    };
+
+    let narrator = TemplateNarrator;
+    let rows = store
+        .insights_for_match(match_id)
+        .map_err(|e| e.to_string())?;
+    let parsed: Vec<cf_analysis::Insight> = rows.iter().filter_map(insight_from_row).collect();
+    let mut insights: Vec<NarratedInsight> = parsed
+        .iter()
+        .map(|i| {
+            let n = narrator.narrate(i, &ctx);
+            let count = i.metrics.get("count").and_then(|v| v.as_u64()).unwrap_or(1) as f32;
+            NarratedInsight {
+                detector: i.detector.clone(),
+                category: match i.category {
+                    cf_analysis::Category::Deaths => "deaths",
+                    cf_analysis::Category::Utility => "utility",
+                    cf_analysis::Category::Positioning => "positioning",
+                    cf_analysis::Category::Timing => "timing",
+                }
+                .to_string(),
+                severity: i.severity,
+                confidence: i.confidence,
+                round: i.round,
+                score: i.severity * i.confidence * (1.0 + count).ln(),
+                title: n.title,
+                body: n.body,
+                metrics: i.metrics.clone(),
+                evidence: i.evidence.clone(),
+            }
+        })
+        .collect();
+    insights.sort_by(|a, b| b.score.total_cmp(&a.score));
+    let summary = narrator.summarize(&parsed, &ctx).map(|n| NarrationDto {
+        title: n.title,
+        body: n.body,
+    });
+
+    let per_round = tracked
+        .as_ref()
+        .map(|t| store.per_round_stats(match_id, t))
+        .transpose()
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
+
+    Ok(Some(MatchReport {
+        match_id,
+        map: detail.map,
+        score_a: detail.score_a,
+        score_b: detail.score_b,
+        tracked,
+        tracked_result,
+        summary,
+        insights,
+        death_classes,
+        class_13_share_pct,
+        per_round,
+        classes_not_built: vec![8, 10, 12],
+    }))
+}
+
+#[tauri::command]
+pub fn get_habits(state: State<'_, AppState>) -> Result<Vec<HabitReport>, String> {
+    use cf_analysis::habits::{death_hotspots, promote_habits, DeathPoint, HabitInput};
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    let Some(tracked) = store.tracked_steamid().map_err(|e| e.to_string())? else {
+        return Ok(vec![]);
+    };
+    let cfg = cf_analysis::DetectorConfig::default();
+
+    // Rule-recurrence habits.
+    let mut inputs = vec![];
+    let mut evidence_by_rule: std::collections::HashMap<String, Vec<HabitEvidence>> =
+        std::collections::HashMap::new();
+    for rule_id in store
+        .flagged_rule_ids(&tracked)
+        .map_err(|e| e.to_string())?
+    {
+        let counts = store
+            .rule_counts_across_matches(&tracked, &rule_id, cfg.habit.window_matches)
+            .map_err(|e| e.to_string())?;
+        let Some((severity, confidence)) = store
+            .rule_severity_confidence(&tracked, &rule_id)
+            .map_err(|e| e.to_string())?
+        else {
+            continue;
+        };
+        let mut ev = vec![];
+        for c in counts.iter().filter(|c| c.count > 0) {
+            if let Some(e) = c
+                .first_evidence_json
+                .as_ref()
+                .and_then(|j| serde_json::from_str::<cf_analysis::EvidenceRef>(j).ok())
+            {
+                ev.push(HabitEvidence {
+                    match_id: c.match_id,
+                    map: c.map.clone(),
+                    evidence: e,
+                });
+            }
+        }
+        evidence_by_rule.insert(rule_id.clone(), ev);
+        inputs.push(HabitInput {
+            rule_id,
+            severity,
+            confidence,
+            per_match: counts.iter().map(|c| (c.match_id, c.count)).collect(),
+        });
+    }
+    let mut out: Vec<HabitReport> = promote_habits(&inputs, &cfg.habit)
+        .into_iter()
+        .map(|h| {
+            let n = cf_narrator::narrate_habit(
+                &h.rule_id,
+                h.matches_hit,
+                h.window,
+                h.total,
+                &serde_json::json!({}),
+            );
+            HabitReport {
+                evidence: evidence_by_rule
+                    .get(&h.rule_id)
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .take(6)
+                    .collect(),
+                rule_id: h.rule_id,
+                title: n.title,
+                body: n.body,
+                matches_hit: h.matches_hit,
+                window: h.window,
+                total: h.total,
+                score: h.score,
+            }
+        })
+        .collect();
+
+    // Cross-demo death hotspots (spec H4_REPEAT_HOTSPOT).
+    let points: Vec<DeathPoint> = store
+        .death_positions(&tracked)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|p| DeathPoint {
+            match_id: p.match_id,
+            map: p.map,
+            round: p.round,
+            tick: p.tick,
+            x: p.x,
+            y: p.y,
+        })
+        .collect();
+    let tracked_u64 = tracked.parse::<u64>().ok();
+    for hs in death_hotspots(&points, &cfg.habit) {
+        let n = cf_narrator::narrate_habit(
+            "H4_REPEAT_HOTSPOT",
+            hs.matches,
+            cfg.habit.window_matches,
+            hs.deaths as u32,
+            &serde_json::json!({ "map": hs.map, "deaths": hs.deaths, "matches": hs.matches }),
+        );
+        out.push(HabitReport {
+            rule_id: "H4_REPEAT_HOTSPOT".to_string(),
+            title: n.title,
+            body: n.body,
+            matches_hit: hs.matches,
+            window: cfg.habit.window_matches,
+            total: hs.deaths as u32,
+            score: 0.8 * (hs.deaths as f32).ln().max(0.5),
+            evidence: hs
+                .members
+                .iter()
+                .take(6)
+                .map(|(match_id, round, tick)| HabitEvidence {
+                    match_id: *match_id,
+                    map: hs.map.clone(),
+                    evidence: cf_analysis::EvidenceRef {
+                        round: *round,
+                        tick_start: tick - 320,
+                        tick_end: tick + 128,
+                        focus_players: tracked_u64.into_iter().collect(),
+                        camera_hint: None,
+                    },
+                })
+                .collect(),
+        });
+    }
+    out.sort_by(|a, b| b.score.total_cmp(&a.score));
+    Ok(out)
+}
+
 #[tauri::command]
 pub fn get_round_ticks(
     state: State<'_, AppState>,

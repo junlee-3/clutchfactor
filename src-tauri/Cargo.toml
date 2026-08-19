@@ -29,6 +29,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 cf-analysis = { path = "crates/cf-analysis" }
+cf-narrator = { path = "crates/cf-narrator" }
 cf-parser = { path = "crates/cf-parser" }
 cf-store = { path = "crates/cf-store" }
 

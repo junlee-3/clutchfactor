@@ -538,6 +538,7 @@ name = "clutchfactor"
 version = "0.1.0"
 dependencies = [
  "cf-analysis",
+ "cf-narrator",
  "cf-parser",
  "cf-store",
  "serde",

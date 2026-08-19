@@ -26,6 +26,8 @@ pub fn run() {
             commands::list_matches,
             commands::tracked_player,
             commands::get_match_detail,
+            commands::get_match_report,
+            commands::get_habits,
             commands::get_round_ticks
         ])
         .run(tauri::generate_context!())
