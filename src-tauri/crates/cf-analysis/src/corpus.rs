@@ -354,6 +354,10 @@ pub fn d6_insights(
                     "map": map,
                 }),
                 metrics: serde_json::json!({
+                    // Recurrence count feeds report ranking (score uses
+                    // metrics.count) — an 11-round pattern outranks a
+                    // 3-round one; the 0.6 confidence cap still bounds D6.
+                    "count": f.rounds.len(),
                     "rounds": f.rounds,
                     "threshold": f.threshold,
                     "densities": f.pooled_densities,
@@ -633,6 +637,9 @@ mod tests {
         assert_eq!(ins.metrics["threshold"], 0);
         assert_eq!(ins.metrics["densities"], serde_json::json!([0, 0, 0]));
         assert_eq!(ins.metrics["rounds_analyzed"], 24);
+        // Recurrence count must live in metrics too — report ranking scores
+        // by metrics.count, so without it every D6 insight ranks as one.
+        assert_eq!(ins.metrics["count"], 3);
 
         assert_eq!(ins.evidence.len(), 3);
         let e0 = &ins.evidence[0];
