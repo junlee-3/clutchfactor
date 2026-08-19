@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { ProgressEvent } from "../lib/ipc";
 import { useImportDemo, useMatches, useTrackedPlayer } from "../lib/queries";
@@ -44,6 +44,11 @@ export function Library() {
             tracking {tracked.data}
           </span>
         )}
+        <nav className="topnav">
+          <Link className="topnav-link" to="/corpus">
+            Reference corpus
+          </Link>
+        </nav>
       </header>
 
       <main className="content">
