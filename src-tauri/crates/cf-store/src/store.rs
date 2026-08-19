@@ -2342,6 +2342,28 @@ mod tests {
     }
 
     #[test]
+    fn failed_import_leaves_no_rows() {
+        // Parse failures can't write rows by construction (save_match runs
+        // only after a successful parse); the DB-side failure that CAN
+        // happen mid-import is the duplicate-hash rejection — assert it
+        // leaves the library untouched.
+        let (_dir, mut store) = open_tmp();
+        store
+            .save_match("a.dem", "same-hash", MatchKind::Own, &sample_match())
+            .unwrap();
+        let err = store
+            .save_match("b.dem", "same-hash", MatchKind::Own, &sample_match())
+            .unwrap_err();
+        assert!(matches!(err, StoreError::DuplicateImport));
+        assert_eq!(store.list_matches().unwrap().len(), 1);
+        let rows: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM matches", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rows, 1, "failed import must not leave a partial row");
+    }
+
+    #[test]
     fn delete_match_cascades_and_frees_the_hash() {
         use cf_analysis::{Category, Insight};
         let (_dir, mut store) = open_tmp();

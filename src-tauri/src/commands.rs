@@ -114,7 +114,14 @@ async fn parse_and_save(
     })
     .await
     .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
+    // §7 voice: say what happened and what to do next. A failed parse has
+    // written nothing — the save only happens after this point.
+    .map_err(|e| {
+        format!(
+            "Couldn't parse {file_name}: {e}. If this demo is from a different \
+             game or the download was cut short, re-download it and try again."
+        )
+    })?;
 
     send(on_progress, "saving", 0.88, "Saving to library");
     let match_id = {
