@@ -3,6 +3,9 @@
 // MIRROR CHECKLIST — these types are hand-mirrored from Rust; update BOTH
 // sides in the same commit (tauri-specta is still RC, re-evaluate at M2):
 //   MatchSummary   <- src-tauri/crates/cf-store/src/store.rs
+//   MatchDetail (+ RoundInfo/KillInfo/GrenadeInfo/BombInfo/PlayerInfo/RoundSideInfo)
+//                  <- src-tauri/crates/cf-store/src/store.rs
+//   RoundTicks     <- src-tauri/crates/cf-store/src/store.rs
 //   ProgressEvent  <- src-tauri/src/commands.rs
 //   ImportResult   <- src-tauri/src/commands.rs
 // Conventions: steamids are strings (steamid64 overflows JS number);
@@ -38,8 +41,94 @@ export interface ImportResult {
   score_b: number;
 }
 
+export interface RoundInfo {
+  number: number;
+  start_tick: number;
+  freeze_end_tick: number | null;
+  end_tick: number;
+  officially_ended_tick: number | null;
+  winner: "CT" | "T";
+  reason: string;
+}
+
+export interface KillInfo {
+  round: number;
+  tick: number;
+  attacker: string | null;
+  victim: string;
+  assister: string | null;
+  weapon: string;
+  headshot: boolean;
+}
+
+export interface GrenadeInfo {
+  tick: number;
+  kind: string;
+  thrower: string | null;
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface BombInfo {
+  tick: number;
+  kind: "planted" | "defused" | "exploded";
+  player: string | null;
+}
+
+export interface PlayerInfo {
+  steamid: string;
+  name: string;
+}
+
+export interface RoundSideInfo {
+  number: number;
+  steamid: string;
+  side: "CT" | "T";
+}
+
+export interface MatchDetail {
+  id: number;
+  map: string;
+  tickrate: number;
+  sample_every: number;
+  score_a: number;
+  score_b: number;
+  players: PlayerInfo[];
+  rounds: RoundInfo[];
+  kills: KillInfo[];
+  grenades: GrenadeInfo[];
+  bomb_events: BombInfo[];
+  round_sides: RoundSideInfo[];
+}
+
+export interface RoundTicks {
+  tick: number[];
+  steamid: string[];
+  x: number[];
+  y: number[];
+  z: number[];
+  yaw: number[];
+  health: number[];
+  is_alive: boolean[];
+  team_num: number[];
+  active_weapon: (string | null)[];
+  last_place: (string | null)[];
+}
+
 export function listMatches(): Promise<MatchSummary[]> {
   return invoke<MatchSummary[]>("list_matches");
+}
+
+export function getMatchDetail(matchId: number): Promise<MatchDetail | null> {
+  return invoke<MatchDetail | null>("get_match_detail", { matchId });
+}
+
+export function getRoundTicks(
+  matchId: number,
+  round: number,
+): Promise<RoundTicks> {
+  return invoke<RoundTicks>("get_round_ticks", { matchId, round });
 }
 
 export function trackedPlayer(): Promise<string | null> {

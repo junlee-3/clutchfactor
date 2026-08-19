@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use cf_parser::extract::{parse_match, ImportStage};
+use cf_store::store::{MatchDetail, RoundTicks};
 use cf_store::{MatchSummary, Store, StoreError};
 use sha2::{Digest, Sha256};
 use tauri::ipc::Channel;
@@ -120,4 +121,25 @@ pub fn list_matches(state: State<'_, AppState>) -> Result<Vec<MatchSummary>, Str
 pub fn tracked_player(state: State<'_, AppState>) -> Result<Option<String>, String> {
     let store = state.store.lock().map_err(|_| "store lock poisoned")?;
     store.tracked_steamid().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_match_detail(
+    state: State<'_, AppState>,
+    match_id: i64,
+) -> Result<Option<MatchDetail>, String> {
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    store.match_detail(match_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_round_ticks(
+    state: State<'_, AppState>,
+    match_id: i64,
+    round: u32,
+) -> Result<RoundTicks, String> {
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    store
+        .round_ticks(match_id, round)
+        .map_err(|e| e.to_string())
 }
