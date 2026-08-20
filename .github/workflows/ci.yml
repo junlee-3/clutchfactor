@@ -1,7 +1,18 @@
 name: ci
 on:
   push:
+    branches: [main]
   pull_request:
+
+# Feature-branch pushes are covered by their PR run; filtering `push` to main
+# stops every commit being checked twice under the same check names, which is
+# what branch protection matches on.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   rust:
