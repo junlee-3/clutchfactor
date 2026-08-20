@@ -158,6 +158,7 @@ pub struct DeathPos {
     pub tick: i32,
     pub x: f32,
     pub y: f32,
+    pub place: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -721,19 +722,26 @@ impl Store {
     /// Tracked player's death positions per map across all matches (from the
     /// nearest tick sample at or before each kill).
     pub fn death_positions(&self, tracked: &str) -> Result<Vec<DeathPos>, StoreError> {
+        // The position sample must be recent enough to actually be the death
+        // position. tick_samples carries no round column, so an unbounded
+        // MAX(tick) would silently fall back to a sample from an earlier
+        // round — a completely different place on the map — whenever a round
+        // has no sample before the kill. 10 s is far wider than the sampling
+        // interval, so this only ever excludes genuinely missing data.
+        const MAX_LOOKBACK_TICKS: i32 = 640;
         let mut st = self.conn.prepare(
-            "SELECT k.match_id, m.map, k.round, k.tick, t.x, t.y
+            "SELECT k.match_id, m.map, k.round, k.tick, t.x, t.y, t.last_place
              FROM kills k
              JOIN matches m ON m.id = k.match_id
              JOIN tick_samples t ON t.match_id = k.match_id AND t.steamid = k.victim
               AND t.tick = (SELECT MAX(tick) FROM tick_samples
                              WHERE match_id = k.match_id AND steamid = k.victim
-                               AND tick <= k.tick)
+                               AND tick <= k.tick AND tick >= k.tick - ?2)
              WHERE k.victim = ?1 AND m.kind = 'own'
              ORDER BY k.match_id, k.tick",
         )?;
         let rows = st
-            .query_map([tracked], |r| {
+            .query_map(params![tracked, MAX_LOOKBACK_TICKS], |r| {
                 Ok(DeathPos {
                     match_id: r.get(0)?,
                     map: r.get(1)?,
@@ -741,6 +749,7 @@ impl Store {
                     tick: r.get(3)?,
                     x: r.get(4)?,
                     y: r.get(5)?,
+                    place: r.get(6)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -765,6 +774,31 @@ impl Store {
             )
             .map(|(s, c)| s.zip(c))?;
         Ok(row)
+    }
+
+    /// The callouts a rule fires at most often for the tracked player,
+    /// commonest first. Death-anchored rules already record `place` in their
+    /// flag details, so naming where a habit happens needs no re-analysis —
+    /// it is a read over data that was there all along.
+    pub fn rule_top_places(
+        &self,
+        tracked: &str,
+        rule_id: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, u32)>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT json_extract(rf.details_json, '$.place') AS place, COUNT(*) AS n
+             FROM rule_flags rf
+             JOIN matches m ON m.id = rf.match_id AND m.kind = 'own'
+             WHERE rf.steamid = ?1 AND rf.rule_id = ?2 AND place IS NOT NULL
+             GROUP BY place ORDER BY n DESC, place ASC LIMIT ?3",
+        )?;
+        let rows = st
+            .query_map(params![tracked, rule_id, limit as i64], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, u32>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     /// Distinct rule ids that ever flagged for the tracked player.

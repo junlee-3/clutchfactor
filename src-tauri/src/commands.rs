@@ -458,15 +458,35 @@ pub fn get_habits(state: State<'_, AppState>) -> Result<Vec<HabitReport>, String
             per_match: counts.iter().map(|c| (c.match_id, c.count)).collect(),
         });
     }
-    let mut out: Vec<HabitReport> = promote_habits(&inputs, &cfg.habit)
+    let promoted = promote_habits(&inputs, &cfg.habit);
+    // Where each habit actually happens. Death-anchored flags already store
+    // `place`, so this is a read, not new analysis — a habit that names its
+    // callouts is actionable ("stop holding Catwalk that way"); one that
+    // only counts is not.
+    let places_by_rule: std::collections::HashMap<String, Vec<(String, u32)>> = promoted
+        .iter()
+        .map(|h| {
+            let places = store
+                .rule_top_places(&tracked, &h.rule_id, 3)
+                .unwrap_or_default();
+            (h.rule_id.clone(), places)
+        })
+        .collect();
+    let mut out: Vec<HabitReport> = promoted
         .into_iter()
         .map(|h| {
+            let places = places_by_rule.get(&h.rule_id).cloned().unwrap_or_default();
             let n = cf_narrator::narrate_habit(
                 &h.rule_id,
                 h.matches_hit,
                 h.window,
                 h.total,
-                &serde_json::json!({}),
+                &serde_json::json!({
+                    "places": places
+                        .iter()
+                        .map(|(p, n)| serde_json::json!({ "place": p, "count": n }))
+                        .collect::<Vec<_>>(),
+                }),
             );
             HabitReport {
                 evidence: evidence_by_rule
@@ -499,13 +519,16 @@ pub fn get_habits(state: State<'_, AppState>) -> Result<Vec<HabitReport>, String
             tick: p.tick,
             x: p.x,
             y: p.y,
+            place: p.place,
         })
         .collect();
-    // One card per map: several clusters on the same map read as duplicate
-    // titles and crowd out rule habits — keep the deadliest cluster only.
-    let mut seen_maps = std::collections::HashSet::new();
+    // One card per callout, not per map. Cards are titled by place now, so
+    // A site and B site are two distinct, useful findings rather than the
+    // duplicate titles this dedup originally existed to suppress — but two
+    // clusters inside the *same* callout still collide, so keep the deadliest.
+    let mut seen_places = std::collections::HashSet::new();
     for hs in death_hotspots(&points, &cfg.habit) {
-        if !seen_maps.insert(hs.map.clone()) {
+        if !seen_places.insert((hs.map.clone(), hs.place.clone())) {
             continue;
         }
         let n = cf_narrator::narrate_habit(
@@ -513,7 +536,12 @@ pub fn get_habits(state: State<'_, AppState>) -> Result<Vec<HabitReport>, String
             hs.matches,
             cfg.habit.window_matches,
             hs.deaths as u32,
-            &serde_json::json!({ "map": hs.map, "deaths": hs.deaths, "matches": hs.matches }),
+            &serde_json::json!({
+                "map": hs.map,
+                "deaths": hs.deaths,
+                "matches": hs.matches,
+                "place": hs.place,
+            }),
         );
         out.push(HabitReport {
             rule_id: "H4_REPEAT_HOTSPOT".to_string(),

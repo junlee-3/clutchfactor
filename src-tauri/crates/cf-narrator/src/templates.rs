@@ -766,8 +766,9 @@ pub fn narrate_habit(
         "H2_ISOLATED_DEATH" => Narration {
             title: "Habit: isolated deaths".to_string(),
             body: format!(
-                "You died isolated {seen}. This is the first habit to fix: pick fights a \
-                 teammate can re-peek within two seconds."
+                "You died isolated {seen}{}. This is the first habit to fix: pick fights a \
+                 teammate can re-peek within two seconds.",
+                place_clause(extra)
             ),
         },
         "H2_FAILED_TRADE" => Narration {
@@ -791,18 +792,25 @@ pub fn narrate_habit(
                  leaves with you."
             ),
         },
+        // H3_WASTED_UTILITY reads the death-tick *inventory*, not the active
+        // weapon (that is H3_DIED_WITH_NADE_OUT). "Holding" read as "in your
+        // hand" and made a true finding look like a lie — say "unused", and
+        // say where it keeps happening.
         "H3_WASTED_UTILITY" => Narration {
-            title: "Habit: dying with utility".to_string(),
+            title: "Habit: dying with unused utility".to_string(),
             body: format!(
-                "You died holding unthrown grenades {seen}. Make it a rule: nades leave your \
-                 hand before the fight starts, not once you are in it."
+                "You died with grenades still unused in your inventory {seen}{}. That is bought \
+                 utility that never reached the round — throw it while you are setting up, not \
+                 once the fight has started.",
+                place_clause(extra)
             ),
         },
         "H4_KILLED_WITHOUT_CONTACT" => Narration {
             title: "Habit: killed without a duel".to_string(),
             body: format!(
-                "Smoke and wallbang deaths caught you {seen}. You keep holding lines that get \
-                 sprayed blind — take one step off the common spot before you set up."
+                "Smoke and wallbang deaths caught you {seen}{}. You keep holding lines that get \
+                 sprayed blind — take one step off the common spot before you set up.",
+                place_clause(extra)
             ),
         },
         "H4_REPEAT_HOTSPOT" => {
@@ -815,15 +823,27 @@ pub fn narrate_habit(
                 .get("matches")
                 .and_then(Value::as_i64)
                 .unwrap_or(matches_hit as i64);
+            // Every member death now shares one callout and sits within the
+            // radius of every other (analysis::habits::death_hotspots), so
+            // naming the place is a claim the data actually supports.
+            let place = extra
+                .get("place")
+                .and_then(Value::as_str)
+                .and_then(place_name);
             Narration {
-                title: match &map {
-                    Some(m) => format!("Repeat hotspot on {m}"),
-                    None => "Repeat hotspot".to_string(),
+                title: match (&place, &map) {
+                    (Some(p), _) => format!("Repeat hotspot: {p}"),
+                    (None, Some(m)) => format!("Repeat hotspot on {m}"),
+                    (None, None) => "Repeat hotspot".to_string(),
                 },
                 body: format!(
-                    "You have died {} at the same spot{} across {}. They know that angle better \
-                     than you do — hold it from a different position, or stop taking that fight.",
+                    "You have died {} at {}{} across {}. They know that angle better than you \
+                     do — hold it from a different position, or stop taking that fight.",
                     times(deaths),
+                    match &place {
+                        Some(p) => p.clone(),
+                        None => "the same spot".to_string(),
+                    },
                     match &map {
                         Some(m) => format!(" on {m}"),
                         None => String::new(),
@@ -1133,6 +1153,62 @@ fn is_family_prefix(part: &str) -> bool {
 }
 
 /// "de_mirage" → "Mirage".
+/// Valve's `last_place_name` in the wording a player would use: "BombsiteA"
+/// is read aloud as "A site", "TSideUpper" as "T Side Upper". These are the
+/// game's own callouts, carried in every demo — no nav-mesh or VPK work.
+fn place_name(place: &str) -> Option<String> {
+    let raw = place.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    Some(match raw {
+        "BombsiteA" => "A site".to_string(),
+        "BombsiteB" => "B site".to_string(),
+        "CTSpawn" => "CT spawn".to_string(),
+        "TSpawn" => "T spawn".to_string(),
+        "TopofMid" => "Top of Mid".to_string(),
+        "SnipersNest" => "Snipers Nest".to_string(),
+        // Everything else is CamelCase: split on a capital that follows a
+        // lower-case letter ("SideHall" -> "Side Hall"), leaving single words
+        // and leading initials ("TRamp") alone.
+        other => {
+            let mut out = String::with_capacity(other.len() + 4);
+            let mut prev_lower = false;
+            for c in other.chars() {
+                if c.is_uppercase() && prev_lower {
+                    out.push(' ');
+                }
+                prev_lower = c.is_lowercase();
+                out.push(c);
+            }
+            out
+        }
+    })
+}
+
+/// ", most often at Catwalk (5) and Underpass (3)" — empty when the rule
+/// recorded no place. A habit that names where it happens is actionable; one
+/// that only counts is not.
+fn place_clause(extra: &Value) -> String {
+    let named: Vec<String> = extra
+        .get("places")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|p| {
+            let name = place_name(p.get("place")?.as_str()?)?;
+            let n = p.get("count").and_then(Value::as_i64).unwrap_or(0);
+            (n > 0).then(|| format!("{name} ({n})"))
+        })
+        .collect();
+    if named.is_empty() {
+        String::new()
+    } else {
+        format!(", most often at {}", list(&named))
+    }
+}
+
 fn map_name(map: &str) -> Option<String> {
     let raw = map.trim();
     if raw.is_empty() {
