@@ -1,3 +1,5 @@
+> **Historical record** of a completed milestone. The "push origin main" / "push per task" steps below predate ADR-0005 - `main` is PR-only now (branch, `gh pr create`, auto-merge). Do not copy the push flow from this file.
+
 # M0 — Skeleton & Parser Proof Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

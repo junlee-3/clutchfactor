@@ -5,59 +5,39 @@ Date: 2026-08-20
 
 ## Context
 
-`main` had no protection: any push landed directly, and CI was advisory — a red
-`ci` run on main was discoverable only by looking. That is survivable for a solo
-repo up to v0, but the charter treats a few things as load-bearing regression
-gates (class-13 share, golden clip tests, `-D warnings`, the Windows build per
-§10.3), and a gate nobody is forced through stops being a gate.
-
-The repo is public and owner-operated by one person, so the usual lever —
-required reviews — is unavailable: you cannot approve your own PR.
+`main` had no protection: pushes landed directly and a red CI run was
+discoverable only by looking. The charter's regression gates only gate if
+something forces every change through them. Solo repo, so required reviews
+are unavailable (you cannot approve your own PR).
 
 ## Decision
 
-A **repository ruleset** on `~DEFAULT_BRANCH` (not classic branch protection —
-rulesets are the maintained API and show which rule blocked a push):
+A repository ruleset on the default branch (rulesets over classic protection:
+maintained API, shows which rule blocked):
 
-- **Pull request required**, with `required_approving_review_count: 0`. The PR is
-  the unit that carries checks; approval count is the part that would deadlock a
-  solo repo. Review-thread resolution is required, and stale reviews are
-  dismissed on push, so the rule tightens for free when a second contributor
-  arrives — flip the count to 1.
-- **Required status checks**: `rust`, `windows-build`, `web`, pinned to the
-  GitHub Actions app (`integration_id: 15368`) so a third-party app cannot post a
-  same-named green check. `strict` is on: a PR must be rebased onto current main
-  before it merges, so checks describe the merged result rather than a stale base.
-- **Linear history**, **no force-push**, **no deletion**. Merge commits are
-  disabled repo-wide, leaving squash and rebase — both preserve the conventional
-  commit trail the charter relies on.
-- **Bypass: repository admin (`actor_id: 5`), mode `always`.** Deliberate. The
-  owner ships unsigned desktop builds from tags and needs an unblocked path when
-  a release is mid-flight. The rules stay the default path, not a wall.
+- **PR required**, zero approvals (anything more deadlocks a solo repo);
+  review threads must be resolved; stale reviews dismissed on push.
+- **Required status checks — exactly the `ci.yml` job names `rust`,
+  `windows-build`, `web`** — pinned to the GitHub Actions app so a
+  third-party app can't post a same-named green check. `strict` on: PRs
+  rebase onto current main before merging.
+- **Linear history, no force-push, no deletion**; merge commits disabled
+  (squash/rebase keep the conventional-commit trail).
+- **Admin bypass, mode `always` — deliberate**: the owner needs an unblocked
+  path mid-release. The rules are the default path, not a wall; bypass use
+  should be called out in the commit message.
 
-CI was adjusted to suit: `push` is filtered to `main` so feature commits stop
-producing a second set of runs under the same check names that protection matches
-on, plus a read-only default token and a concurrency group that supersedes stale
-PR runs. Cancellation is deliberately **off for `main`** — every commit there has
-to keep its own verdict, and a cancelled run is not a pass: it would drop the
-clippy `-D warnings` gate, the class-13 share metric and the Windows build while
-looking like the job merely went away.
-
-Dependabot is **security-only** (alerts + automated fixes), no version-update
-schedule. A weekly bump PR against a pinned demoparser2 git dep and a Tauri
-toolchain is noise this repo cannot absorb yet.
+CI adjusted to suit: `push` filtered to main; read-only default token;
+per-PR concurrency groups supersede stale PR runs, per-SHA groups on main so
+no main run is ever cancelled or evicted — every main commit keeps its own
+verdict. Dependabot is security-only.
 
 ## Consequences
 
-- Every change to main is a PR. Day-to-day cost is `gh pr create` plus
-  `gh pr merge --auto --squash` — auto-merge is enabled, so the merge fires when
-  the three checks go green rather than requiring a second visit.
-- `strict` means a merge to main invalidates other open PRs' checks until they
-  rebase. With one contributor and rarely-concurrent PRs this is cheap; if PR
-  traffic ever makes it painful, dropping `strict` is the first thing to relax.
-- Required check names are now part of the public contract. Renaming a job in
-  `ci.yml` silently un-enforces it — the ruleset keeps waiting on a context that
-  no longer reports. Rename the job and the ruleset in the same PR, or move to a
-  single aggregate `ci-ok` gate job if the job list starts changing often.
-- Admin bypass means this is protection against accident, not against the owner.
-  Recorded here so the choice is visible rather than assumed.
+- Day-to-day: branch → `gh pr create` → `gh pr merge --auto --squash` →
+  verify the merge actually fired (auto-merge stalls silently on `BEHIND`).
+- `strict` invalidates other open PRs' checks on each merge — cheap solo;
+  relax it first if PR traffic grows.
+- The three required check names are public contract: renaming a `ci.yml`
+  job silently un-enforces it — rename job and ruleset in the same PR.
+- Bypass means protection against accident, not against the owner.

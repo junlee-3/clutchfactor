@@ -8,13 +8,16 @@ on:
     branches: [main]
   pull_request:
 
-# Supersede stale PR runs — but never main. Every commit on main keeps its own
-# pass/fail verdict; a cancelled run would silently drop the clippy -D warnings
-# gate, the class-13 share regression metric and the Windows build, which is the
-# signal ADR-0005 exists to protect.
+# PR pushes supersede that PR's earlier runs. Main pushes get a per-commit
+# group: a shared group would let GitHub evict queued runs (it keeps at most
+# one pending run per group, cancel-in-progress or not), so per-SHA is what
+# actually guarantees every main commit its own pass/fail verdict — the
+# signal ADR-0005 exists to protect. (CI gates fmt/clippy -D warnings, the
+# workspace + frontend suites and the Windows build; golden-demo regression
+# tests need fixtures/ demos and run locally, not here.)
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -22,6 +25,7 @@ permissions:
 jobs:
   rust:
     runs-on: macos-14
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: src-tauri
@@ -44,6 +48,7 @@ jobs:
   # Windows breakage surfaces early, not at ship time (PROMPT.md §10.3).
   windows-build:
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -65,6 +70,7 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

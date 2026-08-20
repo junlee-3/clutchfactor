@@ -1,3 +1,5 @@
+> **Historical record** of a completed milestone. The "push origin main" / "push per task" steps below predate ADR-0005 - `main` is PR-only now (branch, `gh pr create`, auto-merge). Do not copy the push flow from this file.
+
 # M5 — Reference Corpus & D6 Positioning Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development for Tasks 2–3 (corpus/D6 pure math; heatmap renderer — independent, worktree implementers); superpowers:executing-plans inline for Tasks 0–1 and 4–7. Steps use checkbox (`- [ ]`) syntax.

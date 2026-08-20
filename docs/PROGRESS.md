@@ -22,7 +22,7 @@ M6 complete — **v0 shipped** (tags `m6`, `v0.1.0`; release workflow builds Win
 
 ## Decisions
 
-- ADR-0001 demoparser2 git dep · ADR-0002 16 Hz sampling · ADR-0003 schema v1 (+m2 analysis, +m3 flag evidence, +m4 kind, +m5 corpus_grids) · ADR-0004 awpy radar assets.
+- ADR-0001 demoparser2 git dep · ADR-0002 16 Hz sampling · ADR-0003 schema v1 (+m2 analysis, +m3 flag evidence, +m4 kind, +m5 corpus_grids) · ADR-0004 awpy radar assets · ADR-0005 main branch protection (PR-only, required checks `rust`/`windows-build`/`web`, admin bypass for release emergencies).
 - D6: severity 0.5 / confidence 0.6 fixed (unusualness cap); d6_insights takes the match tickrate (no TICKRATE consts); build_corpus re-runs positioning for own matches (fresh grids invalidate old D6); `CLUTCHFACTOR_CONFIG` env = explicit dev threshold override, shipped defaults untouched.
 - Narrator: deterministic template variants via content hash; ClaudeNarrator seam intact (§8).
 - Habit scoring: severity × confidence × (matches_hit/window) × ln(1+total); baited never promoted alone; one hotspot card per map.
