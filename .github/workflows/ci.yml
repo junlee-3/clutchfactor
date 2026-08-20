@@ -1,15 +1,20 @@
 name: ci
+
+# Feature-branch pushes are covered by their PR run; filtering `push` to main
+# stops every commit being checked twice under the same check names, which is
+# what branch protection matches on.
 on:
   push:
     branches: [main]
   pull_request:
 
-# Feature-branch pushes are covered by their PR run; filtering `push` to main
-# stops every commit being checked twice under the same check names, which is
-# what branch protection matches on.
+# Supersede stale PR runs — but never main. Every commit on main keeps its own
+# pass/fail verdict; a cancelled run would silently drop the clippy -D warnings
+# gate, the class-13 share regression metric and the Windows build, which is the
+# signal ADR-0005 exists to protect.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read

@@ -42,7 +42,8 @@ fixtures/                      real .dem files, gitignored; see fixtures/README.
 
 ## Conventions
 
-- Conventional commits (`feat(analysis): …`); push after every unit of work; milestone tags `m0`, `m1`, …
+- Conventional commits (`feat(analysis): …`); milestone tags `m0`, `m1`, …
+- `main` is ruleset-protected (ADR-0005) — branch, then `gh pr create` + `gh pr merge --auto --squash`. Never commit straight to main: admin bypass exists, but using it routes around every required check.
 - ADRs in `docs/adr/ADR-NNNN-*.md` for every significant decision — half a page max.
 - **Evidence contract:** every `Insight` carries `EvidenceRef { round, tick_start, tick_end, focus_players, camera_hint }` the replay viewer can jump to. No evidence → detector gets redesigned, not shipped.
 - All detector thresholds live in `DetectorConfig` with documented defaults (PROMPT.md §6.4) — never scatter magic numbers; thresholds in seconds/world units, never ticks.

@@ -37,7 +37,11 @@ rulesets are the maintained API and show which rule blocked a push):
 
 CI was adjusted to suit: `push` is filtered to `main` so feature commits stop
 producing a second set of runs under the same check names that protection matches
-on, plus a cancel-in-progress concurrency group and a read-only default token.
+on, plus a read-only default token and a concurrency group that supersedes stale
+PR runs. Cancellation is deliberately **off for `main`** — every commit there has
+to keep its own verdict, and a cancelled run is not a pass: it would drop the
+clippy `-D warnings` gate, the class-13 share metric and the Windows build while
+looking like the job merely went away.
 
 Dependabot is **security-only** (alerts + automated fixes), no version-update
 schedule. A weekly bump PR against a pinned demoparser2 git dep and a Tauri
