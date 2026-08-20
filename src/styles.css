@@ -120,6 +120,18 @@ body {
   font-size: 13px;
 }
 
+/* Batch import outcome that isn't a failure (imported N, skipped duplicates).
+   Neutral on purpose — skipping a demo you already have is not an error. */
+.info-banner {
+  border: 1px solid var(--line);
+  background: var(--bg1);
+  color: var(--text-dim);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
 /* Import progress row */
 .import-row {
   background: var(--bg1);

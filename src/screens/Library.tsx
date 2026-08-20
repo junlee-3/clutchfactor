@@ -3,6 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { TopNav } from "../components/TopNav";
 import { open } from "@tauri-apps/plugin-dialog";
 import { basename } from "../lib/basename";
+import {
+  classifyFailure,
+  summarizeBatch,
+  type BatchSummary,
+  type ImportOutcome,
+} from "../lib/importBatch";
 import type { ProgressEvent } from "../lib/ipc";
 import {
   useDeleteMatch,
@@ -19,38 +25,51 @@ export function Library() {
   const tracked = useTrackedPlayer();
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
   const [importingFile, setImportingFile] = useState<string | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<BatchSummary | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const importDemo = useImportDemo(setProgress);
   const deleteMatch = useDeleteMatch();
 
   async function reallyDelete(id: number) {
-    setImportError(null);
+    setNotice(null);
     try {
       await deleteMatch.mutateAsync(id);
     } catch (e) {
-      setImportError(String(e));
+      setNotice({ message: String(e), hadFailures: true });
     } finally {
       setConfirmDelete(null);
     }
   }
 
   async function pickAndImport() {
-    setImportError(null);
-    const path = await open({
-      multiple: false,
+    setNotice(null);
+    const picked = await open({
+      multiple: true,
       filters: [{ name: "CS2 demo", extensions: ["dem"] }],
     });
-    if (typeof path !== "string") return;
-    setImportingFile(basename(path));
-    setProgress(null);
-    try {
-      await importDemo.mutateAsync(path);
-    } catch (e) {
-      setImportError(String(e));
-    } finally {
-      setImportingFile(null);
+    const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
+    if (paths.length === 0) return;
+
+    // Sequential on purpose. The store sits behind a mutex and a parse peaks
+    // over a gigabyte of RSS, so importing concurrently would contend on the
+    // lock and multiply peak memory for no wall-clock gain. One failure must
+    // not abort the rest of the batch, so every result is collected instead.
+    const outcomes: ImportOutcome[] = [];
+    for (const [i, path] of paths.entries()) {
+      const file = basename(path);
+      setImportingFile(
+        paths.length > 1 ? `${i + 1} of ${paths.length}: ${file}` : file,
+      );
+      setProgress(null);
+      try {
+        await importDemo.mutateAsync(path);
+        outcomes.push({ kind: "imported", file });
+      } catch (e) {
+        outcomes.push(classifyFailure(file, e));
+      }
     }
+    setImportingFile(null);
+    setNotice(summarizeBatch(outcomes));
   }
 
   const rows = matches.data ?? [];
@@ -75,13 +94,16 @@ export function Library() {
             onClick={() => void pickAndImport()}
             disabled={importingFile !== null}
           >
-            {importingFile ? "Importing…" : "Import demo"}
+            {importingFile ? "Importing…" : "Import demos"}
           </button>
         </div>
 
-        {importError && (
-          <div className="error-banner" role="alert">
-            {importError}
+        {notice && (
+          <div
+            className={notice.hadFailures ? "error-banner" : "info-banner"}
+            role={notice.hadFailures ? "alert" : "status"}
+          >
+            {notice.message}
           </div>
         )}
 
@@ -95,8 +117,9 @@ export function Library() {
           <div className="empty-state">
             <p className="empty-title">No matches yet</p>
             <p className="empty-note">
-              Import a CS2 demo (.dem) — matchmaking or FACEIT — and
-              ClutchFactor will break it down round by round.
+              Import CS2 demos (.dem) — matchmaking or FACEIT, one or a whole
+              folder at a time — and ClutchFactor will break them down round by
+              round.
             </p>
           </div>
         ) : (
