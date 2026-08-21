@@ -9,6 +9,9 @@ import { stateAt } from "./interp";
 import type { PlayerTrack } from "./interp";
 import type { UtilityWindow } from "./utility";
 
+// Snapshotted once at module import — fine for the dark-only theme (no
+// runtime theme switch exists); a future light/dark toggle would need these
+// re-read (or converted to getToken() calls at each use) instead.
 export const CT_COLOR = getToken("--ct");
 export const T_COLOR = getToken("--t");
 
@@ -195,7 +198,7 @@ function drawPlayers(
     ctx.arc(px, py, onShownLayer ? 7 : 5, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
-    ctx.strokeStyle = getToken("--chalk"); // chalk rim — the coach's outline
+    ctx.strokeStyle = getToken("--bg-tape"); // dark rim recedes — separation, not emphasis (§1/§7)
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
