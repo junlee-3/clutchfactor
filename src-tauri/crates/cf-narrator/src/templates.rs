@@ -807,6 +807,12 @@ pub fn narrate_habit(
         },
         "H4_REPEAT_HOTSPOT" => {
             let map = extra.get("map").and_then(Value::as_str).and_then(map_name);
+            // Raw callout string for now (e.g. "BombsiteA") — a follow-up
+            // task prettifies this via a callout-name lookup.
+            let place = extra
+                .get("place")
+                .and_then(Value::as_str)
+                .map(str::to_string);
             let deaths = extra
                 .get("deaths")
                 .and_then(Value::as_i64)
@@ -815,19 +821,23 @@ pub fn narrate_habit(
                 .get("matches")
                 .and_then(Value::as_i64)
                 .unwrap_or(matches_hit as i64);
+            let spot = match (&place, &map) {
+                (Some(p), Some(m)) => format!("{p} on {m}"),
+                (Some(p), None) => p.clone(),
+                (None, Some(m)) => format!("the same spot on {m}"),
+                (None, None) => "the same spot".to_string(),
+            };
             Narration {
-                title: match &map {
-                    Some(m) => format!("Repeat hotspot on {m}"),
-                    None => "Repeat hotspot".to_string(),
+                title: match (&place, &map) {
+                    (Some(p), Some(m)) => format!("Repeat hotspot: {p} on {m}"),
+                    (Some(p), None) => format!("Repeat hotspot: {p}"),
+                    (None, Some(m)) => format!("Repeat hotspot on {m}"),
+                    (None, None) => "Repeat hotspot".to_string(),
                 },
                 body: format!(
-                    "You have died {} at the same spot{} across {}. They know that angle better \
+                    "You have died {} at {spot} across {}. They know that angle better \
                      than you do — hold it from a different position, or stop taking that fight.",
                     times(deaths),
-                    match &map {
-                        Some(m) => format!(" on {m}"),
-                        None => String::new(),
-                    },
                     plural(matches, "match")
                 ),
             }

@@ -820,6 +820,24 @@ mod tests {
         );
     }
 
+    /// Issue #6 §2 follow-on: a hotspot card is titled by its shared callout,
+    /// not a bare "same spot" — raw place string for now (a follow-up task
+    /// prettifies it via a callout-name lookup).
+    #[test]
+    fn hotspot_card_is_titled_by_callout() {
+        let n = narrate_habit(
+            "H4_REPEAT_HOTSPOT",
+            2,
+            10,
+            5,
+            &json!({"map": "de_mirage", "place": "BombsiteA", "deaths": 5, "matches": 2}),
+        );
+        assert_eq!(n.title, "Repeat hotspot: BombsiteA on Mirage");
+        assert!(n
+            .body
+            .contains("5 times at BombsiteA on Mirage across 2 matches"));
+    }
+
     #[test]
     fn habit_isolated_death_has_its_own_phrasing() {
         let n = narrate_habit("H2_ISOLATED_DEATH", 4, 5, 17, &json!({}));
