@@ -4,7 +4,7 @@
 they conflict; everything PROMPT.md specifies that this file does not restate
 (the death taxonomy, detector definitions D1–D6, §5A rule families, thresholds,
 the evidence contract, risk register) remains binding. Read both. Read
-`docs/spec/death-taxonomy.md`. Then read GitHub issue #9 — fully.**
+`docs/spec/death-taxonomy.md`. Then read GitHub issue #9 — fully READ EVERYTHING REGARDING THE FEATURE AND LOOK AT THE MOCKUP TOO**
 
 ---
 
@@ -291,3 +291,5 @@ capable model) → docs + tag → batched owner ask. All via PRs.
    note the standing corpus ask (~8 pro Mirage demos) stays open.
 4. Invoke `superpowers:writing-plans` for V1.0 and begin. Batched owner asks
    only at milestone boundaries — the Gemini key ask lands with V1.3.
+
+Commit and push changes as you go on a new branch.
