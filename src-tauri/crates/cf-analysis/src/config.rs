@@ -205,6 +205,25 @@ pub struct TimingCfg {
     pub min_spawn_distance_u: f32,
 }
 
+/// Round-phase boundaries (issue #9: distinguishes "on the entry" from "in
+/// the retake"). Seconds after freeze end; post-plant overrides the clock.
+/// opening_end_s matches timing.early_aggression_s's default — same "early"
+/// concept (§6.4); mid_end_s splits the rest where save/last-alive
+/// decisions start dominating an MR12 round. Tunable approximations.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PhaseCfg {
+    #[serde(default = "d_phase_opening_end")]
+    pub opening_end_s: f32,
+    #[serde(default = "d_phase_mid_end")]
+    pub mid_end_s: f32,
+}
+fn d_phase_opening_end() -> f32 {
+    20.0
+}
+fn d_phase_mid_end() -> f32 {
+    50.0
+}
+
 /// §5A cross-demo habit promotion (+ spec H4_REPEAT_HOTSPOT parameters).
 #[derive(Debug, Clone, Deserialize)]
 pub struct HabitCfg {
@@ -379,7 +398,8 @@ default_impl!(
     TimingCfg,
     HabitCfg,
     GeneralCfg,
-    SeverityCfg
+    SeverityCfg,
+    PhaseCfg
 );
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -408,6 +428,8 @@ pub struct DetectorConfig {
     pub general: GeneralCfg,
     #[serde(default)]
     pub severity: SeverityCfg,
+    #[serde(default)]
+    pub phase: PhaseCfg,
 }
 
 impl DetectorConfig {

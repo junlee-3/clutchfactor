@@ -5,6 +5,20 @@ use std::collections::HashMap;
 
 use cf_parser::model::{Blind, Hurt, InventorySample, Kill, MatchData, Reload, Shot, Side};
 
+use crate::config::PhaseCfg;
+
+/// Where in the round a tick falls. Post-plant is a state, not a time:
+/// once the bomb is down every prior boundary is irrelevant to coaching.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoundPhase {
+    Freeze,
+    Opening,
+    Mid,
+    Late,
+    PostPlant,
+}
+
 /// A player's state at (or just before) a tick, from the 16 Hz sample table.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayerState {
@@ -297,6 +311,36 @@ impl<'a> AnalysisContext<'a> {
             .filter(|k| k.victim == self.tracked)
             .collect()
     }
+
+    /// Phase of `round` at `tick`. None when the round number is unknown.
+    /// Freeze-end falls back to start_tick for rounds where the demo lacks
+    /// the freeze event (parser normalizes most, not all).
+    pub fn phase_at(&self, round: u32, tick: i32, cfg: &PhaseCfg) -> Option<RoundPhase> {
+        let r = self.data.rounds.iter().find(|r| r.number == round)?;
+        let span_end = r.officially_ended_tick.unwrap_or(r.end_tick);
+        let planted = self
+            .data
+            .bomb_events
+            .iter()
+            .find(|b| b.kind == "planted" && b.tick >= r.start_tick && b.tick <= span_end);
+        if let Some(p) = planted {
+            if tick >= p.tick {
+                return Some(RoundPhase::PostPlant);
+            }
+        }
+        let freeze_end = r.freeze_end_tick.unwrap_or(r.start_tick);
+        if tick < freeze_end {
+            return Some(RoundPhase::Freeze);
+        }
+        let elapsed = tick - freeze_end;
+        if elapsed < self.seconds(cfg.opening_end_s) {
+            Some(RoundPhase::Opening)
+        } else if elapsed < self.seconds(cfg.mid_end_s) {
+            Some(RoundPhase::Mid)
+        } else {
+            Some(RoundPhase::Late)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -377,5 +421,83 @@ mod tests {
         let data = ctx_fixture();
         let ctx = AnalysisContext::new(&data, 1);
         assert_eq!(ctx.seconds(2.0), 128);
+    }
+}
+
+#[cfg(test)]
+mod phase_tests {
+    use super::*;
+    use crate::config::DetectorConfig;
+    use crate::scenario::Scenario;
+
+    const P: u64 = 1;
+
+    #[test]
+    fn phase_at_walks_freeze_opening_mid_late_and_post_plant() {
+        // round(1, 1000, 20000) sets freeze_end = Some(1000).
+        let data = Scenario::new("de_test")
+            .players_ct(&[P])
+            .players_t(&[2])
+            .round(1, 1000, 20000)
+            .bomb("planted", 2, 8000)
+            .build();
+        let ctx = AnalysisContext::new(&data, P);
+        let cfg = DetectorConfig::default();
+        // Before freeze end.
+        assert_eq!(ctx.phase_at(1, 900, &cfg.phase), Some(RoundPhase::Freeze));
+        // 10 s in (tick 1640 at 64 tick) — opening (< 20 s).
+        assert_eq!(ctx.phase_at(1, 1640, &cfg.phase), Some(RoundPhase::Opening));
+        // 30 s in (tick 2920) — mid... but plant at 8000 is later; still Mid.
+        assert_eq!(ctx.phase_at(1, 2920, &cfg.phase), Some(RoundPhase::Mid));
+        // 60 s in (tick 4840) — late, still before the plant tick.
+        assert_eq!(ctx.phase_at(1, 4840, &cfg.phase), Some(RoundPhase::Late));
+        // At/after the plant — post-plant wins regardless of clock.
+        assert_eq!(
+            ctx.phase_at(1, 8000, &cfg.phase),
+            Some(RoundPhase::PostPlant)
+        );
+        assert_eq!(
+            ctx.phase_at(1, 12000, &cfg.phase),
+            Some(RoundPhase::PostPlant)
+        );
+    }
+
+    #[test]
+    fn phase_boundaries_are_configurable_and_exact() {
+        let data = Scenario::new("de_test")
+            .players_ct(&[P])
+            .players_t(&[2])
+            .round(1, 1000, 20000)
+            .build();
+        let ctx = AnalysisContext::new(&data, P);
+        let cfg = DetectorConfig::default();
+        // Exactly 20.0 s after freeze end (tick 1000 + 1280): first Mid tick.
+        assert_eq!(
+            ctx.phase_at(1, 1000 + 1280, &cfg.phase),
+            Some(RoundPhase::Mid)
+        );
+        assert_eq!(
+            ctx.phase_at(1, 1000 + 1279, &cfg.phase),
+            Some(RoundPhase::Opening)
+        );
+        // Exactly 50.0 s (tick 1000 + 3200): first Late tick.
+        assert_eq!(
+            ctx.phase_at(1, 1000 + 3200, &cfg.phase),
+            Some(RoundPhase::Late)
+        );
+    }
+
+    #[test]
+    fn phase_at_unknown_round_is_none() {
+        let data = Scenario::new("de_test")
+            .players_ct(&[P])
+            .players_t(&[2])
+            .round(1, 1000, 20000)
+            .build();
+        let ctx = AnalysisContext::new(&data, P);
+        assert_eq!(
+            ctx.phase_at(7, 1500, &DetectorConfig::default().phase),
+            None
+        );
     }
 }
