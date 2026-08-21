@@ -1161,7 +1161,7 @@ fn is_family_prefix(part: &str) -> bool {
         && part[1..].chars().all(|c| c.is_ascii_digit())
 }
 
-/// "de_mirage" → "Mirage".
+/// "de_mirage" → "Mirage". MIRROR: ported to TS at src/lib/mapName.ts — keep both in sync.
 fn map_name(map: &str) -> Option<String> {
     let raw = map.trim();
     if raw.is_empty() {

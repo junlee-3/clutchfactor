@@ -1,0 +1,219 @@
+/* ClutchFactor shell & screen composition (design-system.md §7-§8). Thin:
+   layout only, everything else is tokens.css + components.css. Loads last
+   (see src/main.tsx import order) so it wins over the legacy styles.css
+   .app-shell/.topbar rules it replaces (those go dead here — Task 11
+   sweeps styles.css). */
+
+/* ---------------------------------------------------------------------- */
+/* Shell (AppShell.tsx)                                                    */
+/* ---------------------------------------------------------------------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: 216px 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.shell-rail {
+  grid-template-columns: 56px 1fr;
+}
+
+/* Editorial screens: centered reading column. */
+.shell-content {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--s7);
+  overflow-y: auto;
+}
+
+/* Immersive screens (Replay, Report): full-bleed, the tape is hero. */
+.shell-content-immersive {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: var(--s4);
+  overflow-y: auto;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Sidebar (Sidebar.tsx)                                                    */
+/* ---------------------------------------------------------------------- */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0; /* grid items default to a content-based min-width, which
+    would let the tracked-player chip's long steamid push the fixed 216px/
+    56px track wider than its column — this clamps it back so the chip
+    truncates inside the rail instead of bleeding into the content pane. */
+  padding: var(--s5) var(--s3) var(--s4);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sidebar-rail {
+  align-items: center;
+  padding: var(--s5) var(--s2) var(--s4);
+}
+
+.sidebar-wordmark {
+  padding: 0 var(--s2) var(--s5);
+  color: var(--chalk-bright);
+  white-space: nowrap;
+}
+
+.sidebar-rail .sidebar-wordmark {
+  padding: 0 0 var(--s5);
+}
+
+.sidebar-nav {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  width: 100%;
+}
+
+.sidebar-link {
+  display: block;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  color: var(--chalk-dim);
+  font: var(--text-ui);
+  text-decoration: none;
+  transition:
+    color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.sidebar-rail .sidebar-link {
+  text-align: center;
+}
+
+.sidebar-link:hover {
+  color: var(--chalk);
+  background: var(--bg2);
+}
+
+/* Active nav (design-system.md §7): chalk-bright ink + 2px chalk left edge,
+   inset so there's no layout shift on route change. */
+.sidebar-link-active,
+.sidebar-link-active:hover {
+  color: var(--chalk-bright);
+  box-shadow: inset 2px 0 0 0 var(--chalk);
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: var(--s4);
+  width: 100%;
+  min-width: 0; /* flex item: same content-based-minimum fix as .sidebar
+    above, one level down — the chip's steamid text is what actually forces
+    this without it. */
+}
+
+.sidebar-footer .ui-chip {
+  width: 100%;
+  justify-content: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------- */
+/* MatchHeader (MatchHeader.tsx) — design-system.md §8                     */
+/* ---------------------------------------------------------------------- */
+
+.match-header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: var(--s4);
+  row-gap: var(--s2);
+  padding-bottom: var(--s4);
+  margin-bottom: var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+
+.match-header-back,
+.match-header-cross {
+  font: var(--text-ui);
+  color: var(--chalk-dim);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.match-header-back:hover,
+.match-header-cross:hover {
+  color: var(--chalk-bright);
+}
+
+/* Report<->Replay cross-link sits at the far end of the row. */
+.match-header-cross {
+  margin-left: auto;
+}
+
+.match-header-map {
+  margin: 0;
+  color: var(--chalk-bright);
+}
+
+.match-header-score {
+  color: var(--chalk);
+}
+
+.match-header-result {
+  font: var(--text-ui);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  /* Fits "LOST", the longest result label, so the slot doesn't resize when
+     the pending dash is replaced by a real result (§10). */
+  min-width: 4ch;
+}
+
+.match-header-result-win {
+  color: var(--win);
+}
+
+.match-header-result-loss {
+  color: var(--loss);
+}
+
+.match-header-result-tie {
+  color: var(--tie);
+}
+
+.match-header-date,
+.match-header-stats {
+  color: var(--chalk-dim);
+  /* Monospace (--text-data), so ch is an exact fit for imported_at's fixed
+     "YYYY-MM-DD HH:MM:SS" length and a generous one for the K-D/HS% pair —
+     reserved up front so the useMatches() join filling in late (§10) never
+     shifts the row. */
+  min-width: 19ch;
+}
+
+/* Optional slot with no data yet: same box, faint placeholder dash instead
+   of omitting the element (§10 — never conditionally-rendered layout). */
+.match-header-pending {
+  color: var(--chalk-faint);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Catch-all (App.tsx `*` route)                                           */
+/* ---------------------------------------------------------------------- */
+
+.route-not-found {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
