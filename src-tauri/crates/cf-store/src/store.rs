@@ -158,6 +158,7 @@ pub struct DeathPos {
     pub tick: i32,
     pub x: f32,
     pub y: f32,
+    pub place: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -722,15 +723,23 @@ impl Store {
 
     /// Tracked player's death positions per map across all matches (from the
     /// nearest tick sample at or before each kill).
+    ///
+    /// The lookback is bounded to 10 s of the match's own tickrate — far
+    /// wider than the ~16 Hz sampling interval, so it only excludes
+    /// genuinely missing data (e.g. the first sample of the next round)
+    /// rather than silently attributing a death to a stale sample from an
+    /// earlier round (issue #6 §4). A death with no in-bound sample is
+    /// dropped, never misplaced.
     pub fn death_positions(&self, tracked: &str) -> Result<Vec<DeathPos>, StoreError> {
         let mut st = self.conn.prepare(
-            "SELECT k.match_id, m.map, k.round, k.tick, t.x, t.y
+            "SELECT k.match_id, m.map, k.round, k.tick, t.x, t.y, t.last_place
              FROM kills k
              JOIN matches m ON m.id = k.match_id
              JOIN tick_samples t ON t.match_id = k.match_id AND t.steamid = k.victim
               AND t.tick = (SELECT MAX(tick) FROM tick_samples
                              WHERE match_id = k.match_id AND steamid = k.victim
-                               AND tick <= k.tick)
+                               AND tick <= k.tick
+                               AND tick >= k.tick - CAST(10.0 * m.tickrate AS INTEGER))
              WHERE k.victim = ?1 AND m.kind = 'own'
              ORDER BY k.match_id, k.tick",
         )?;
@@ -743,6 +752,7 @@ impl Store {
                     tick: r.get(3)?,
                     x: r.get(4)?,
                     y: r.get(5)?,
+                    place: r.get(6)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1839,6 +1849,31 @@ mod tests {
         assert_eq!(stats[0].deaths, 0);
         assert_eq!(stats[1].deaths, 1);
         assert_eq!(stats[0].freeze_end_tick, Some(1100));
+    }
+
+    #[test]
+    fn death_positions_carry_place_and_bound_lookback_to_10s() {
+        let (_dir, mut store) = open_tmp();
+        let mut data = sample_match();
+        // A second kill of player 1 in round 2 whose only preceding sample is
+        // >10 s old (2100 → 5000 is 2900 ticks ≈ 45 s at 64 tick): the stale
+        // sample must NOT be used — the death is dropped, not misplaced.
+        data.kills.push(kill(5000, 2, 3, 1, false));
+        store
+            .save_match("a.dem", "hash-a", MatchKind::Own, &data)
+            .unwrap();
+
+        let pos = store.death_positions("1").unwrap();
+        // sample_match kills player 1 at tick 2200 (round 2); nearest sample at
+        // 2100 (x=100, y=-50) is 100 ticks ≈ 1.6 s away — inside the bound.
+        assert_eq!(
+            pos.len(),
+            1,
+            "stale-sample death excluded, in-bound death kept"
+        );
+        assert_eq!(pos[0].x, 100.0);
+        assert_eq!(pos[0].y, -50.0);
+        assert_eq!(pos[0].place.as_deref(), Some("BombsiteA"));
     }
 
     /// Flags written before migration 3 have a NULL `evidence_json`. The query

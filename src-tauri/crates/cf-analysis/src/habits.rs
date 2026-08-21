@@ -69,6 +69,10 @@ pub struct DeathPoint {
     pub tick: i32,
     pub x: f32,
     pub y: f32,
+    /// Callout at the death's sampled position (e.g. `last_place` from
+    /// demoparser2). Not yet consumed by the radius clusterer below — a
+    /// follow-up task clusters by place.
+    pub place: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -196,6 +200,7 @@ mod tests {
             tick: 1000,
             x,
             y,
+            place: None,
         }
     }
 

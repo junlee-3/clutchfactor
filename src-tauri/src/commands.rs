@@ -499,6 +499,7 @@ pub fn get_habits(state: State<'_, AppState>) -> Result<Vec<HabitReport>, String
             tick: p.tick,
             x: p.x,
             y: p.y,
+            place: p.place,
         })
         .collect();
     // One card per map: several clusters on the same map read as duplicate
