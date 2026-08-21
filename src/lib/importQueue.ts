@@ -47,6 +47,6 @@ export function queueSummary(q: QueueFile[]): string {
   const parts: string[] = [];
   if (done > 0) parts.push(`${done} imported`);
   if (skipped > 0) parts.push(`${skipped} already in library`);
-  if (failed > 0) parts.push(`${failed} failed — see below`);
+  if (failed > 0) parts.push(`${failed} failed — see above`);
   return parts.join(" · ");
 }

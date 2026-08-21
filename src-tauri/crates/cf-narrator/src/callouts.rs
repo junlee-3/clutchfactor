@@ -9,8 +9,8 @@ const OVERRIDES: &[(&str, &str)] = &[
     ("BombsiteA", "A site"),
     ("BombsiteB", "B site"),
     ("CTSpawn", "CT spawn"),
-    ("TSpawn", "T spawn"),
     ("TRamp", "T ramp"),
+    ("TSpawn", "T spawn"),
 ];
 
 /// Prettify a raw callout: curated override, else split CamelCase runs

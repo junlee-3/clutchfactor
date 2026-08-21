@@ -499,7 +499,7 @@ pub fn get_habits(state: State<'_, AppState>) -> Result<Vec<HabitReport>, String
 
     // Cross-demo death hotspots (spec H4_REPEAT_HOTSPOT).
     let points: Vec<DeathPoint> = store
-        .death_positions(&tracked)
+        .death_positions(&tracked, cfg.habit.death_pos_lookback_s)
         .map_err(|e| e.to_string())?
         .into_iter()
         .map(|p| DeathPoint {
