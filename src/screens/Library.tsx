@@ -2,8 +2,15 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { TopNav } from "../components/TopNav";
 import { open } from "@tauri-apps/plugin-dialog";
-import { basename } from "../lib/basename";
 import type { ProgressEvent } from "../lib/ipc";
+import {
+  finishFile,
+  initQueue,
+  queueDone,
+  queueSummary,
+  startFile,
+  type QueueFile,
+} from "../lib/importQueue";
 import {
   useDeleteMatch,
   useImportDemo,
@@ -18,41 +25,48 @@ export function Library() {
   const matches = useMatches();
   const tracked = useTrackedPlayer();
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
-  const [importingFile, setImportingFile] = useState<string | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
+  const [queue, setQueue] = useState<QueueFile[] | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const importDemo = useImportDemo(setProgress);
   const deleteMatch = useDeleteMatch();
 
   async function reallyDelete(id: number) {
-    setImportError(null);
+    setDeleteError(null);
     try {
       await deleteMatch.mutateAsync(id);
     } catch (e) {
-      setImportError(String(e));
+      setDeleteError(String(e));
     } finally {
       setConfirmDelete(null);
     }
   }
 
   async function pickAndImport() {
-    setImportError(null);
-    const path = await open({
-      multiple: false,
+    const picked = await open({
+      multiple: true,
       filters: [{ name: "CS2 demo", extensions: ["dem"] }],
     });
-    if (typeof path !== "string") return;
-    setImportingFile(basename(path));
-    setProgress(null);
-    try {
-      await importDemo.mutateAsync(path);
-    } catch (e) {
-      setImportError(String(e));
-    } finally {
-      setImportingFile(null);
+    const paths = Array.isArray(picked) ? picked : typeof picked === "string" ? [picked] : [];
+    if (paths.length === 0) return;
+    let q = initQueue(paths);
+    setQueue(q);
+    for (let i = 0; i < q.length; i++) {
+      q = startFile(q, i);
+      setQueue(q);
+      setProgress(null);
+      try {
+        await importDemo.mutateAsync(q[i].path);
+        q = finishFile(q, i);
+      } catch (e) {
+        q = finishFile(q, i, String(e));
+      }
+      setQueue(q);
     }
   }
 
+  const importing = queue !== null && !queueDone(queue);
+  const current = queue?.find((f) => f.status === "importing") ?? null;
   const rows = matches.data ?? [];
 
   return (
@@ -73,25 +87,59 @@ export function Library() {
           <button
             className="btn-primary"
             onClick={() => void pickAndImport()}
-            disabled={importingFile !== null}
+            disabled={importing}
           >
-            {importingFile ? "Importing…" : "Import demo"}
+            {importing ? "Importing…" : "Import demos"}
           </button>
         </div>
 
-        {importError && (
+        {deleteError && (
           <div className="error-banner" role="alert">
-            {importError}
+            {deleteError}
           </div>
         )}
 
-        {importingFile && (
-          <ImportProgress fileName={importingFile} progress={progress} />
+        {queue && (
+          <div className="import-queue">
+            {importing && current && (
+              <ImportProgress
+                fileName={`${queue.indexOf(current) + 1} of ${queue.length}: ${current.name}`}
+                progress={progress}
+              />
+            )}
+            <ul className="queue-list">
+              {queue.map((f) => (
+                <li key={f.path} className={`queue-row queue-${f.status}`}>
+                  <span className="import-file">{f.name}</span>
+                  <span className="import-detail">
+                    {f.status === "done" && "imported"}
+                    {f.status === "skipped" && "already in library"}
+                    {f.status === "failed" && f.error}
+                    {f.status === "pending" && "waiting"}
+                    {f.status === "importing" && "importing…"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {queueDone(queue) && (
+              <div
+                className={
+                  queue.some((f) => f.status === "failed") ? "error-banner" : "queue-summary"
+                }
+                role={queue.some((f) => f.status === "failed") ? "alert" : "status"}
+              >
+                {queueSummary(queue)}
+                <button className="btn-secondary" onClick={() => setQueue(null)}>
+                  Dismiss
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {matches.isLoading ? (
           <p className="empty-note">Loading library…</p>
-        ) : rows.length === 0 && !importingFile ? (
+        ) : rows.length === 0 && !importing ? (
           <div className="empty-state">
             <p className="empty-title">No matches yet</p>
             <p className="empty-note">

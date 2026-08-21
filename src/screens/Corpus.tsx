@@ -1,8 +1,15 @@
 import { useState } from "react";
 import { TopNav } from "../components/TopNav";
 import { open } from "@tauri-apps/plugin-dialog";
-import { basename } from "../lib/basename";
 import type { ProgressEvent } from "../lib/ipc";
+import {
+  finishFile,
+  initQueue,
+  queueDone,
+  queueSummary,
+  startFile,
+  type QueueFile,
+} from "../lib/importQueue";
 import {
   useBuildCorpus,
   useCorpusStatus,
@@ -22,7 +29,7 @@ const PHASES = [
 export function Corpus() {
   const status = useCorpusStatus();
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
-  const [importing, setImporting] = useState<string | null>(null);
+  const [queue, setQueue] = useState<QueueFile[] | null>(null);
   const [building, setBuilding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [side, setSide] = useState<"CT" | "T">("CT");
@@ -41,24 +48,29 @@ export function Corpus() {
   );
 
   async function pickAndImport() {
-    setError(null);
     const paths = await open({
       multiple: true,
       filters: [{ name: "CS2 demo", extensions: ["dem"] }],
     });
     if (!Array.isArray(paths) || paths.length === 0) return;
-    for (const [i, path] of paths.entries()) {
-      const name = basename(path);
-      setImporting(`${i + 1} of ${paths.length}: ${name}`);
+    let q = initQueue(paths);
+    setQueue(q);
+    for (let i = 0; i < q.length; i++) {
+      q = startFile(q, i);
+      setQueue(q);
       setProgress(null);
       try {
-        await importCorpus.mutateAsync(path);
+        await importCorpus.mutateAsync(q[i].path);
+        q = finishFile(q, i);
       } catch (e) {
-        setError(`${name}: ${String(e)}`);
+        q = finishFile(q, i, String(e));
       }
+      setQueue(q);
     }
-    setImporting(null);
   }
+
+  const importing = queue !== null && !queueDone(queue);
+  const current = queue?.find((f) => f.status === "importing") ?? null;
 
   async function build() {
     setError(null);
@@ -87,14 +99,14 @@ export function Corpus() {
             <button
               className="btn-secondary"
               onClick={() => void build()}
-              disabled={building || importing !== null || maps.length === 0}
+              disabled={building || importing || maps.length === 0}
             >
               {building ? "Building…" : "Build grids"}
             </button>
             <button
               className="btn-primary"
               onClick={() => void pickAndImport()}
-              disabled={importing !== null || building}
+              disabled={importing || building}
             >
               {importing ? "Importing…" : "Add pro demos"}
             </button>
@@ -107,7 +119,43 @@ export function Corpus() {
           </div>
         )}
 
-        {importing && <ImportProgress fileName={importing} progress={progress} />}
+        {queue && (
+          <div className="import-queue">
+            {importing && current && (
+              <ImportProgress
+                fileName={`${queue.indexOf(current) + 1} of ${queue.length}: ${current.name}`}
+                progress={progress}
+              />
+            )}
+            <ul className="queue-list">
+              {queue.map((f) => (
+                <li key={f.path} className={`queue-row queue-${f.status}`}>
+                  <span className="import-file">{f.name}</span>
+                  <span className="import-detail">
+                    {f.status === "done" && "imported"}
+                    {f.status === "skipped" && "already in library"}
+                    {f.status === "failed" && f.error}
+                    {f.status === "pending" && "waiting"}
+                    {f.status === "importing" && "importing…"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {queueDone(queue) && (
+              <div
+                className={
+                  queue.some((f) => f.status === "failed") ? "error-banner" : "queue-summary"
+                }
+                role={queue.some((f) => f.status === "failed") ? "alert" : "status"}
+              >
+                {queueSummary(queue)}
+                <button className="btn-secondary" onClick={() => setQueue(null)}>
+                  Dismiss
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {building && (
           <ImportProgress fileName="Building occupancy grids" progress={progress} />
         )}
