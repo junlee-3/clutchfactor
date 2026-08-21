@@ -280,12 +280,13 @@ fn wasted_utility(f: &Facts) -> Narration {
         .unwrap_or_default();
     Narration {
         title: match n {
-            Some(n) => format!("Died holding utility {}", times(n)),
-            None => "Died holding utility".to_string(),
+            Some(n) => format!("Died with unused utility {}", times(n)),
+            None => "Died with unused utility".to_string(),
         },
         body: format!(
-            "You died with unthrown grenades in {}{item}. Utility you carry into your own death \
-             is utility you paid for and never used: throw it into the fight you are already in.",
+            "You died with grenades still unused in your inventory in {}{item}. Utility you \
+             carry into your own death is utility you paid for and never used: throw it into \
+             the fight you are already in.",
             match (n, total) {
                 (Some(n), Some(t)) => format!("{n} of your {}", plural(t, "death")),
                 (Some(n), None) => format!("{n} of your deaths"),
@@ -792,10 +793,10 @@ pub fn narrate_habit(
             ),
         },
         "H3_WASTED_UTILITY" => Narration {
-            title: "Habit: dying with utility".to_string(),
+            title: "Habit: dying with unused utility".to_string(),
             body: format!(
-                "You died holding unthrown grenades {seen}. Make it a rule: nades leave your \
-                 hand before the fight starts, not once you are in it."
+                "You died with grenades still unused in your inventory {seen}. Make it a rule: \
+                 nades leave your hand before the fight starts, not once you are in it."
             ),
         },
         "H4_KILLED_WITHOUT_CONTACT" => Narration {
