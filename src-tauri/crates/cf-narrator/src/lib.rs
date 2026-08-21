@@ -930,6 +930,26 @@ mod tests {
         }
     }
 
+    /// Issue #6 §3: death habits say *where* — location clause reads the
+    /// stored `place` counts and prettifies via the callout-name lookup.
+    #[test]
+    fn habit_location_clause_renders_prettified_places() {
+        let extra = serde_json::json!({ "places": [["Catwalk", 5], ["Underpass", 3]] });
+        let n = narrate_habit("H2_ISOLATED_DEATH", 3, 10, 8, &extra);
+        assert!(
+            n.body
+                .contains("most often at Catwalk (5) and Underpass (3)"),
+            "got: {}",
+            n.body
+        );
+    }
+
+    #[test]
+    fn habit_location_clause_absent_without_places() {
+        let n = narrate_habit("H2_ISOLATED_DEATH", 3, 10, 8, &serde_json::json!({}));
+        assert!(!n.body.contains("most often at"));
+    }
+
     // ---- singular counts -------------------------------------------------
 
     /// Finds "1 rounds" / "1 episodes" — a count next to a plural noun.

@@ -461,13 +461,12 @@ pub fn get_habits(state: State<'_, AppState>) -> Result<Vec<HabitReport>, String
     let mut out: Vec<HabitReport> = promote_habits(&inputs, &cfg.habit)
         .into_iter()
         .map(|h| {
-            let n = cf_narrator::narrate_habit(
-                &h.rule_id,
-                h.matches_hit,
-                h.window,
-                h.total,
-                &serde_json::json!({}),
-            );
+            let places = store
+                .rule_place_counts(&tracked, &h.rule_id, cfg.habit.window_matches)
+                .unwrap_or_default();
+            let extra = serde_json::json!({ "places": places });
+            let n =
+                cf_narrator::narrate_habit(&h.rule_id, h.matches_hit, h.window, h.total, &extra);
             HabitReport {
                 evidence: evidence_by_rule
                     .get(&h.rule_id)

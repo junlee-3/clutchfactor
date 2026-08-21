@@ -721,6 +721,35 @@ impl Store {
         Ok(rows)
     }
 
+    /// Top callouts for one rule's flags across the recent window — feeds
+    /// the "most often at Catwalk (5)" habit clause (issue #6 §3). First
+    /// and only reader of rule_flags.details_json ('$.place'); flags
+    /// without a place simply don't count (silence bias).
+    pub fn rule_place_counts(
+        &self,
+        tracked: &str,
+        rule_id: &str,
+        window: usize,
+    ) -> Result<Vec<(String, u32)>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT json_extract(f.details_json, '$.place') AS place, COUNT(*) AS n
+             FROM rule_flags f
+             WHERE f.steamid = ?1 AND f.rule_id = ?2
+               AND f.match_id IN (SELECT id FROM matches WHERE kind = 'own'
+                                  ORDER BY imported_at DESC, id DESC LIMIT ?3)
+               AND place IS NOT NULL
+             GROUP BY place
+             ORDER BY n DESC, place ASC
+             LIMIT 2",
+        )?;
+        let rows = st
+            .query_map(params![tracked, rule_id, window as i64], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, u32>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// Tracked player's death positions per map across all matches (from the
     /// nearest tick sample at or before each kill).
     ///
@@ -1930,6 +1959,56 @@ mod tests {
         // Earliest tick wins, and it is the same row the evidence would be on.
         assert_eq!(counts[0].first_round, Some(2));
         assert_eq!(counts[0].first_tick, Some(2400));
+    }
+
+    /// Issue #6 §3: habit clauses say *where* — first-ever reader of
+    /// `rule_flags.details_json`. Flags without a place don't count (silence
+    /// bias), and results are capped to the top 2 by count.
+    #[test]
+    fn rule_place_counts_aggregates_details_place() {
+        let (_dir, mut store) = open_tmp();
+        let data = sample_match();
+        let id = store
+            .save_match("a.dem", "h1", MatchKind::Own, &data)
+            .unwrap();
+        let flag = |place: Option<&str>| cf_analysis::RuleFlag {
+            rule_id: "H2_ISOLATED_DEATH",
+            round: 1,
+            tick: 1200,
+            steamid: 1,
+            confidence: 0.6,
+            severity: 0.8,
+            details: match place {
+                Some(p) => serde_json::json!({ "place": p }),
+                None => serde_json::json!({ "place": null }),
+            },
+            evidence: cf_analysis::EvidenceRef {
+                round: 1,
+                tick_start: 880,
+                tick_end: 1328,
+                focus_players: vec![1],
+                camera_hint: None,
+            },
+        };
+        let out = cf_analysis::AnalysisOutput {
+            flags: vec![
+                flag(Some("Catwalk")),
+                flag(Some("Catwalk")),
+                flag(Some("Underpass")),
+                flag(None),
+            ],
+            insights: vec![],
+            death_classes: vec![],
+        };
+        store.save_analysis(id, &out).unwrap();
+
+        let places = store
+            .rule_place_counts("1", "H2_ISOLATED_DEATH", 10)
+            .unwrap();
+        assert_eq!(
+            places,
+            vec![("Catwalk".to_string(), 2), ("Underpass".to_string(), 1)]
+        );
     }
 
     #[test]

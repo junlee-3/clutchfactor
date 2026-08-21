@@ -763,6 +763,26 @@ pub fn narrate_habit(
             plural(window as i64, "match")
         )
     };
+    // Issue #6 §3: habits say *where*. Only rendered when flags carried a
+    // callout — absence stays silent.
+    let seen = match extra.get("places").and_then(Value::as_array) {
+        Some(places) if !places.is_empty() => {
+            let named: Vec<String> = places
+                .iter()
+                .filter_map(|p| {
+                    let raw = p.get(0).and_then(Value::as_str)?;
+                    let n = p.get(1).and_then(Value::as_i64)?;
+                    Some(format!("{} ({n})", crate::callouts::callout_name(raw)))
+                })
+                .collect();
+            if named.is_empty() {
+                seen
+            } else {
+                format!("{seen}, most often at {}", list(&named))
+            }
+        }
+        _ => seen,
+    };
     match rule_id {
         "H2_ISOLATED_DEATH" => Narration {
             title: "Habit: isolated deaths".to_string(),
