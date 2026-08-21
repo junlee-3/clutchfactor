@@ -2,14 +2,24 @@
 // Scene; no fetching, no React. Radar is the hero; chrome recedes (§7).
 
 import type { KillInfo } from "../lib/ipc";
+import { getToken, rgba } from "../lib/theme";
 import { radarLayer, worldToRadar } from "./coords";
 import type { MapCalibration } from "./coords";
 import { stateAt } from "./interp";
 import type { PlayerTrack } from "./interp";
 import type { UtilityWindow } from "./utility";
 
-export const CT_COLOR = "#4aa3ff";
-export const T_COLOR = "#f5b83d";
+// Snapshotted once at module import — fine for the dark-only theme (no
+// runtime theme switch exists); a future light/dark toggle would need these
+// re-read (or converted to getToken() calls at each use) instead.
+export const CT_COLOR = getToken("--ct");
+export const T_COLOR = getToken("--t");
+
+// Game-world effect colors — molotov/incendiary fire and flash-white are
+// properties of the game itself, not app chrome, so they stay fixed named
+// constants rather than UI tokens (docs/design/design-system.md §2 & §9).
+const FIRE_RGB = "224, 116, 60";
+const FLASH_RGB = "255, 255, 255";
 
 export interface BombState {
   plantTick: number;
@@ -56,7 +66,7 @@ export function draw(ctx: CanvasRenderingContext2D, scene: Scene): void {
   const layer = activeLayer(scene);
   const img = layer === "lower" ? scene.lowerImage : scene.upperImage;
   ctx.clearRect(0, 0, 1024, 1024);
-  ctx.fillStyle = "#0e1116";
+  ctx.fillStyle = getToken("--bg-tape");
   ctx.fillRect(0, 0, 1024, 1024);
   if (img && img.complete && img.naturalWidth > 0) {
     ctx.globalAlpha = 0.9;
@@ -82,21 +92,21 @@ function drawUtility(ctx: CanvasRenderingContext2D, scene: Scene): void {
       const r = 144 / scene.cal.scale;
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(190, 200, 210, 0.35)";
+      ctx.fillStyle = rgba("--chalk-dim", 0.35); // smoke stays neutral grey, chalk-derived
       ctx.fill();
       // remaining-life ring
       ctx.beginPath();
       ctx.arc(px, py, r, -Math.PI / 2, -Math.PI / 2 + life * Math.PI * 2);
-      ctx.strokeStyle = "rgba(220, 228, 236, 0.7)";
+      ctx.strokeStyle = rgba("--chalk", 0.7);
       ctx.lineWidth = 2;
       ctx.stroke();
     } else if (u.kind === "molly") {
       const r = 120 / scene.cal.scale;
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(224, 116, 60, 0.35)";
+      ctx.fillStyle = `rgba(${FIRE_RGB}, 0.35)`;
       ctx.fill();
-      ctx.strokeStyle = "rgba(224, 116, 60, 0.8)";
+      ctx.strokeStyle = `rgba(${FIRE_RGB}, 0.8)`;
       ctx.lineWidth = 1.5;
       ctx.stroke();
     } else {
@@ -107,8 +117,8 @@ function drawUtility(ctx: CanvasRenderingContext2D, scene: Scene): void {
       ctx.arc(px, py, r, 0, Math.PI * 2);
       ctx.strokeStyle =
         u.kind === "flash"
-          ? `rgba(255, 255, 255, ${0.9 * life})`
-          : `rgba(224, 116, 60, ${0.9 * life})`;
+          ? `rgba(${FLASH_RGB}, ${0.9 * life})`
+          : `rgba(${FIRE_RGB}, ${0.9 * life})`;
       ctx.lineWidth = 2.5;
       ctx.stroke();
     }
@@ -122,9 +132,9 @@ function drawBomb(ctx: CanvasRenderingContext2D, scene: Scene): void {
   const pulse = 0.5 + 0.5 * Math.sin((scene.tick / scene.tickrate) * Math.PI * 2);
   ctx.beginPath();
   ctx.arc(px, py, 6 + pulse * 3, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(209, 106, 95, 0.9)";
+  ctx.fillStyle = rgba("--loss", 0.9); // bomb IS threat semantics, unlike fire
   ctx.fill();
-  ctx.fillStyle = "#0e1116";
+  ctx.fillStyle = getToken("--bg-tape");
   ctx.font = "bold 8px ui-monospace, monospace";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -188,7 +198,7 @@ function drawPlayers(
     ctx.arc(px, py, onShownLayer ? 7 : 5, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
-    ctx.strokeStyle = "#0e1116";
+    ctx.strokeStyle = getToken("--bg-tape"); // dark rim recedes — separation, not emphasis (§1/§7)
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
@@ -197,7 +207,7 @@ function drawPlayers(
       ctx.font = "10px -apple-system, system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      ctx.fillStyle = "rgba(223, 229, 236, 0.9)";
+      ctx.fillStyle = rgba("--chalk", 0.9);
       ctx.fillText(name, px, py + 9);
     }
     ctx.globalAlpha = 1;

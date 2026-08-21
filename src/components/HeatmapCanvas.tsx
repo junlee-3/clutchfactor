@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { rgba } from "../lib/theme";
 import { radarImageUrl } from "../replay/coords";
 import { cellRect, densityToAlpha, gridMax } from "../replay/heatmap";
 import type { GridDto } from "../replay/heatmap";
@@ -9,11 +10,12 @@ interface Props {
 }
 
 const CANVAS_PX = 512;
-const CT_BLUE = "74, 163, 255"; // #4aa3ff — single sequential hue (dataviz: magnitude, no rainbow)
 
 /** Draws the pro-corpus occupancy grid over the map radar: one sequential
- *  hue (CT blue) at density-driven alpha, no per-cell borders or labels —
- *  this is a magnitude encoding, not a categorical one. */
+ *  hue (CT blue, read from the --ct token via theme.ts) at density-driven
+ *  alpha, no per-cell borders or labels — this is a magnitude encoding, not
+ *  a categorical one. CT blue is correct here (spec §9): corpus grids are
+ *  per-side data, not chrome. */
 export function HeatmapCanvas({ grid, map }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -37,7 +39,7 @@ export function HeatmapCanvas({ grid, map }: Props) {
         if (count <= 0) continue;
         const alpha = densityToAlpha(count, max);
         const { x, y, w, h } = cellRect(index, grid.size, CANVAS_PX);
-        ctx.fillStyle = `rgba(${CT_BLUE}, ${alpha})`;
+        ctx.fillStyle = rgba("--ct", alpha);
         ctx.fillRect(x, y, w, h);
       }
     };
