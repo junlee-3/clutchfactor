@@ -5,6 +5,8 @@
 
 mod templates;
 
+pub mod callouts;
+
 pub use templates::narrate_habit;
 
 use std::collections::HashMap;
@@ -341,10 +343,10 @@ mod tests {
             json!({ "deaths_holding": 5, "total_deaths": 19 }),
             json!({ "deaths_holding": 5, "total_deaths": 19, "most_common_item": "Smoke Grenade" }),
         ));
-        assert_eq!(n.title, "Died holding utility 5 times");
+        assert_eq!(n.title, "Died with unused utility 5 times");
         assert_eq!(
             n.body,
-            "You died with unthrown grenades in 5 of your 19 deaths — most often a smoke. \
+            "You died with grenades still unused in your inventory in 5 of your 19 deaths — most often a smoke. \
              Utility you carry into your own death is utility you paid for and never used: \
              throw it into the fight you are already in."
         );
@@ -361,6 +363,19 @@ mod tests {
             n.body.contains("most often an HE grenade"),
             "spoken-sound article: {}",
             n.body
+        );
+    }
+
+    #[test]
+    fn wasted_utility_habit_says_inventory_not_holding() {
+        let n = narrate_habit("H3_WASTED_UTILITY", 3, 10, 22, &serde_json::json!({}));
+        assert_eq!(n.title, "Habit: dying with unused utility");
+        assert!(n
+            .body
+            .starts_with("You died with grenades still unused in your inventory"));
+        assert!(
+            !n.body.contains("holding"),
+            "never claim a nade was in hand"
         );
     }
 
@@ -820,6 +835,23 @@ mod tests {
         );
     }
 
+    /// Issue #6 §2 follow-on: a hotspot card is titled by its shared callout,
+    /// not a bare "same spot" — place string is prettified via a callout-name lookup.
+    #[test]
+    fn hotspot_card_is_titled_by_callout() {
+        let n = narrate_habit(
+            "H4_REPEAT_HOTSPOT",
+            2,
+            10,
+            5,
+            &json!({"map": "de_mirage", "place": "BombsiteA", "deaths": 5, "matches": 2}),
+        );
+        assert_eq!(n.title, "Repeat hotspot: A site on Mirage");
+        assert!(n
+            .body
+            .contains("5 times at A site on Mirage across 2 matches"));
+    }
+
     #[test]
     fn habit_isolated_death_has_its_own_phrasing() {
         let n = narrate_habit("H2_ISOLATED_DEATH", 4, 5, 17, &json!({}));
@@ -896,6 +928,26 @@ mod tests {
                 n.body
             );
         }
+    }
+
+    /// Issue #6 §3: death habits say *where* — location clause reads the
+    /// stored `place` counts and prettifies via the callout-name lookup.
+    #[test]
+    fn habit_location_clause_renders_prettified_places() {
+        let extra = serde_json::json!({ "places": [["Catwalk", 5], ["Underpass", 3]] });
+        let n = narrate_habit("H2_ISOLATED_DEATH", 3, 10, 8, &extra);
+        assert!(
+            n.body
+                .contains("most often at Catwalk (5) and Underpass (3)"),
+            "got: {}",
+            n.body
+        );
+    }
+
+    #[test]
+    fn habit_location_clause_absent_without_places() {
+        let n = narrate_habit("H2_ISOLATED_DEATH", 3, 10, 8, &serde_json::json!({}));
+        assert!(!n.body.contains("most often at"));
     }
 
     // ---- singular counts -------------------------------------------------

@@ -69,11 +69,18 @@ pub struct DeathPoint {
     pub tick: i32,
     pub x: f32,
     pub y: f32,
+    /// Callout at the death's sampled position (e.g. `last_place` from
+    /// demoparser2). Required to join a hotspot cluster (see
+    /// `death_hotspots`) — points with no callout never cluster.
+    pub place: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Hotspot {
     pub map: String,
+    /// Raw callout shared by every member (e.g. "BombsiteA") — issue #6 §2:
+    /// a hotspot is a place a player would name, never a bare radius.
+    pub place: String,
     pub center: (f32, f32),
     pub deaths: usize,
     pub matches: usize,
@@ -81,9 +88,13 @@ pub struct Hotspot {
     pub members: Vec<(i64, u32, i32)>,
 }
 
-/// Greedy radius clustering per map (spec H4_REPEAT_HOTSPOT: ≥3 deaths
-/// within 250 u across ≥2 demos). Deterministic: seeds iterate in input
-/// order; each point joins at most one cluster.
+/// Greedy clustering per (map, place) with a pairwise-diameter bound
+/// (spec H4_REPEAT_HOTSPOT: ≥3 deaths within 250 u across ≥2 demos).
+/// Issue #6 §2: members must share a callout AND sit within
+/// `hotspot_radius_u` of every other member — the old seed-radius rule
+/// permitted 2× the setting and merged adjacent callouts. Points with no
+/// callout never cluster (silence bias). Deterministic: seeds iterate in
+/// input order; each point joins at most one cluster.
 pub fn death_hotspots(points: &[DeathPoint], cfg: &HabitCfg) -> Vec<Hotspot> {
     let mut used = vec![false; points.len()];
     let mut out = vec![];
@@ -92,13 +103,20 @@ pub fn death_hotspots(points: &[DeathPoint], cfg: &HabitCfg) -> Vec<Hotspot> {
             continue;
         }
         let seed = &points[i];
-        let mut member_idx = vec![];
+        let Some(seed_place) = seed.place.as_deref() else {
+            continue;
+        };
+        let mut member_idx = vec![i];
         for (j, p) in points.iter().enumerate() {
-            if used[j] || p.map != seed.map {
+            if j == i || used[j] || p.map != seed.map || p.place.as_deref() != Some(seed_place) {
                 continue;
             }
-            let d = ((p.x - seed.x).powi(2) + (p.y - seed.y).powi(2)).sqrt();
-            if d <= cfg.hotspot_radius_u {
+            // Diameter rule: within radius of EVERY current member.
+            let fits = member_idx.iter().all(|&k| {
+                let m = &points[k];
+                ((p.x - m.x).powi(2) + (p.y - m.y).powi(2)).sqrt() <= cfg.hotspot_radius_u
+            });
+            if fits {
                 member_idx.push(j);
             }
         }
@@ -115,6 +133,7 @@ pub fn death_hotspots(points: &[DeathPoint], cfg: &HabitCfg) -> Vec<Hotspot> {
             let cy = member_idx.iter().map(|j| points[*j].y).sum::<f32>() / n;
             out.push(Hotspot {
                 map: seed.map.clone(),
+                place: seed_place.to_string(),
                 center: (cx, cy),
                 deaths: member_idx.len(),
                 matches: match_ids.len(),
@@ -188,7 +207,7 @@ mod tests {
         assert!(habits[0].score > habits[1].score);
     }
 
-    fn pt(match_id: i64, map: &str, x: f32, y: f32) -> DeathPoint {
+    fn pt(match_id: i64, map: &str, x: f32, y: f32, place: Option<&str>) -> DeathPoint {
         DeathPoint {
             match_id,
             map: map.to_string(),
@@ -196,6 +215,7 @@ mod tests {
             tick: 1000,
             x,
             y,
+            place: place.map(str::to_string),
         }
     }
 
@@ -203,9 +223,9 @@ mod tests {
     fn hotspot_needs_min_deaths_across_min_matches() {
         // 3 deaths within 250 u across 2 matches → cluster.
         let good = vec![
-            pt(1, "de_mirage", 0.0, 0.0),
-            pt(1, "de_mirage", 100.0, 0.0),
-            pt(2, "de_mirage", 0.0, 120.0),
+            pt(1, "de_mirage", 0.0, 0.0, Some("Spot")),
+            pt(1, "de_mirage", 100.0, 0.0, Some("Spot")),
+            pt(2, "de_mirage", 0.0, 120.0, Some("Spot")),
         ];
         let hs = death_hotspots(&good, &cfg());
         assert_eq!(hs.len(), 1);
@@ -215,9 +235,9 @@ mod tests {
 
         // Same 3 deaths all in ONE match → rejected.
         let one_match = vec![
-            pt(1, "de_mirage", 0.0, 0.0),
-            pt(1, "de_mirage", 100.0, 0.0),
-            pt(1, "de_mirage", 0.0, 120.0),
+            pt(1, "de_mirage", 0.0, 0.0, Some("Spot")),
+            pt(1, "de_mirage", 100.0, 0.0, Some("Spot")),
+            pt(1, "de_mirage", 0.0, 120.0, Some("Spot")),
         ];
         assert!(death_hotspots(&one_match, &cfg()).is_empty());
     }
@@ -226,18 +246,18 @@ mod tests {
     fn hotspot_radius_boundary_and_map_separation() {
         // Third death 400 u away → not a member; no cluster forms.
         let spread = vec![
-            pt(1, "de_mirage", 0.0, 0.0),
-            pt(2, "de_mirage", 100.0, 0.0),
-            pt(2, "de_mirage", 400.0, 0.0),
+            pt(1, "de_mirage", 0.0, 0.0, Some("Spot")),
+            pt(2, "de_mirage", 100.0, 0.0, Some("Spot")),
+            pt(2, "de_mirage", 400.0, 0.0, Some("Spot")),
         ];
         assert!(death_hotspots(&spread, &cfg()).is_empty());
 
         // Same coordinates on different maps never cluster together.
         let cross_map = vec![
-            pt(1, "de_mirage", 0.0, 0.0),
-            pt(2, "de_nuke", 0.0, 0.0),
-            pt(1, "de_nuke", 10.0, 0.0),
-            pt(2, "de_mirage", 10.0, 0.0),
+            pt(1, "de_mirage", 0.0, 0.0, Some("Spot")),
+            pt(2, "de_nuke", 0.0, 0.0, Some("Spot")),
+            pt(1, "de_nuke", 10.0, 0.0, Some("Spot")),
+            pt(2, "de_mirage", 10.0, 0.0, Some("Spot")),
         ];
         assert!(
             death_hotspots(&cross_map, &cfg()).is_empty(),
@@ -248,13 +268,13 @@ mod tests {
     #[test]
     fn two_separate_clusters_found_deterministically() {
         let pts = vec![
-            pt(1, "de_mirage", 0.0, 0.0),
-            pt(2, "de_mirage", 50.0, 0.0),
-            pt(3, "de_mirage", 0.0, 50.0),
-            pt(1, "de_mirage", 5000.0, 5000.0),
-            pt(2, "de_mirage", 5050.0, 5000.0),
-            pt(3, "de_mirage", 5000.0, 5050.0),
-            pt(1, "de_mirage", 5100.0, 5100.0),
+            pt(1, "de_mirage", 0.0, 0.0, Some("Spot")),
+            pt(2, "de_mirage", 50.0, 0.0, Some("Spot")),
+            pt(3, "de_mirage", 0.0, 50.0, Some("Spot")),
+            pt(1, "de_mirage", 5000.0, 5000.0, Some("Spot")),
+            pt(2, "de_mirage", 5050.0, 5000.0, Some("Spot")),
+            pt(3, "de_mirage", 5000.0, 5050.0, Some("Spot")),
+            pt(1, "de_mirage", 5100.0, 5100.0, Some("Spot")),
         ];
         let hs = death_hotspots(&pts, &cfg());
         assert_eq!(hs.len(), 2);
@@ -262,5 +282,64 @@ mod tests {
         assert_eq!(hs[1].deaths, 3);
         let again = death_hotspots(&pts, &cfg());
         assert_eq!(hs, again, "deterministic");
+    }
+
+    /// Issue #6 §2 verbatim: 5 deaths at three different callouts, max pairwise
+    /// distance 361 u. The old seed-radius clusterer merged them into one fake
+    /// "same spot" card; place-sharing + diameter must keep them apart (and
+    /// none of the per-place groups reaches min_deaths=3).
+    #[test]
+    fn issue6_ladder_underpass_catwalk_cluster_no_longer_forms() {
+        let points = [
+            pt(3, "de_mirage", -983.0, -72.0, Some("Ladder")),
+            pt(4, "de_mirage", -916.0, 283.0, Some("Underpass")),
+            pt(4, "de_mirage", -973.0, 177.0, Some("Underpass")),
+            pt(4, "de_mirage", -1061.0, 183.0, Some("Catwalk")),
+            pt(4, "de_mirage", -769.0, 66.0, Some("Catwalk")),
+        ];
+        assert!(death_hotspots(&points, &HabitCfg::default()).is_empty());
+    }
+
+    /// A real cluster still forms: same place, tight spread, across matches —
+    /// and carries its callout.
+    #[test]
+    fn same_place_tight_cluster_forms_with_place() {
+        let points = [
+            pt(1, "de_mirage", 100.0, 100.0, Some("BombsiteA")),
+            pt(2, "de_mirage", 180.0, 100.0, Some("BombsiteA")),
+            pt(3, "de_mirage", 100.0, 180.0, Some("BombsiteA")),
+        ];
+        let hs = death_hotspots(&points, &HabitCfg::default());
+        assert_eq!(hs.len(), 1);
+        assert_eq!(hs[0].place, "BombsiteA");
+        assert_eq!(hs[0].deaths, 3);
+        assert_eq!(hs[0].matches, 3);
+    }
+
+    /// Pairwise diameter, not seed radius: A(0,0) and B(240,0) are in range of
+    /// the seed, but C(480,0) is 480 u from A — with a 250 u setting the old
+    /// code admitted all three (each within 250 of... nothing! seed A admits B
+    /// only; but seed at 240 admits both ends). Seeding from B must not produce
+    /// a 480 u-diameter "spot".
+    #[test]
+    fn diameter_bound_rejects_chain_clusters() {
+        let points = [
+            pt(1, "de_mirage", 240.0, 0.0, Some("Mid")), // seed order: chain center first
+            pt(2, "de_mirage", 0.0, 0.0, Some("Mid")),
+            pt(3, "de_mirage", 480.0, 0.0, Some("Mid")),
+        ];
+        let hs = death_hotspots(&points, &HabitCfg::default());
+        assert!(hs.is_empty(), "480 u end-to-end is not one spot at 250 u");
+    }
+
+    /// No callout data → no hotspot claim (silence bias).
+    #[test]
+    fn none_place_points_never_cluster() {
+        let points = [
+            pt(1, "de_mirage", 0.0, 0.0, None),
+            pt(2, "de_mirage", 10.0, 0.0, None),
+            pt(3, "de_mirage", 0.0, 10.0, None),
+        ];
+        assert!(death_hotspots(&points, &HabitCfg::default()).is_empty());
     }
 }
