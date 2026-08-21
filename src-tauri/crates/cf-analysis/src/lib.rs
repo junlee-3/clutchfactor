@@ -13,6 +13,7 @@ pub mod families;
 pub mod habits;
 pub mod scenario;
 pub mod types;
+pub mod winprob;
 
 pub use config::DetectorConfig;
 pub use context::{AnalysisContext, PlayerState, RoundPhase};

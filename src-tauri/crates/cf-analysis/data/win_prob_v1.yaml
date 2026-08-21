@@ -1,0 +1,63 @@
+# GENERATED — do not edit. See docs/adr/ADR-0006-win-probability-table.md.
+# Source: OpenML dataset 43430 "CSGO-Round-Winner-Classification" (CC0),
+# 122,410 snapshots @ 20 s from 700 pro-tournament demos (2019-2020,
+# Skybox CS:GO AI Challenge). p_ct = P(CT wins round | state at snapshot).
+# Regenerate: cargo run -p cf-analysis --example derive_winprob -- <arff>
+version: win_prob_v1
+cells:
+  - { ct: 0, t: 0, planted: false, p_ct: 0.000000, n: 1 }
+  - { ct: 1, t: 0, planted: true, p_ct: 0.858621, n: 290 }
+  - { ct: 1, t: 1, planted: false, p_ct: 0.604938, n: 405 }
+  - { ct: 1, t: 1, planted: true, p_ct: 0.289902, n: 614 }
+  - { ct: 1, t: 2, planted: false, p_ct: 0.154618, n: 498 }
+  - { ct: 1, t: 2, planted: true, p_ct: 0.039448, n: 1014 }
+  - { ct: 1, t: 3, planted: false, p_ct: 0.016495, n: 485 }
+  - { ct: 1, t: 3, planted: true, p_ct: 0.006231, n: 1284 }
+  - { ct: 1, t: 4, planted: false, p_ct: 0.000000, n: 404 }
+  - { ct: 1, t: 4, planted: true, p_ct: 0.000000, n: 958 }
+  - { ct: 1, t: 5, planted: false, p_ct: 0.000000, n: 252 }
+  - { ct: 1, t: 5, planted: true, p_ct: 0.000000, n: 355 }
+  - { ct: 2, t: 0, planted: true, p_ct: 0.971963, n: 428 }
+  - { ct: 2, t: 1, planted: false, p_ct: 0.891281, n: 929 }
+  - { ct: 2, t: 1, planted: true, p_ct: 0.720472, n: 508 }
+  - { ct: 2, t: 2, planted: false, p_ct: 0.491853, n: 982 }
+  - { ct: 2, t: 2, planted: true, p_ct: 0.234270, n: 747 }
+  - { ct: 2, t: 3, planted: false, p_ct: 0.175935, n: 989 }
+  - { ct: 2, t: 3, planted: true, p_ct: 0.034570, n: 1186 }
+  - { ct: 2, t: 4, planted: false, p_ct: 0.023649, n: 888 }
+  - { ct: 2, t: 4, planted: true, p_ct: 0.007739, n: 1163 }
+  - { ct: 2, t: 5, planted: false, p_ct: 0.009225, n: 542 }
+  - { ct: 2, t: 5, planted: true, p_ct: 0.000000, n: 534 }
+  - { ct: 3, t: 0, planted: true, p_ct: 0.993127, n: 291 }
+  - { ct: 3, t: 1, planted: false, p_ct: 0.991165, n: 1245 }
+  - { ct: 3, t: 1, planted: true, p_ct: 0.906977, n: 258 }
+  - { ct: 3, t: 2, planted: false, p_ct: 0.776734, n: 1384 }
+  - { ct: 3, t: 2, planted: true, p_ct: 0.554371, n: 469 }
+  - { ct: 3, t: 3, planted: false, p_ct: 0.446797, n: 1795 }
+  - { ct: 3, t: 3, planted: true, p_ct: 0.237937, n: 601 }
+  - { ct: 3, t: 4, planted: false, p_ct: 0.204070, n: 1818 }
+  - { ct: 3, t: 4, planted: true, p_ct: 0.029621, n: 844 }
+  - { ct: 3, t: 5, planted: false, p_ct: 0.076035, n: 1473 }
+  - { ct: 3, t: 5, planted: true, p_ct: 0.005495, n: 546 }
+  - { ct: 4, t: 0, planted: true, p_ct: 0.992126, n: 127 }
+  - { ct: 4, t: 1, planted: false, p_ct: 0.997305, n: 1113 }
+  - { ct: 4, t: 1, planted: true, p_ct: 0.985294, n: 68 }
+  - { ct: 4, t: 2, planted: false, p_ct: 0.926174, n: 1490 }
+  - { ct: 4, t: 2, planted: true, p_ct: 0.825503, n: 149 }
+  - { ct: 4, t: 3, planted: false, p_ct: 0.720518, n: 2315 }
+  - { ct: 4, t: 3, planted: true, p_ct: 0.475000, n: 200 }
+  - { ct: 4, t: 4, planted: false, p_ct: 0.479523, n: 3687 }
+  - { ct: 4, t: 4, planted: true, p_ct: 0.195719, n: 327 }
+  - { ct: 4, t: 5, planted: false, p_ct: 0.277282, n: 4710 }
+  - { ct: 4, t: 5, planted: true, p_ct: 0.023810, n: 336 }
+  - { ct: 5, t: 0, planted: true, p_ct: 1.000000, n: 29 }
+  - { ct: 5, t: 1, planted: false, p_ct: 1.000000, n: 643 }
+  - { ct: 5, t: 1, planted: true, p_ct: 1.000000, n: 19 }
+  - { ct: 5, t: 2, planted: false, p_ct: 0.987912, n: 910 }
+  - { ct: 5, t: 2, planted: true, p_ct: 0.958333, n: 24 }
+  - { ct: 5, t: 3, planted: false, p_ct: 0.889780, n: 1996 }
+  - { ct: 5, t: 3, planted: true, p_ct: 0.671875, n: 64 }
+  - { ct: 5, t: 4, planted: false, p_ct: 0.706198, n: 5776 }
+  - { ct: 5, t: 4, planted: true, p_ct: 0.483871, n: 93 }
+  - { ct: 5, t: 5, planted: false, p_ct: 0.511702, n: 71995 }
+  - { ct: 5, t: 5, planted: true, p_ct: 0.139241, n: 158 }
