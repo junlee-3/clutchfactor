@@ -237,6 +237,13 @@ pub struct HabitCfg {
     pub hotspot_min_deaths: usize,
     #[serde(default = "d_hotspot_min_matches")]
     pub hotspot_min_matches: usize,
+    /// Bound on the tick-sample lookback when resolving a death's position —
+    /// prevents cross-round fallback (issue #6 §4).
+    #[serde(default = "d_death_pos_lookback_s")]
+    pub death_pos_lookback_s: f32,
+}
+fn d_death_pos_lookback_s() -> f32 {
+    10.0
 }
 
 /// D6 / reference corpus (PROMPT.md §5 D6, §6.4).

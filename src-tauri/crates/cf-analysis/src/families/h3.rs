@@ -223,7 +223,7 @@ impl Detector for H3UtilityVulnerability {
             });
         }
 
-        // (b) Wasted utility: >=3 deaths while holding unthrown grenades.
+        // (b) Wasted utility: >=3 deaths with unused grenades still in the inventory.
         let wasted: Vec<&RuleFlag> = flags
             .iter()
             .filter(|f| f.rule_id == "H3_WASTED_UTILITY")

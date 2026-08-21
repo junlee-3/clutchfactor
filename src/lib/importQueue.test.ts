@@ -48,7 +48,7 @@ describe("importQueue", () => {
     q = finishFile(startFile(q, 1), 1, "this demo is already imported (same file hash)");
     q = finishFile(startFile(q, 2), 2, "Couldn't parse c.dem: truncated.");
     expect(queueDone(q)).toBe(true);
-    expect(queueSummary(q)).toBe("1 imported · 1 already in library · 1 failed — see below");
+    expect(queueSummary(q)).toBe("1 imported · 1 already in library · 1 failed — see above");
   });
 
   it("summary omits empty categories", () => {

@@ -759,7 +759,11 @@ impl Store {
     /// rather than silently attributing a death to a stale sample from an
     /// earlier round (issue #6 §4). A death with no in-bound sample is
     /// dropped, never misplaced.
-    pub fn death_positions(&self, tracked: &str) -> Result<Vec<DeathPos>, StoreError> {
+    pub fn death_positions(
+        &self,
+        tracked: &str,
+        lookback_s: f32,
+    ) -> Result<Vec<DeathPos>, StoreError> {
         let mut st = self.conn.prepare(
             "SELECT k.match_id, m.map, k.round, k.tick, t.x, t.y, t.last_place
              FROM kills k
@@ -768,12 +772,12 @@ impl Store {
               AND t.tick = (SELECT MAX(tick) FROM tick_samples
                              WHERE match_id = k.match_id AND steamid = k.victim
                                AND tick <= k.tick
-                               AND tick >= k.tick - CAST(10.0 * m.tickrate AS INTEGER))
+                               AND tick >= k.tick - CAST(?2 * m.tickrate AS INTEGER))
              WHERE k.victim = ?1 AND m.kind = 'own'
              ORDER BY k.match_id, k.tick",
         )?;
         let rows = st
-            .query_map([tracked], |r| {
+            .query_map(params![tracked, lookback_s], |r| {
                 Ok(DeathPos {
                     match_id: r.get(0)?,
                     map: r.get(1)?,
@@ -1864,7 +1868,7 @@ mod tests {
 
         // Death positions: sample_match kills player 1 at tick 2200 (round 2);
         // nearest sample at 2100 has x=100, y=-50.
-        let pos = store.death_positions("1").unwrap();
+        let pos = store.death_positions("1", 10.0).unwrap();
         assert_eq!(pos.len(), 2, "one death per saved match");
         assert_eq!(pos[0].x, 100.0);
         assert_eq!(pos[0].y, -50.0);
@@ -1892,7 +1896,7 @@ mod tests {
             .save_match("a.dem", "hash-a", MatchKind::Own, &data)
             .unwrap();
 
-        let pos = store.death_positions("1").unwrap();
+        let pos = store.death_positions("1", 10.0).unwrap();
         // sample_match kills player 1 at tick 2200 (round 2); nearest sample at
         // 2100 (x=100, y=-50) is 100 ticks ≈ 1.6 s away — inside the bound.
         assert_eq!(
@@ -2079,7 +2083,7 @@ mod tests {
             .rule_counts_across_matches("1", "H2_ISOLATED_DEATH", 10)
             .unwrap()
             .len();
-        let deaths_before = store.death_positions("1").unwrap().len();
+        let deaths_before = store.death_positions("1", 10.0).unwrap().len();
 
         // Import the same synthetic match as CORPUS (players 1..4 included).
         store
@@ -2100,7 +2104,7 @@ mod tests {
             "habit window unchanged by corpus import"
         );
         assert_eq!(
-            store.death_positions("1").unwrap().len(),
+            store.death_positions("1", 10.0).unwrap().len(),
             deaths_before,
             "death positions unchanged by corpus import"
         );
