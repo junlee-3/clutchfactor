@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { TrendsDto } from "../lib/ipc";
 import { useTrends } from "../lib/queries";
+import { getToken } from "../lib/theme";
 import { sparkPoints, streakCallout } from "../lib/trends";
 import { TopNav } from "../components/TopNav";
 
@@ -128,7 +129,7 @@ export function Trends() {
                     <polyline
                       points={polyline(view.class13, LINE_W, LINE_H)}
                       fill="none"
-                      stroke="#4aa3ff"
+                      stroke={getToken("--chalk")}
                       strokeWidth="2"
                     />
                   </svg>
@@ -167,7 +168,7 @@ export function Trends() {
                             <polyline
                               points={polyline(r.counts, SPARK_W, SPARK_H)}
                               fill="none"
-                              stroke="#4aa3ff"
+                              stroke={getToken("--chalk")}
                               strokeWidth="2"
                             />
                           </svg>
