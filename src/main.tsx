@@ -8,6 +8,7 @@ import "./styles.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import "./styles/components.css";
+import "./styles/screens.css";
 
 const queryClient = new QueryClient();
 

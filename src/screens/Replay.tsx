@@ -4,9 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import { KillFeed } from "../components/KillFeed";
 import { RosterPanel } from "../components/RosterPanel";
 import { Scrubber } from "../components/Scrubber";
+import { MatchHeader } from "../components/ui/MatchHeader";
 import { parseEvidenceParams } from "../lib/evidence";
 import type { BombInfo, KillInfo, MatchDetail } from "../lib/ipc";
-import { useMatchDetail, useRoundTicks } from "../lib/queries";
+import { useMatchDetail, useMatches, useRoundTicks } from "../lib/queries";
 import { radarImageUrl } from "../replay/coords";
 import type { MapCalibration } from "../replay/coords";
 import { buildTracks, stateAt } from "../replay/interp";
@@ -51,6 +52,11 @@ export function Replay() {
 
   const detail = useMatchDetail(matchId);
   const d = detail.data ?? null;
+  // MatchDetail (per-command DTO) has no tracked_result/date/K-D/HS% — those
+  // live on MatchSummary from the library list, already cached by the time
+  // a match is opened from Library. Reuse it for the header (see Report.tsx).
+  const matches = useMatches();
+  const summary = matches.data?.find((m) => m.id === matchId);
   const roundCount = d?.rounds.length ?? 0;
   const round = Math.min(Math.max(evidence.round, 1), Math.max(roundCount, 1));
   const ticks = useRoundTicks(matchId, round);
@@ -82,6 +88,24 @@ export function Replay() {
 
   return (
     <div className="replay-shell">
+      <MatchHeader
+        map={d.map}
+        score={{ a: d.score_a, b: d.score_b }}
+        result={summary?.tracked_result ?? null}
+        date={summary?.imported_at ?? null}
+        stats={{
+          kd:
+            summary?.tracked_kills != null && summary?.tracked_deaths != null
+              ? `${summary.tracked_kills}-${summary.tracked_deaths}`
+              : null,
+          hsPct:
+            summary?.tracked_hs_pct != null
+              ? `${Math.round(summary.tracked_hs_pct)}%`
+              : null,
+        }}
+        back={{ to: "/", label: "← Library" }}
+        crossLink={{ to: `/report/${matchId}`, label: "Read report →" }}
+      />
       <div className="round-strip" role="tablist" aria-label="Rounds">
         {d.rounds.map((r) => (
           <button
@@ -318,17 +342,6 @@ function RoundPlayer({
 
   return (
     <div className="replay-player">
-      <header className="topbar">
-        <Link to="/" className="back-link">
-          ← Library
-        </Link>
-        <span className="replay-title">
-          {d.map} · round {round}/{d.rounds.length}
-        </span>
-        <span className="fps-meter" data-testid="fps">
-          {fps} fps
-        </span>
-      </header>
       <div className="replay-main">
         <div className="radar-wrap">
           <ReplayCanvas getScene={getScene} onFrame={onFrame} onFps={setFps} />
@@ -378,6 +391,9 @@ function RoundPlayer({
           names={names}
           onSeek={seek}
         />
+        <span className="fps-meter" data-testid="fps">
+          {fps} fps
+        </span>
       </div>
     </div>
   );

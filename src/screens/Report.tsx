@@ -3,7 +3,8 @@ import { ClassBreakdown } from "../components/ClassBreakdown";
 import { HabitCard } from "../components/HabitCard";
 import { InsightCard } from "../components/InsightCard";
 import { RoundStripReport } from "../components/RoundStripReport";
-import { useHabits, useMatchReport } from "../lib/queries";
+import { MatchHeader } from "../components/ui/MatchHeader";
+import { useHabits, useMatches, useMatchReport } from "../lib/queries";
 import { CATEGORY_TITLES, groupInsights } from "../lib/report";
 
 const TICKRATE = 64;
@@ -13,6 +14,12 @@ export function Report() {
   const matchId = Number(raw);
   const report = useMatchReport(matchId);
   const habits = useHabits();
+  // MatchReport (per-command DTO) doesn't carry date/K-D/HS% — those live on
+  // MatchSummary from the library list, which is already cached by the time
+  // a match is opened from Library. Reuse it rather than growing the report
+  // command's payload for a header-only need.
+  const matches = useMatches();
+  const summary = matches.data?.find((m) => m.id === matchId);
 
   if (report.isLoading) {
     return <div className="replay-shell centered">Building report…</div>;
@@ -27,25 +34,27 @@ export function Report() {
   }
 
   const groups = groupInsights(r.insights);
-  const mapLabel = r.map.replace(/^(de|cs)_/, "");
-  const resultClass = r.tracked_result ?? "none";
 
   return (
     <div className="report-shell">
-      <header className="topbar">
-        <Link to="/" className="back-link">
-          ← Library
-        </Link>
-        <span className="replay-title">
-          {mapLabel} ·{" "}
-          <b className={`letter-${resultClass[0] ?? "n"}`}>
-            {r.score_a}–{r.score_b}
-          </b>
-        </span>
-        <Link to={`/replay/${matchId}`} className="back-link">
-          Watch replay →
-        </Link>
-      </header>
+      <MatchHeader
+        map={r.map}
+        score={{ a: r.score_a, b: r.score_b }}
+        result={r.tracked_result}
+        date={summary?.imported_at ?? null}
+        stats={{
+          kd:
+            summary?.tracked_kills != null && summary?.tracked_deaths != null
+              ? `${summary.tracked_kills}-${summary.tracked_deaths}`
+              : null,
+          hsPct:
+            summary?.tracked_hs_pct != null
+              ? `${Math.round(summary.tracked_hs_pct)}%`
+              : null,
+        }}
+        back={{ to: "/", label: "← Library" }}
+        crossLink={{ to: `/replay/${matchId}`, label: "Watch replay →" }}
+      />
 
       <div className="report-main">
         <div className="report-feed">
