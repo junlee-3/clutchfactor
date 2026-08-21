@@ -1,0 +1,113 @@
+/* ClutchFactor base layer — @font-face, resets, typography classes, focus.
+   Loads after tokens.css (see src/main.tsx import order). */
+
+/* Fonts served from assets/fonts/ via Vite's publicDir (vite.config.ts sets
+   publicDir: "assets", the same convention that serves assets/maps/ at
+   /maps/...). Confirmed by inspecting `pnpm build` output: files land at
+   dist/fonts/*.woff2, not dist/assets/fonts/*.woff2 — so the url() below
+   must be /fonts/..., not /assets/fonts/... (see ADR-0007, commit message). */
+
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/Fraunces-Variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Fraunces";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/Fraunces-Italic-Variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/Inter-Variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  background: var(--bg0);
+  color: var(--chalk);
+  font: var(--text-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular numerals — data classes and the .tnum helper both opt in. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Type scale — the seven classes from design-system.md §3. */
+.type-display {
+  font: var(--text-display);
+  font-weight: 560;
+  font-optical-sizing: auto;
+}
+
+.type-title {
+  font: var(--text-title);
+  font-weight: 540;
+}
+
+.type-heading {
+  font: var(--text-heading);
+  font-weight: 600;
+}
+
+.type-body {
+  font: var(--text-body);
+}
+
+.type-ui {
+  font: var(--text-ui);
+}
+
+.type-data {
+  font: var(--text-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.type-micro {
+  font: var(--text-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--chalk-dim);
+}
+
+/* The app's ONE focus treatment, on every interactive element. */
+:focus-visible {
+  outline: 2px solid var(--chalk-bright);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
