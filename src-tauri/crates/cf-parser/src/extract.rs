@@ -37,6 +37,8 @@ pub enum ParseError {
     Demo(String),
     #[error("demo contains no usable match data: {0}")]
     Empty(String),
+    #[error("the parser crashed on this file — it is corrupt or not a CS2 demo")]
+    Crashed,
 }
 
 const WANTED_EVENTS: &[&str] = &[
@@ -129,7 +131,49 @@ fn field_steamid(ev: &GameEvent, name: &str) -> Option<u64> {
 /// non-empty (verified: collect_entities gate at the pinned rev), so a demo
 /// takes two passes — events first, then the tick table — exactly like the
 /// upstream Python bindings do.
+///
+/// Panic boundary: demoparser2 indexes into the raw byte buffer and panics
+/// (rather than returning `Err`) on some malformed/truncated inputs — e.g. a
+/// 10-byte garbage file panics with "range end index 16 out of range for
+/// slice of length 10" deep inside its first pass. Per the crate boundary
+/// rule (no demoparser2 types *or behavior* leak past cf-parser), that panic
+/// is caught here and converted into `ParseError::Crashed`. `AssertUnwindSafe`
+/// is sound: on unwind we discard the entire in-progress `parse_match_inner`
+/// call (mmap, parser state, partially-built `MatchData`) and return `Err` —
+/// nothing half-mutated is ever read back.
 pub fn parse_match(
+    path: &Path,
+    sample_every: u32,
+    progress: &mut dyn FnMut(ImportStage, f32),
+) -> Result<MatchData, ParseError> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        parse_match_inner(path, sample_every, progress)
+    })) {
+        Ok(result) => result,
+        Err(payload) => {
+            eprintln!(
+                "cf-parser: demoparser2 panicked while parsing {}: {}",
+                path.display(),
+                panic_payload_message(&payload)
+            );
+            Err(ParseError::Crashed)
+        }
+    }
+}
+
+/// Best-effort extraction of a panic payload's message for logging only —
+/// never surfaced to users (see `ParseError::Crashed`'s fixed §7 message).
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "<non-string panic payload>".to_string()
+    }
+}
+
+fn parse_match_inner(
     path: &Path,
     sample_every: u32,
     progress: &mut dyn FnMut(ImportStage, f32),
@@ -885,6 +929,38 @@ mod tests {
         assert_eq!(c[0], 10);
         assert_eq!(c[1], 20);
         assert_eq!(&c[2..], &[30, 40]);
+    }
+
+    /// Regression for the corrupt-import panic (Task 10 fix): a truncated /
+    /// non-demo file must surface as a friendly `ParseError`, never as an
+    /// unwinding panic from demoparser2. Before the `catch_unwind` boundary
+    /// was added, demoparser2 indexed past the end of the 10-byte buffer
+    /// and panicked with "range end index 16 out of range for slice of
+    /// length 10", aborting this test.
+    #[test]
+    fn parse_match_on_garbage_bytes_returns_err_not_panic() {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "cf-parser-garbage-{}-{}.dem",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, b"not a demo").expect("write garbage fixture");
+
+        let mut noop = |_stage: ImportStage, _pct: f32| {};
+        let result = parse_match(&path, 4, &mut noop);
+
+        let _ = std::fs::remove_file(&path);
+
+        let err = result.expect_err("garbage bytes must not parse successfully");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("corrupt or not a CS2 demo"),
+            "expected a §7-style corrupt-demo message, got: {msg}"
+        );
     }
 
     #[test]

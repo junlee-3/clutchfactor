@@ -113,7 +113,18 @@ async fn parse_and_save(
         parse_match(&parse_path, SAMPLE_EVERY, &mut progress)
     })
     .await
-    .map_err(|e| e.to_string())?
+    // §7 voice, belt-and-braces: cf-parser's own catch_unwind (extract.rs)
+    // should always turn a demoparser2 panic into a graceful `ParseError`
+    // before this JoinError case is even reachable — but if the parse task
+    // is ever aborted/panics some other way, never leak the raw JoinError
+    // text (e.g. `task N panicked with message "..."`) to the UI.
+    .map_err(|_| {
+        format!(
+            "Couldn't parse {file_name}: the import crashed on this file. If this \
+             demo is from a different game or the download was cut short, \
+             re-download it and try again."
+        )
+    })?
     // §7 voice: say what happened and what to do next. A failed parse has
     // written nothing — the save only happens after this point.
     .map_err(|e| {
