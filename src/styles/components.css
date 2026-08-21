@@ -280,3 +280,183 @@
   background: var(--bg1);
   color: var(--chalk-bright);
 }
+
+/* ---------------------------------------------------------------------- */
+/* EmptyState                                                              */
+/* ---------------------------------------------------------------------- */
+
+/* "An invitation with a next action" (design-system.md §6) — solid
+   hairline, never dashed: dashed is reserved for evidence (§5), and an
+   empty state links to nothing on the tape. */
+.ui-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s3);
+  text-align: center;
+  padding: var(--s8) var(--s6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.ui-empty-title {
+  margin: 0;
+}
+
+.ui-empty-body {
+  margin: 0;
+  max-width: 420px;
+  color: var(--chalk-dim);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Skeleton — shimmer-free (motion restraint): static bg2 blocks at final   */
+/* layout size, so data arrival never shifts the page (§10).                */
+/* ---------------------------------------------------------------------- */
+
+.ui-skel-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.ui-skel {
+  display: block;
+  background: var(--bg2);
+  border-radius: var(--r-md);
+}
+
+.ui-skel-row {
+  height: 40px;
+}
+
+.ui-skel-card {
+  height: 96px;
+}
+
+.ui-skel-block {
+  height: 240px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Toast                                                                    */
+/* ---------------------------------------------------------------------- */
+
+.ui-toast-container {
+  position: fixed;
+  right: var(--s5);
+  bottom: var(--s5);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--s2);
+  pointer-events: none;
+}
+
+.ui-toast {
+  pointer-events: auto;
+  min-width: 240px;
+  max-width: 360px;
+  padding: var(--s3) var(--s4);
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-float);
+  font: var(--text-body);
+  color: var(--chalk);
+  animation: ui-toast-in var(--dur) var(--ease);
+}
+
+.ui-toast-error {
+  border-color: var(--border-loss);
+  box-shadow:
+    var(--shadow-float),
+    inset 2px 0 0 0 var(--loss);
+}
+
+@keyframes ui-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* ImportQueuePanel + ImportProgress                                       */
+/* ---------------------------------------------------------------------- */
+
+.ui-queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.ui-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.ui-queue-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s3);
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s2) var(--s3);
+}
+
+/* failed rows — loss ink on the detail cell only (§6: "failed rows loss
+   ink"); the row surface itself stays neutral furniture. */
+.ui-queue-row-failed .ui-queue-detail {
+  color: var(--loss);
+}
+
+.ui-queue-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.ui-import-row {
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s3);
+}
+
+.ui-import-row-text {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+.ui-import-detail {
+  color: var(--chalk-dim);
+}
+
+.ui-progress-track {
+  height: 3px;
+  background: var(--bg2);
+  border-radius: var(--r-full);
+  overflow: hidden;
+}
+
+/* Progress fills are one of the two things allowed to animate position
+   (design-system.md §4) — chalk, not --ct: the fill is app chrome, not a
+   side identity. */
+.ui-progress-fill {
+  height: 100%;
+  background: var(--chalk);
+  transition: width var(--dur) var(--ease);
+}

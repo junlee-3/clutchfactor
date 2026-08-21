@@ -8,15 +8,15 @@ interface Props {
 export function ImportProgress({ fileName, progress }: Props) {
   const pct = Math.round((progress?.pct ?? 0) * 100);
   return (
-    <div className="import-row" role="status" aria-live="polite">
-      <div className="import-row-text">
-        <span className="import-file">{fileName}</span>
-        <span className="import-detail">
+    <div className="ui-import-row" role="status" aria-live="polite">
+      <div className="ui-import-row-text">
+        <span className="ui-import-file type-data">{fileName}</span>
+        <span className="ui-import-detail type-data">
           {progress?.detail ?? "Starting import"} · {pct}%
         </span>
       </div>
-      <div className="progress-track">
-        <div className="progress-fill" style={{ width: `${pct}%` }} />
+      <div className="ui-progress-track">
+        <div className="ui-progress-fill" style={{ width: `${pct}%` }} />
       </div>
     </div>
   );

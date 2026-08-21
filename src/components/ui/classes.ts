@@ -10,6 +10,7 @@ export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "md" | "sm";
 export type CardEdge = "win" | "loss" | "severity";
 export type ChipVariant = "default" | "evidence" | "side-ct" | "side-t" | "count";
+export type SkeletonKind = "rows" | "card" | "block";
 
 const BUTTON_VARIANTS: readonly ButtonVariant[] = [
   "primary",
@@ -26,6 +27,14 @@ const CHIP_VARIANTS: readonly ChipVariant[] = [
   "side-t",
   "count",
 ];
+const SKELETON_KINDS: readonly SkeletonKind[] = ["rows", "card", "block"];
+/** kind -> the single-instance class it stacks (design-system.md §6: rows
+ * 40px, card 96px, block 240px). */
+const SKELETON_SHAPE: Record<SkeletonKind, string> = {
+  rows: "ui-skel-row",
+  card: "ui-skel-card",
+  block: "ui-skel-block",
+};
 
 function isButtonVariant(value: string): value is ButtonVariant {
   return (BUTTON_VARIANTS as readonly string[]).includes(value);
@@ -41,6 +50,10 @@ function isCardEdge(value: string): value is CardEdge {
 
 function isChipVariant(value: string): value is ChipVariant {
   return (CHIP_VARIANTS as readonly string[]).includes(value);
+}
+
+function isSkeletonKind(value: string): value is SkeletonKind {
+  return (SKELETON_KINDS as readonly string[]).includes(value);
 }
 
 /** `ui-btn ui-btn-{variant} ui-btn-{size}` — unknown variant/size fall back
@@ -65,6 +78,14 @@ export function cardClass(edge?: CardEdge): string {
 export function chipClass(variant: ChipVariant = "default"): string {
   const v = isChipVariant(variant) ? variant : "default";
   return v === "default" ? "ui-chip" : `ui-chip ui-chip-${v}`;
+}
+
+/** `ui-skel ui-skel-{row|card|block}` — shimmer-free per the spec's motion
+ * restraint (static bg2 block at final layout size). Unknown kind falls back
+ * to "rows". */
+export function skeletonClass(kind: SkeletonKind): string {
+  const k = isSkeletonKind(kind) ? kind : "rows";
+  return `ui-skel ${SKELETON_SHAPE[k]}`;
 }
 
 /** Roving-tabindex decision for one Segmented option. `activeIndex` is the

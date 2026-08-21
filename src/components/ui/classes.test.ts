@@ -4,10 +4,12 @@ import {
   cardClass,
   chipClass,
   segTabIndex,
+  skeletonClass,
   type ButtonSize,
   type ButtonVariant,
   type CardEdge,
   type ChipVariant,
+  type SkeletonKind,
 } from "./classes";
 
 describe("buttonClass", () => {
@@ -93,6 +95,24 @@ describe("chipClass", () => {
 
   it("falls through to the base class for an unknown variant", () => {
     expect(chipClass("bogus" as ChipVariant)).toBe("ui-chip");
+  });
+});
+
+describe("skeletonClass", () => {
+  it("maps rows to ui-skel-row", () => {
+    expect(skeletonClass("rows")).toBe("ui-skel ui-skel-row");
+  });
+
+  it("maps card to ui-skel-card", () => {
+    expect(skeletonClass("card")).toBe("ui-skel ui-skel-card");
+  });
+
+  it("maps block to ui-skel-block", () => {
+    expect(skeletonClass("block")).toBe("ui-skel ui-skel-block");
+  });
+
+  it("falls through to rows for an unknown kind", () => {
+    expect(skeletonClass("bogus" as SkeletonKind)).toBe("ui-skel ui-skel-row");
   });
 });
 
