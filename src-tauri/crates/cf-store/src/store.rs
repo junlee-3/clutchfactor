@@ -158,6 +158,7 @@ pub struct DeathPos {
     pub tick: i32,
     pub x: f32,
     pub y: f32,
+    pub place: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -720,17 +721,54 @@ impl Store {
         Ok(rows)
     }
 
+    /// Top callouts for one rule's flags across the recent window — feeds
+    /// the "most often at Catwalk (5)" habit clause (issue #6 §3). First
+    /// and only reader of rule_flags.details_json ('$.place'); flags
+    /// without a place simply don't count (silence bias).
+    pub fn rule_place_counts(
+        &self,
+        tracked: &str,
+        rule_id: &str,
+        window: usize,
+    ) -> Result<Vec<(String, u32)>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT json_extract(f.details_json, '$.place') AS place, COUNT(*) AS n
+             FROM rule_flags f
+             WHERE f.steamid = ?1 AND f.rule_id = ?2
+               AND f.match_id IN (SELECT id FROM matches WHERE kind = 'own'
+                                  ORDER BY imported_at DESC, id DESC LIMIT ?3)
+               AND place IS NOT NULL
+             GROUP BY place
+             ORDER BY n DESC, place ASC
+             LIMIT 2",
+        )?;
+        let rows = st
+            .query_map(params![tracked, rule_id, window as i64], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, u32>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// Tracked player's death positions per map across all matches (from the
     /// nearest tick sample at or before each kill).
+    ///
+    /// The lookback is bounded to 10 s of the match's own tickrate — far
+    /// wider than the ~16 Hz sampling interval, so it only excludes
+    /// genuinely missing data (e.g. the first sample of the next round)
+    /// rather than silently attributing a death to a stale sample from an
+    /// earlier round (issue #6 §4). A death with no in-bound sample is
+    /// dropped, never misplaced.
     pub fn death_positions(&self, tracked: &str) -> Result<Vec<DeathPos>, StoreError> {
         let mut st = self.conn.prepare(
-            "SELECT k.match_id, m.map, k.round, k.tick, t.x, t.y
+            "SELECT k.match_id, m.map, k.round, k.tick, t.x, t.y, t.last_place
              FROM kills k
              JOIN matches m ON m.id = k.match_id
              JOIN tick_samples t ON t.match_id = k.match_id AND t.steamid = k.victim
               AND t.tick = (SELECT MAX(tick) FROM tick_samples
                              WHERE match_id = k.match_id AND steamid = k.victim
-                               AND tick <= k.tick)
+                               AND tick <= k.tick
+                               AND tick >= k.tick - CAST(10.0 * m.tickrate AS INTEGER))
              WHERE k.victim = ?1 AND m.kind = 'own'
              ORDER BY k.match_id, k.tick",
         )?;
@@ -743,6 +781,7 @@ impl Store {
                     tick: r.get(3)?,
                     x: r.get(4)?,
                     y: r.get(5)?,
+                    place: r.get(6)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1841,6 +1880,31 @@ mod tests {
         assert_eq!(stats[0].freeze_end_tick, Some(1100));
     }
 
+    #[test]
+    fn death_positions_carry_place_and_bound_lookback_to_10s() {
+        let (_dir, mut store) = open_tmp();
+        let mut data = sample_match();
+        // A second kill of player 1 in round 2 whose only preceding sample is
+        // >10 s old (2100 → 5000 is 2900 ticks ≈ 45 s at 64 tick): the stale
+        // sample must NOT be used — the death is dropped, not misplaced.
+        data.kills.push(kill(5000, 2, 3, 1, false));
+        store
+            .save_match("a.dem", "hash-a", MatchKind::Own, &data)
+            .unwrap();
+
+        let pos = store.death_positions("1").unwrap();
+        // sample_match kills player 1 at tick 2200 (round 2); nearest sample at
+        // 2100 (x=100, y=-50) is 100 ticks ≈ 1.6 s away — inside the bound.
+        assert_eq!(
+            pos.len(),
+            1,
+            "stale-sample death excluded, in-bound death kept"
+        );
+        assert_eq!(pos[0].x, 100.0);
+        assert_eq!(pos[0].y, -50.0);
+        assert_eq!(pos[0].place.as_deref(), Some("BombsiteA"));
+    }
+
     /// Flags written before migration 3 have a NULL `evidence_json`. The query
     /// must still hand back the first flag's round/tick so `get_habits` can
     /// rebuild an EvidenceRef instead of dropping the replay chip.
@@ -1895,6 +1959,56 @@ mod tests {
         // Earliest tick wins, and it is the same row the evidence would be on.
         assert_eq!(counts[0].first_round, Some(2));
         assert_eq!(counts[0].first_tick, Some(2400));
+    }
+
+    /// Issue #6 §3: habit clauses say *where* — first-ever reader of
+    /// `rule_flags.details_json`. Flags without a place don't count (silence
+    /// bias), and results are capped to the top 2 by count.
+    #[test]
+    fn rule_place_counts_aggregates_details_place() {
+        let (_dir, mut store) = open_tmp();
+        let data = sample_match();
+        let id = store
+            .save_match("a.dem", "h1", MatchKind::Own, &data)
+            .unwrap();
+        let flag = |place: Option<&str>| cf_analysis::RuleFlag {
+            rule_id: "H2_ISOLATED_DEATH",
+            round: 1,
+            tick: 1200,
+            steamid: 1,
+            confidence: 0.6,
+            severity: 0.8,
+            details: match place {
+                Some(p) => serde_json::json!({ "place": p }),
+                None => serde_json::json!({ "place": null }),
+            },
+            evidence: cf_analysis::EvidenceRef {
+                round: 1,
+                tick_start: 880,
+                tick_end: 1328,
+                focus_players: vec![1],
+                camera_hint: None,
+            },
+        };
+        let out = cf_analysis::AnalysisOutput {
+            flags: vec![
+                flag(Some("Catwalk")),
+                flag(Some("Catwalk")),
+                flag(Some("Underpass")),
+                flag(None),
+            ],
+            insights: vec![],
+            death_classes: vec![],
+        };
+        store.save_analysis(id, &out).unwrap();
+
+        let places = store
+            .rule_place_counts("1", "H2_ISOLATED_DEATH", 10)
+            .unwrap();
+        assert_eq!(
+            places,
+            vec![("Catwalk".to_string(), 2), ("Underpass".to_string(), 1)]
+        );
     }
 
     #[test]

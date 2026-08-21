@@ -280,12 +280,13 @@ fn wasted_utility(f: &Facts) -> Narration {
         .unwrap_or_default();
     Narration {
         title: match n {
-            Some(n) => format!("Died holding utility {}", times(n)),
-            None => "Died holding utility".to_string(),
+            Some(n) => format!("Died with unused utility {}", times(n)),
+            None => "Died with unused utility".to_string(),
         },
         body: format!(
-            "You died with unthrown grenades in {}{item}. Utility you carry into your own death \
-             is utility you paid for and never used: throw it into the fight you are already in.",
+            "You died with grenades still unused in your inventory in {}{item}. Utility you \
+             carry into your own death is utility you paid for and never used: throw it into \
+             the fight you are already in.",
             match (n, total) {
                 (Some(n), Some(t)) => format!("{n} of your {}", plural(t, "death")),
                 (Some(n), None) => format!("{n} of your deaths"),
@@ -762,6 +763,26 @@ pub fn narrate_habit(
             plural(window as i64, "match")
         )
     };
+    // Issue #6 §3: habits say *where*. Only rendered when flags carried a
+    // callout — absence stays silent.
+    let seen = match extra.get("places").and_then(Value::as_array) {
+        Some(places) if !places.is_empty() => {
+            let named: Vec<String> = places
+                .iter()
+                .filter_map(|p| {
+                    let raw = p.get(0).and_then(Value::as_str)?;
+                    let n = p.get(1).and_then(Value::as_i64)?;
+                    Some(format!("{} ({n})", crate::callouts::callout_name(raw)))
+                })
+                .collect();
+            if named.is_empty() {
+                seen
+            } else {
+                format!("{seen}, most often at {}", list(&named))
+            }
+        }
+        _ => seen,
+    };
     match rule_id {
         "H2_ISOLATED_DEATH" => Narration {
             title: "Habit: isolated deaths".to_string(),
@@ -792,10 +813,10 @@ pub fn narrate_habit(
             ),
         },
         "H3_WASTED_UTILITY" => Narration {
-            title: "Habit: dying with utility".to_string(),
+            title: "Habit: dying with unused utility".to_string(),
             body: format!(
-                "You died holding unthrown grenades {seen}. Make it a rule: nades leave your \
-                 hand before the fight starts, not once you are in it."
+                "You died with grenades still unused in your inventory {seen}. Make it a rule: \
+                 nades leave your hand before the fight starts, not once you are in it."
             ),
         },
         "H4_KILLED_WITHOUT_CONTACT" => Narration {
@@ -807,6 +828,10 @@ pub fn narrate_habit(
         },
         "H4_REPEAT_HOTSPOT" => {
             let map = extra.get("map").and_then(Value::as_str).and_then(map_name);
+            let place = extra
+                .get("place")
+                .and_then(Value::as_str)
+                .map(crate::callouts::callout_name);
             let deaths = extra
                 .get("deaths")
                 .and_then(Value::as_i64)
@@ -815,19 +840,23 @@ pub fn narrate_habit(
                 .get("matches")
                 .and_then(Value::as_i64)
                 .unwrap_or(matches_hit as i64);
+            let spot = match (&place, &map) {
+                (Some(p), Some(m)) => format!("{p} on {m}"),
+                (Some(p), None) => p.clone(),
+                (None, Some(m)) => format!("the same spot on {m}"),
+                (None, None) => "the same spot".to_string(),
+            };
             Narration {
-                title: match &map {
-                    Some(m) => format!("Repeat hotspot on {m}"),
-                    None => "Repeat hotspot".to_string(),
+                title: match (&place, &map) {
+                    (Some(p), Some(m)) => format!("Repeat hotspot: {p} on {m}"),
+                    (Some(p), None) => format!("Repeat hotspot: {p}"),
+                    (None, Some(m)) => format!("Repeat hotspot on {m}"),
+                    (None, None) => "Repeat hotspot".to_string(),
                 },
                 body: format!(
-                    "You have died {} at the same spot{} across {}. They know that angle better \
+                    "You have died {} at {spot} across {}. They know that angle better \
                      than you do — hold it from a different position, or stop taking that fight.",
                     times(deaths),
-                    match &map {
-                        Some(m) => format!(" on {m}"),
-                        None => String::new(),
-                    },
                     plural(matches, "match")
                 ),
             }
