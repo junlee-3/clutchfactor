@@ -36,8 +36,9 @@ const RESULT_LABEL: Record<MatchResult, string> = {
 // Reused by Report and Replay (design-system.md §8, charter-mandated):
 // map (Fraunces) · score · result (game hues) · date · K-D/HS% strip, plus
 // back-navigation and the Report<->Replay cross-link. Every field but map/
-// score/back is optional — a screen whose loaded data lacks a stat renders
-// the header without it rather than fetching more to fill the mock.
+// score/back is optional — a screen whose loaded data lacks a stat still
+// renders that slot (as a placeholder, see below) rather than fetching more
+// to fill the mock.
 export function MatchHeader({ map, score, result, date, stats, back, crossLink }: MatchHeaderProps) {
   const kd = stats?.kd ?? null;
   const hsPct = stats?.hsPct ?? null;
@@ -52,19 +53,32 @@ export function MatchHeader({ map, score, result, date, stats, back, crossLink }
       <span className="match-header-score type-data">
         {score.a} : {score.b}
       </span>
-      {result && (
-        <span className={`match-header-result match-header-result-${result}`}>
-          {RESULT_LABEL[result]}
-        </span>
-      )}
-      {date && <span className="match-header-date type-data">{date}</span>}
-      {hasStats && (
-        <span className="match-header-stats type-data">
-          {kd && `K-D ${kd}`}
-          {kd && hsPct && " · "}
-          {hsPct && `HS ${hsPct}`}
-        </span>
-      )}
+      {/* result/date/stats are optional (the Report/Replay join they come
+          from can resolve after first paint on a cold deep link) but always
+          render in their fixed-width slot so late-arriving data doesn't
+          shift the header layout (design-system.md §10: "no layout shift on
+          data arrival"). */}
+      <span
+        className={`match-header-result${
+          result ? ` match-header-result-${result}` : " match-header-pending"
+        }`}
+      >
+        {result ? RESULT_LABEL[result] : "—"}
+      </span>
+      <span className={`match-header-date type-data${date ? "" : " match-header-pending"}`}>
+        {date ?? "—"}
+      </span>
+      <span className={`match-header-stats type-data${hasStats ? "" : " match-header-pending"}`}>
+        {hasStats ? (
+          <>
+            {kd && `K-D ${kd}`}
+            {kd && hsPct && " · "}
+            {hsPct && `HS ${hsPct}`}
+          </>
+        ) : (
+          "—"
+        )}
+      </span>
       {crossLink && (
         <Link to={crossLink.to} className="match-header-cross">
           {crossLink.label}

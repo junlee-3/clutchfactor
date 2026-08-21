@@ -184,7 +184,7 @@ surfaces, 3 focus treatments, 6 badge one-offs — all collapse into these.)
 
 One shell for every screen (`<AppShell>`): fixed left sidebar + content.
 
-- **Sidebar, 216px:** wordmark (Fraunces, 17px) → nav (Library, Trends,
+- **Sidebar, 216px:** wordmark (Fraunces, type-title) → nav (Library, Trends,
   Corpus, Settings — text-first, no icon library; active item chalk-bright
   with a 2px chalk left edge) → footer: tracked-player chip (mono).
 - **Immersive screens (Replay, Report):** the sidebar collapses to a 56px
