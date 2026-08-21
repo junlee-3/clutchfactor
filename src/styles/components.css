@@ -1,0 +1,462 @@
+/* ClutchFactor ui/ component styles (design-system.md §6).
+   One canonical implementation per component; screens compose these, never
+   re-declare a surface. Every value here is a token (var(--…)) — the only
+   literal px are 1px hairlines and the 2px card edge, which have no token
+   (design-system.md §11). Loads after tokens.css + base.css (main.tsx). */
+
+/* ---------------------------------------------------------------------- */
+/* Button                                                                  */
+/* ---------------------------------------------------------------------- */
+
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s4);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  font: var(--text-ui);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.ui-btn:disabled {
+  cursor: not-allowed;
+  /* no disabled-opacity token exists yet — 0.5 mirrors the legacy
+     .btn-secondary:disabled precedent (styles.css:1074-1077). */
+  opacity: 0.5;
+}
+
+.ui-btn-md {
+  padding: var(--s2) var(--s4);
+}
+
+.ui-btn-sm {
+  padding: var(--s1) var(--s3);
+}
+
+/* primary — chalk fill, bg0 ink */
+.ui-btn-primary {
+  background: var(--chalk);
+  border-color: var(--chalk);
+  color: var(--bg0);
+}
+
+.ui-btn-primary:hover:not(:disabled) {
+  background: var(--chalk-bright);
+  border-color: var(--chalk-bright);
+}
+
+/* secondary — bg2 fill + line border */
+.ui-btn-secondary {
+  background: var(--bg2);
+  border-color: var(--line);
+  color: var(--chalk);
+}
+
+.ui-btn-secondary:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--chalk-bright);
+}
+
+/* ghost — borderless */
+.ui-btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--chalk-dim);
+}
+
+.ui-btn-ghost:hover:not(:disabled) {
+  background: var(--bg2);
+  color: var(--chalk-bright);
+}
+
+/* danger — loss border/ink; two-step confirm pattern stays a screen
+   concern (pair with .ui-btn-armed for the confirming second step) */
+.ui-btn-danger {
+  background: transparent;
+  border-color: var(--border-loss);
+  color: var(--loss);
+}
+
+.ui-btn-danger:hover:not(:disabled) {
+  border-color: var(--loss);
+  color: var(--chalk-bright);
+}
+
+.ui-btn-armed {
+  background: var(--loss);
+  border-color: var(--loss);
+  color: var(--bg0);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Card                                                                    */
+/* ---------------------------------------------------------------------- */
+
+.ui-card {
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s4);
+}
+
+.ui-card-eyebrow {
+  margin: 0 0 var(--s2);
+}
+
+/* Edge variants — 2px inset left border, no layout shift. Win/loss use the
+   derived border tokens; severity reuses the legacy .ic-spine color-mix
+   pattern (styles.css:821) against the new token names. */
+.ui-card-edge-win {
+  box-shadow: inset 2px 0 0 0 var(--border-win);
+}
+
+.ui-card-edge-loss {
+  box-shadow: inset 2px 0 0 0 var(--border-loss);
+}
+
+.ui-card-edge-sev {
+  box-shadow: inset 2px 0 0 0
+    color-mix(in srgb, var(--loss) calc(var(--sev, 0.5) * 100%), var(--bg2));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Chip / Badge                                                            */
+/* ---------------------------------------------------------------------- */
+
+.ui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: var(--s1) var(--s2);
+  border-radius: var(--r-sm);
+  background: var(--bg2);
+  color: var(--chalk-dim);
+  font: var(--text-data);
+  font-variant-numeric: tabular-nums;
+  border: none;
+}
+
+/* evidence — the chalk-annotation grammar (§5): dashed = evidence, always
+   interactive, jumps to the tape. Never decorative. */
+.ui-chip-evidence {
+  background: transparent;
+  border-bottom: 1px dashed var(--chalk-dim);
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.ui-chip-evidence:hover {
+  color: var(--chalk-bright);
+  border-bottom-color: var(--chalk-bright);
+}
+
+/* side-ct / side-t — colored TEXT only, no fills; the color IS the game
+   talking, never app chrome. */
+.ui-chip-side-ct {
+  background: transparent;
+  color: var(--ct);
+}
+
+.ui-chip-side-t {
+  background: transparent;
+  color: var(--t);
+}
+
+.ui-chip-count {
+  border-radius: var(--r-full);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Table                                                                   */
+/* ---------------------------------------------------------------------- */
+
+.ui-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ui-table th,
+.ui-table td {
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+/* header cells — type-micro eyebrows (class applied in DataTable.tsx) */
+.ui-table th {
+  white-space: nowrap;
+}
+
+/* data cells — mono, tabular */
+.ui-table td {
+  font: var(--text-data);
+  font-variant-numeric: tabular-nums;
+  color: var(--chalk);
+}
+
+.ui-table tbody tr:hover {
+  background: var(--bg2);
+}
+
+/* the row's single focusable trigger (see DataTable.tsx a11y note) — reset
+   to look like plain cell content, not a button */
+.ui-table-row-btn {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Input                                                                   */
+/* ---------------------------------------------------------------------- */
+
+.ui-input {
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: var(--s2) var(--s3);
+  font: var(--text-ui);
+  color: var(--chalk);
+  caret-color: var(--chalk);
+  transition: border-color var(--dur-fast) var(--ease);
+}
+
+.ui-input:hover {
+  border-color: var(--line-strong);
+}
+
+.ui-input::placeholder {
+  color: var(--chalk-faint);
+}
+
+.ui-input-mono {
+  font: var(--text-data);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Segmented                                                               */
+/* ---------------------------------------------------------------------- */
+
+.ui-seg {
+  display: inline-flex;
+  gap: var(--s1);
+  padding: var(--s1);
+  background: var(--bg2);
+  border-radius: var(--r-sm);
+}
+
+.ui-seg-option {
+  padding: var(--s1) var(--s3);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--chalk-dim);
+  font: var(--text-ui);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.ui-seg-option:hover:not(.ui-seg-option-active) {
+  color: var(--chalk);
+}
+
+.ui-seg-option-active {
+  background: var(--bg1);
+  color: var(--chalk-bright);
+}
+
+/* ---------------------------------------------------------------------- */
+/* EmptyState                                                              */
+/* ---------------------------------------------------------------------- */
+
+/* "An invitation with a next action" (design-system.md §6) — solid
+   hairline, never dashed: dashed is reserved for evidence (§5), and an
+   empty state links to nothing on the tape. */
+.ui-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s3);
+  text-align: center;
+  padding: var(--s8) var(--s6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.ui-empty-title {
+  margin: 0;
+}
+
+.ui-empty-body {
+  margin: 0;
+  max-width: 420px;
+  color: var(--chalk-dim);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Skeleton — shimmer-free (motion restraint): static bg2 blocks at final   */
+/* layout size, so data arrival never shifts the page (§10).                */
+/* ---------------------------------------------------------------------- */
+
+.ui-skel-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.ui-skel {
+  display: block;
+  background: var(--bg2);
+  border-radius: var(--r-md);
+}
+
+.ui-skel-row {
+  height: 40px;
+}
+
+.ui-skel-card {
+  height: 96px;
+}
+
+.ui-skel-block {
+  height: 240px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Toast                                                                    */
+/* ---------------------------------------------------------------------- */
+
+.ui-toast-container {
+  position: fixed;
+  right: var(--s5);
+  bottom: var(--s5);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--s2);
+  pointer-events: none;
+}
+
+.ui-toast {
+  pointer-events: auto;
+  min-width: 240px;
+  max-width: 360px;
+  padding: var(--s3) var(--s4);
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-float);
+  font: var(--text-body);
+  color: var(--chalk);
+  animation: ui-toast-in var(--dur) var(--ease);
+}
+
+.ui-toast-error {
+  border-color: var(--border-loss);
+  box-shadow:
+    var(--shadow-float),
+    inset 2px 0 0 0 var(--loss);
+}
+
+@keyframes ui-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* ImportQueuePanel + ImportProgress                                       */
+/* ---------------------------------------------------------------------- */
+
+.ui-queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.ui-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.ui-queue-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s3);
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s2) var(--s3);
+}
+
+/* failed rows — loss ink on the detail cell only (§6: "failed rows loss
+   ink"); the row surface itself stays neutral furniture. */
+.ui-queue-row-failed .ui-queue-detail {
+  color: var(--loss);
+}
+
+.ui-queue-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.ui-import-row {
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s3);
+}
+
+.ui-import-row-text {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+.ui-import-detail {
+  color: var(--chalk-dim);
+}
+
+.ui-progress-track {
+  height: 3px;
+  background: var(--bg2);
+  border-radius: var(--r-full);
+  overflow: hidden;
+}
+
+/* Progress fills are one of the two things allowed to animate position
+   (design-system.md §4) — chalk, not --ct: the fill is app chrome, not a
+   side identity. */
+.ui-progress-fill {
+  height: 100%;
+  background: var(--chalk);
+  transition: width var(--dur) var(--ease);
+}

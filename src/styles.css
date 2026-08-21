@@ -120,22 +120,12 @@ body {
   font-size: 13px;
 }
 
-/* Import progress row */
-.import-row {
-  background: var(--bg1);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 10px 12px;
-  margin-bottom: 12px;
-}
-
-.import-row-text {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  gap: 12px;
-}
-
+/* Import progress row: import-row, import-row-text, progress-track and
+   progress-fill are retired — ImportProgress.tsx now renders the ui-import
+   and ui-progress classes in components.css (design-system.md section 6
+   restyle). import-file and import-detail below stay: Library.tsx and
+   Corpus.tsx still use them directly in their own duplicated queue-list
+   markup until Tasks 6/10 adopt ImportQueuePanel. */
 .import-file {
   font-family: var(--mono);
   font-size: 12px;
@@ -178,25 +168,6 @@ body {
   padding: 10px 12px;
   margin-bottom: 12px;
   font-size: 13px;
-}
-
-.progress-track {
-  height: 3px;
-  background: var(--bg2);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: var(--ct);
-  transition: width 200ms ease;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .progress-fill {
-    transition: none;
-  }
 }
 
 /* Match list — table-like rows, outcome strip on the left edge */
