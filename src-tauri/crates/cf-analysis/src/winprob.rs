@@ -90,9 +90,16 @@ impl WinProbTable {
     }
 
     /// Snapshot count behind a cell (0 for unobserved/clamped states) —
-    /// exposed so consumers can weight confidence by evidence volume.
+    /// exposed so consumers can weight confidence by evidence volume. Mirrors
+    /// `p_ct_win`'s terminal clamps: any state answered by rule rather than
+    /// by table reports 0 evidence, even if the ARFF happened to contain a
+    /// stray row there (e.g. the single (0,0,false) anomaly) — a rule-backed
+    /// answer isn't "sampled".
     pub fn sample_n(&self, ct_alive: u8, t_alive: u8, planted: bool) -> u32 {
         if ct_alive > 5 || t_alive > 5 {
+            return 0;
+        }
+        if ct_alive == 0 || (t_alive == 0 && !planted) {
             return 0;
         }
         self.cells[ct_alive as usize][t_alive as usize][usize::from(planted)].map_or(0, |c| c.n)
@@ -135,6 +142,19 @@ mod tests {
                                                        // it stays data-driven.
         let p50p = t.p_ct_win(5, 0, true).unwrap();
         assert!(p50p > 0.9, "CTs nearly always defuse 5v0: {p50p}");
+    }
+
+    #[test]
+    fn sample_n_honors_terminal_clamps() {
+        let t = WinProbTable::v1();
+        // Rule-answered terminal states report 0 evidence, even though the
+        // ARFF's (0,0,false) anomaly landed a real n:1 row in the table.
+        assert_eq!(t.sample_n(0, 0, false), 0);
+        assert_eq!(t.sample_n(0, 3, true), 0);
+        assert_eq!(t.sample_n(3, 0, false), 0);
+        // Planted with t_alive == 0 is NOT terminal — stays data-driven.
+        assert!(t.sample_n(5, 0, true) > 0);
+        assert!(t.sample_n(5, 5, false) > 50_000);
     }
 
     #[test]
