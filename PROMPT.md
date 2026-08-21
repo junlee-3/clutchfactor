@@ -18,7 +18,7 @@ The product owner is the primary user: a competitive CS2 player, developing on a
 
 ## 2. Ground Rules (non-negotiable, apply to every session)
 
-1. **Commit and push constantly.** Small, coherent commits with clear messages; push to `origin main` after every completed unit of work. Never leave more than ~an hour of work uncommitted. Any session may be interrupted at any time — the repo plus its docs must always be sufficient for a fresh session to resume with zero conversation history. (Git identity and remote are already configured; do not rewrite pushed history.)
+1. **Commit and push constantly.** Small, coherent commits with clear messages; land every completed unit of work on `main` promptly via the ADR-0005 flow (branch → `gh pr create` → `gh pr merge --auto --squash` → verify it merged). Never commit straight to `main` — it is ruleset-protected, and the admin bypass is for mid-release emergencies only. Never leave more than ~an hour of work uncommitted or a finished branch unmerged. Any session may be interrupted at any time — the repo plus its docs must always be sufficient for a fresh session to resume with zero conversation history. (Git identity and remote are already configured; do not rewrite pushed history.)
 2. **Maintain the context-survival docs** exactly as specified in §11. `CLAUDE.md`, `docs/PROGRESS.md`, and `docs/adr/` are load-bearing infrastructure, not paperwork.
 3. **Verify, don't guess, on external APIs.** demoparser2's exact Rust API, Tauri 2 command/event APIs, current crate versions — look them up (web search, docs.rs, the library's GitHub) before writing code against them. Wrong guessed field names in a parser integration waste entire sessions. Pin versions in lockfiles.
 4. **Real data only.** Every parser and detector feature is developed and verified against real `.dem` files (§10.1). No hardcoded fake match data in the UI, no placeholder insights, no "TODO: implement" stubs left behind in committed code.
@@ -178,7 +178,7 @@ pub trait CoachingNarrator {
 - **Integration (local/nightly, not CI-blocking):** full parse+analyze of fixture demos with performance assertions (§10.4).
 
 ### 10.3 CI (GitHub Actions, from M0)
-- Every push: `cargo fmt --check`, `clippy -D warnings`, `cargo test`; `tsc --noEmit`, eslint, vitest. macOS runner primary; add a Windows build job by M2 so Windows breakage surfaces early, not at ship time. Tagged releases: `tauri build` artifacts (Windows NSIS installer + mac .app).
+- Every PR (required checks, ADR-0005): `cargo fmt --check`, `clippy -D warnings`, `cargo test`; `tsc --noEmit`, eslint, vitest. Golden-demo regression tests need `fixtures/` demos and run locally, not on CI runners. macOS runner primary; add a Windows build job by M2 so Windows breakage surfaces early, not at ship time. Tagged releases: `tauri build` artifacts (Windows NSIS installer + mac .app).
 - CI never needs a real demo (golden snapshots + synthetic scenarios cover it).
 
 ### 10.4 Performance budgets (assert in nightly integration tests)
@@ -205,7 +205,7 @@ One per significant decision: context, options, decision, consequences — half 
 - Do **not** re-run `superpowers:brainstorming` for the overall product (this spec is the brainstorm output); use it only if the owner requests a genuinely new feature area mid-build.
 
 ### 11.5 Git discipline
-Conventional-commit style messages (`feat(analysis): ...`, `fix(replay): ...`); every commit leaves CI green; push after each unit of work (Ground Rule 1); milestone completions get an annotated tag (`m0`, `m1`, ...). Branches optional while solo on `main`; if you branch, use `superpowers:using-git-worktrees` and merge promptly via `superpowers:finishing-a-development-branch`.
+Conventional-commit style messages (`feat(analysis): ...`, `fix(replay): ...`); every commit leaves CI green; land each unit of work through a PR (Ground Rule 1, ADR-0005 — `main` is PR-only, required checks `rust`/`windows-build`/`web`); milestone completions get an annotated tag (`m0`, `m1`, ...). Short-lived branches, merged promptly — verify auto-merge actually fired before reporting work as landed.
 
 ## 12. Verification bar
 

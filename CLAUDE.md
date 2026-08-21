@@ -43,12 +43,12 @@ fixtures/                      real .dem files, gitignored; see fixtures/README.
 ## Conventions
 
 - Conventional commits (`feat(analysis): …`); milestone tags `m0`, `m1`, …
-- `main` is ruleset-protected (ADR-0005) — branch, then `gh pr create` + `gh pr merge --auto --squash`. Never commit straight to main: admin bypass exists, but using it routes around every required check.
+- `main` is ruleset-protected (ADR-0005) — branch, `gh pr create`, `gh pr merge --auto --squash`, then **verify it landed**: `gh pr view <n> --json state,mergeStateStatus` (auto-merge stalls silently on a `BEHIND` branch — rebase and re-arm). PRs are the default path to main; the admin bypass exists for mid-release emergencies only and skips every required check — if you must use it, say so in the commit message.
 - ADRs in `docs/adr/ADR-NNNN-*.md` for every significant decision — half a page max.
 - **Evidence contract:** every `Insight` carries `EvidenceRef { round, tick_start, tick_end, focus_players, camera_hint }` the replay viewer can jump to. No evidence → detector gets redesigned, not shipped.
 - All detector thresholds live in `DetectorConfig` with documented defaults (PROMPT.md §6.4) — never scatter magic numbers; thresholds in seconds/world units, never ticks.
 - Detectors are pure functions over `MatchData`; TDD with synthetic scenario builders is mandatory.
-- Rule engine (§5A): rule ids (`H2_ISOLATED_DEATH`, …) are load-bearing — never rename/renumber; rules are data (YAML), each emits `confidence`; approximations bias toward silence (false negative ≫ false positive); every rule gets a hand-verified golden clip test; class-13 share is a CI regression metric.
+- Rule engine (§5A): rule ids (`H2_ISOLATED_DEATH`, …) are load-bearing — never rename/renumber; rules are data (YAML), each emits `confidence`; approximations bias toward silence (false negative ≫ false positive); every rule gets a hand-verified golden clip test; class-13 share is a golden-test regression metric (needs `fixtures/` demos, so it runs locally — CI runners only get the synthetic suites).
 - Real demos only — no fake match data, no placeholder insights.
 - Verify external APIs (demoparser2, Tauri) against docs/real output before coding against them.
 
