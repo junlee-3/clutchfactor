@@ -66,3 +66,14 @@ export function chipClass(variant: ChipVariant = "default"): string {
   const v = isChipVariant(variant) ? variant : "default";
   return v === "default" ? "ui-chip" : `ui-chip ui-chip-${v}`;
 }
+
+/** Roving-tabindex decision for one Segmented option. `activeIndex` is the
+ * index of the option matching the controlled `value`, or -1 when nothing
+ * matches (stale filter value, async default, call-site typo). Per the
+ * WAI-ARIA APG radiogroup pattern: when a radio is checked, only it is
+ * tabbable; when none is checked, the first radio is tabbable — so the
+ * group is never unreachable by Tab. */
+export function segTabIndex(index: number, activeIndex: number): 0 | -1 {
+  const tabbable = activeIndex === -1 ? 0 : activeIndex;
+  return index === tabbable ? 0 : -1;
+}

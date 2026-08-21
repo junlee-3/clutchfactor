@@ -18,7 +18,7 @@ export function DataTable({ head, rows, rowKey, onRowClick }: DataTableProps) {
       <thead>
         <tr>
           {head.map((label, i) => (
-            <th key={i} className="type-micro">
+            <th key={i} scope="col" className="type-micro">
               {label}
             </th>
           ))}

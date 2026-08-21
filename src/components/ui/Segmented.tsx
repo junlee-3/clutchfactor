@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { segTabIndex } from "./classes";
 
 interface SegmentedOption {
   value: string;
@@ -32,6 +33,11 @@ export function Segmented({ options, value, onChange, ariaLabel }: SegmentedProp
     optionRefs.current[next]?.focus();
   }
 
+  // -1 when `value` matches no option (stale filter value, async default,
+  // call-site typo) — segTabIndex then makes the first option tabbable so
+  // the group is never unreachable by Tab (WAI-ARIA APG radiogroup pattern).
+  const activeIndex = options.findIndex((option) => option.value === value);
+
   return (
     <div className="ui-seg" role="radiogroup" aria-label={ariaLabel}>
       {options.map((option, i) => {
@@ -45,7 +51,7 @@ export function Segmented({ options, value, onChange, ariaLabel }: SegmentedProp
             type="button"
             role="radio"
             aria-checked={active}
-            tabIndex={active ? 0 : -1}
+            tabIndex={segTabIndex(i, activeIndex)}
             className={`ui-seg-option${active ? " ui-seg-option-active" : ""}`}
             onClick={() => onChange(option.value)}
             onKeyDown={(e) => handleKeyDown(e, i)}

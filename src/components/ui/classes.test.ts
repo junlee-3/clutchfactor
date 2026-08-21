@@ -3,6 +3,7 @@ import {
   buttonClass,
   cardClass,
   chipClass,
+  segTabIndex,
   type ButtonSize,
   type ButtonVariant,
   type CardEdge,
@@ -92,5 +93,26 @@ describe("chipClass", () => {
 
   it("falls through to the base class for an unknown variant", () => {
     expect(chipClass("bogus" as ChipVariant)).toBe("ui-chip");
+  });
+});
+
+describe("segTabIndex", () => {
+  it("makes the active option tabbable", () => {
+    expect(segTabIndex(0, 0)).toBe(0);
+    expect(segTabIndex(2, 2)).toBe(0);
+  });
+
+  it("makes every other option unreachable by Tab", () => {
+    expect(segTabIndex(1, 0)).toBe(-1);
+    expect(segTabIndex(0, 2)).toBe(-1);
+  });
+
+  it("falls back to the first option when nothing matches (activeIndex -1)", () => {
+    expect(segTabIndex(0, -1)).toBe(0);
+  });
+
+  it("keeps non-first options unreachable when nothing matches", () => {
+    expect(segTabIndex(1, -1)).toBe(-1);
+    expect(segTabIndex(2, -1)).toBe(-1);
   });
 });
