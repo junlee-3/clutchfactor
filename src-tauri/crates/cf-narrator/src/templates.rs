@@ -807,12 +807,10 @@ pub fn narrate_habit(
         },
         "H4_REPEAT_HOTSPOT" => {
             let map = extra.get("map").and_then(Value::as_str).and_then(map_name);
-            // Raw callout string for now (e.g. "BombsiteA") — a follow-up
-            // task prettifies this via a callout-name lookup.
             let place = extra
                 .get("place")
                 .and_then(Value::as_str)
-                .map(str::to_string);
+                .map(crate::callouts::callout_name);
             let deaths = extra
                 .get("deaths")
                 .and_then(Value::as_i64)

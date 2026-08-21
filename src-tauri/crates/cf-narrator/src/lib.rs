@@ -5,6 +5,8 @@
 
 mod templates;
 
+pub mod callouts;
+
 pub use templates::narrate_habit;
 
 use std::collections::HashMap;
@@ -821,8 +823,7 @@ mod tests {
     }
 
     /// Issue #6 §2 follow-on: a hotspot card is titled by its shared callout,
-    /// not a bare "same spot" — raw place string for now (a follow-up task
-    /// prettifies it via a callout-name lookup).
+    /// not a bare "same spot" — place string is prettified via a callout-name lookup.
     #[test]
     fn hotspot_card_is_titled_by_callout() {
         let n = narrate_habit(
@@ -832,10 +833,10 @@ mod tests {
             5,
             &json!({"map": "de_mirage", "place": "BombsiteA", "deaths": 5, "matches": 2}),
         );
-        assert_eq!(n.title, "Repeat hotspot: BombsiteA on Mirage");
+        assert_eq!(n.title, "Repeat hotspot: A site on Mirage");
         assert!(n
             .body
-            .contains("5 times at BombsiteA on Mirage across 2 matches"));
+            .contains("5 times at A site on Mirage across 2 matches"));
     }
 
     #[test]
