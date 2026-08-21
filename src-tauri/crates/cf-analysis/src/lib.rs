@@ -15,7 +15,7 @@ pub mod scenario;
 pub mod types;
 
 pub use config::DetectorConfig;
-pub use context::{AnalysisContext, PlayerState};
+pub use context::{AnalysisContext, PlayerState, RoundPhase};
 pub use types::{AnalysisOutput, Category, DeathClassRow, EvidenceRef, Insight, RuleFlag};
 
 use cf_parser::model::MatchData;
