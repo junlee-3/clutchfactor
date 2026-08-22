@@ -11,6 +11,7 @@ pub mod context;
 pub mod corpus;
 pub mod families;
 pub mod habits;
+pub mod round_review;
 pub mod scenario;
 pub mod types;
 pub mod winprob;
