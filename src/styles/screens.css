@@ -235,13 +235,14 @@
 /* Skeleton sized + spaced to match the actual Card row (§10: no layout
    shift on data arrival) — a bare .ui-skel-row (40px, s2 gap) is tuned for
    a dense table row, not this screen's taller Card rows, so both are
-   overridden here to the real row's dimensions. */
+   overridden here to the real row's dimensions. Height: 32px padding
+   (2×s4) + 2px Card border (1px ×2) + ~28.2px button content ≈ 62px. */
 .library-loading .ui-skel-group {
   gap: var(--s3);
 }
 
 .library-row-skeleton {
-  height: 60px;
+  height: 62px;
 }
 
 /* Each match is a Card (design-system.md §6) laid out as [open][actions] —
