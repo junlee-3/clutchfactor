@@ -12,24 +12,43 @@ import {
 } from "../lib/importQueue";
 import { useDeleteMatch, useImportDemo, useMatches } from "../lib/queries";
 import { formatMatchRow } from "../lib/score";
-import { ImportProgress } from "../components/ImportProgress";
+import { mapName } from "../lib/mapName";
+import { Button } from "../components/ui/Button";
+import { Card } from "../components/ui/Card";
+import { EmptyState } from "../components/ui/EmptyState";
+import { ImportQueuePanel } from "../components/ui/ImportQueuePanel";
+import { Skeleton } from "../components/ui/Skeleton";
+import { useToast } from "../components/ui/Toast";
+
+const RESULT_WORD: Record<"W" | "L" | "T", string> = {
+  W: "WON",
+  L: "LOST",
+  T: "TIE",
+};
+
+// Only win/loss get the Card's 2px edge (design-system.md §9) — a tie is
+// neutral furniture, not a claim.
+const EDGE_BY_RESULT: Record<"W" | "L" | "T", "win" | "loss" | undefined> = {
+  W: "win",
+  L: "loss",
+  T: undefined,
+};
 
 export function Library() {
   const navigate = useNavigate();
   const matches = useMatches();
+  const toast = useToast();
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
   const [queue, setQueue] = useState<QueueFile[] | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const importDemo = useImportDemo(setProgress);
   const deleteMatch = useDeleteMatch();
 
   async function reallyDelete(id: number) {
-    setDeleteError(null);
     try {
       await deleteMatch.mutateAsync(id);
     } catch (e) {
-      setDeleteError(String(e));
+      toast.push("error", String(e));
     } finally {
       setConfirmDelete(null);
     }
@@ -56,125 +75,116 @@ export function Library() {
       }
       setQueue(q);
     }
+    // The panel keeps the per-file record; the toast is just the ping that
+    // the batch is done (§7 voice: what happened, then where to look).
+    toast.push("status", queueSummary(q));
   }
 
   const importing = queue !== null && !queueDone(queue);
   const current = queue?.find((f) => f.status === "importing") ?? null;
   const rows = matches.data ?? [];
+  const showSkeleton = matches.isLoading;
+  const showEmpty = !showSkeleton && rows.length === 0 && !importing;
 
   return (
-    <div className="content">
-      <div className="section-head">
-        <h1>Library</h1>
-        <button
-          className="btn-primary"
-          onClick={() => void pickAndImport()}
-          disabled={importing}
-        >
+    <div className="library">
+      <div className="library-head">
+        <h1 className="type-display">Library</h1>
+        <Button variant="primary" onClick={() => void pickAndImport()} disabled={importing}>
           {importing ? "Importing…" : "Import demos"}
-        </button>
+        </Button>
       </div>
 
-      {deleteError && (
-        <div className="error-banner" role="alert">
-          {deleteError}
-        </div>
-      )}
-
       {queue && (
-        <div className="import-queue">
-          {importing && current && (
-            <ImportProgress
-              fileName={`${queue.indexOf(current) + 1} of ${queue.length}: ${current.name}`}
-              progress={progress}
-            />
-          )}
-          <ul className="queue-list">
-            {queue.map((f) => (
-              <li key={f.path} className={`queue-row queue-${f.status}`}>
-                <span className="import-file">{f.name}</span>
-                <span className="import-detail">
-                  {f.status === "done" && "imported"}
-                  {f.status === "skipped" && "already in library"}
-                  {f.status === "failed" && f.error}
-                  {f.status === "pending" && "waiting"}
-                  {f.status === "importing" && "importing…"}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {queueDone(queue) && (
-            <div
-              className={
-                queue.some((f) => f.status === "failed") ? "error-banner" : "queue-summary"
-              }
-              role={queue.some((f) => f.status === "failed") ? "alert" : "status"}
-            >
-              {queueSummary(queue)}
-              <button className="btn-secondary" onClick={() => setQueue(null)}>
-                Dismiss
-              </button>
-            </div>
-          )}
+        <div className="library-queue">
+          <ImportQueuePanel
+            queue={queue}
+            progress={progress}
+            current={current}
+            onDismiss={() => setQueue(null)}
+          />
         </div>
       )}
 
-      {matches.isLoading ? (
-        <p className="empty-note">Loading library…</p>
-      ) : rows.length === 0 && !importing ? (
-        <div className="empty-state">
-          <p className="empty-title">No matches yet</p>
-          <p className="empty-note">
-            Import a CS2 demo (.dem) — matchmaking or FACEIT — and
-            ClutchFactor will break it down round by round.
-          </p>
+      {showSkeleton ? (
+        <div className="library-loading">
+          <Skeleton kind="rows" count={6} className="library-row-skeleton" />
         </div>
+      ) : showEmpty ? (
+        <EmptyState
+          title="No matches yet"
+          body="Import a CS2 demo (.dem) — matchmaking or FACEIT — and ClutchFactor will break it down round by round."
+          action={{ label: "Import demos", onClick: () => void pickAndImport() }}
+        />
       ) : (
-        <ul className="match-list">
+        <ul className="library-list">
           {rows.map((m) => {
             const row = formatMatchRow(m);
-            const outcome = row.resultLetter?.toLowerCase() ?? "none";
+            const edge = row.resultLetter ? EDGE_BY_RESULT[row.resultLetter] : undefined;
+            const resultClass = edge ?? "tie";
+            const accessibleLabel = [
+              mapName(m.map),
+              row.resultLetter ? RESULT_WORD[row.resultLetter] : null,
+              `score ${row.scoreline}`,
+              row.kd ? `K-D ${row.kd}` : null,
+              row.hs,
+              `${m.rounds} rounds`,
+              `imported ${m.imported_at}`,
+            ]
+              .filter(Boolean)
+              .join(", ");
             return (
               <li key={m.id}>
-                <button
-                  className={`match-row outcome-${outcome}`}
-                  onClick={() => navigate(`/report/${m.id}`)}
-                  title="Open match report"
-                >
-                  <span className="map">{row.mapLabel}</span>
-                  <span className="score">
-                    {row.resultLetter && (
-                      <b className={`letter-${outcome}`}>{row.resultLetter}</b>
-                    )}
-                    {row.scoreline}
-                  </span>
-                  <span className="stat">{row.kd ?? "—"}</span>
-                  <span className="stat">{row.hs ?? ""}</span>
-                  <span className="meta">{m.rounds} rounds</span>
-                  <span className="meta date">{m.imported_at}</span>
-                </button>
-                {confirmDelete === m.id ? (
-                  <span className="row-confirm">
-                    <button
-                      className="row-delete row-delete-armed"
-                      onClick={() => void reallyDelete(m.id)}
-                      disabled={deleteMatch.isPending}
-                    >
-                      Delete match
-                    </button>
-                    <button className="row-delete" onClick={() => setConfirmDelete(null)}>
-                      Cancel
-                    </button>
-                  </span>
-                ) : (
+                <Card edge={edge} className="library-row">
                   <button
-                    className="row-delete"
-                    title="Delete this match (the demo file is untouched — re-import any time)"
-                    onClick={() => setConfirmDelete(m.id)}
+                    type="button"
+                    className="library-row-open"
+                    onClick={() => navigate(`/report/${m.id}`)}
+                    title="Open match report"
+                    aria-label={accessibleLabel}
                   >
-                    Delete
+                    <span className="library-row-map type-title">{mapName(m.map)}</span>
+                    <span className="library-row-score">
+                      {row.resultLetter && (
+                        <span className={`library-result library-result-${resultClass}`}>
+                          {RESULT_WORD[row.resultLetter]}
+                        </span>
+                      )}
+                      <span className="type-data">{row.scoreline}</span>
+                    </span>
+                    <span className="type-data library-row-stat">{row.kd ?? "—"}</span>
+                    <span className="type-data library-row-stat">{row.hs ?? "—"}</span>
+                    <span className="type-data library-row-meta">{m.rounds} rounds</span>
+                    <span className="type-data library-row-meta">{m.imported_at}</span>
                   </button>
-                )}
+                  <div className="library-row-actions">
+                    {confirmDelete === m.id ? (
+                      <>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          className="ui-btn-armed"
+                          onClick={() => void reallyDelete(m.id)}
+                          disabled={deleteMatch.isPending}
+                        >
+                          Delete match
+                        </Button>
+                        <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(null)}>
+                          Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => setConfirmDelete(m.id)}
+                        title="Delete this match (the demo file is untouched — re-import any time)"
+                      >
+                        Delete
+                      </Button>
+                    )}
+                  </div>
+                </Card>
               </li>
             );
           })}

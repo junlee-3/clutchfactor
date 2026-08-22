@@ -1,15 +1,18 @@
-import { Link, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { ClassBreakdown } from "../components/ClassBreakdown";
 import { HabitCard } from "../components/HabitCard";
 import { InsightCard } from "../components/InsightCard";
 import { RoundStripReport } from "../components/RoundStripReport";
+import { EmptyState } from "../components/ui/EmptyState";
 import { MatchHeader } from "../components/ui/MatchHeader";
+import { Skeleton } from "../components/ui/Skeleton";
 import { useHabits, useMatches, useMatchReport } from "../lib/queries";
 import { CATEGORY_TITLES, groupInsights } from "../lib/report";
 
 const TICKRATE = 64;
 
 export function Report() {
+  const navigate = useNavigate();
   const { matchId: raw } = useParams();
   const matchId = Number(raw);
   const report = useMatchReport(matchId);
@@ -22,21 +25,39 @@ export function Report() {
   const summary = matches.data?.find((m) => m.id === matchId);
 
   if (report.isLoading) {
-    return <div className="replay-shell centered">Building report…</div>;
+    // Skeletons at (approximately) final layout size, per §10 — no bare
+    // loading sentence, no shift when the real header/lead/cards land.
+    return (
+      <div className="rpt-shell">
+        <Skeleton kind="block" className="report-header-skeleton" />
+        <div className="rpt-main">
+          <div className="rpt-feed">
+            <Skeleton kind="block" className="report-lead-skeleton" />
+            <Skeleton kind="card" count={3} />
+          </div>
+          <div className="rpt-side">
+            <Skeleton kind="card" count={2} />
+          </div>
+        </div>
+      </div>
+    );
   }
+
   const r = report.data;
   if (!r) {
     return (
-      <div className="replay-shell centered">
-        Match not found. <Link to="/">Back to library</Link>
-      </div>
+      <EmptyState
+        title="Match not found"
+        body="This match may have been deleted from the library."
+        action={{ label: "Back to library", onClick: () => navigate("/") }}
+      />
     );
   }
 
   const groups = groupInsights(r.insights);
 
   return (
-    <div className="report-shell">
+    <div className="rpt-shell">
       <MatchHeader
         map={r.map}
         score={{ a: r.score_a, b: r.score_b }}
@@ -56,31 +77,31 @@ export function Report() {
         crossLink={{ to: `/replay/${matchId}`, label: "Watch replay →" }}
       />
 
-      <div className="report-main">
-        <div className="report-feed">
+      <div className="rpt-main">
+        <div className="rpt-feed">
           {r.summary && (
-            <blockquote className="coach-note">
-              <p className="cn-title">{r.summary.title}</p>
-              <p>{r.summary.body}</p>
+            // The editorial lead (design-system.md §9): the coach's write-up
+            // in its own voice, the one place the serif speaks at length. A
+            // solid 2px chalk edge, not dashed — this isn't evidence, it's
+            // furniture around a quote.
+            <blockquote className="report-lead">
+              <p className="report-lead-title type-title">{r.summary.title}</p>
+              <p className="report-lead-body">{r.summary.body}</p>
             </blockquote>
           )}
 
           <RoundStripReport matchId={matchId} rounds={r.per_round} />
 
           {groups.length === 0 && (
-            <div className="empty-state">
-              <p className="empty-title">Nothing recurring to coach</p>
-              <p className="empty-note">
-                No insight cleared the recurrence bar this match. The death
-                breakdown on the right still shows how each round ended for
-                you.
-              </p>
-            </div>
+            <EmptyState
+              title="Nothing recurring to coach"
+              body="No insight cleared the recurrence bar this match. The death breakdown on the right still shows how each round ended for you."
+            />
           )}
 
           {groups.map((g) => (
-            <section key={g.category} className="insight-group">
-              <h3>{CATEGORY_TITLES[g.category]}</h3>
+            <section key={g.category} className="rpt-group">
+              <h3 className="type-micro rpt-section-title">{CATEGORY_TITLES[g.category]}</h3>
               {g.insights.map((i, idx) => (
                 <InsightCard
                   key={`${i.detector}-${idx}`}
@@ -94,23 +115,23 @@ export function Report() {
           ))}
         </div>
 
-        <aside className="report-side">
+        <aside className="rpt-side">
           <ClassBreakdown
             rows={r.death_classes}
             class13SharePct={r.class_13_share_pct}
             classesNotBuilt={r.classes_not_built}
           />
-          <section className="habits" aria-label="Recurring habits">
-            <h3>Across your matches</h3>
+          <section className="report-habits" aria-label="Recurring habits">
+            <h3 className="type-micro rpt-section-title">Across your matches</h3>
             {habits.data && habits.data.length > 0 ? (
               habits.data
                 .slice(0, 4)
                 .map((h, i) => <HabitCard key={`${h.rule_id}-${i}`} habit={h} />)
             ) : (
-              <p className="empty-note">
-                Habits appear once a pattern recurs in {3}+ of your recent
-                matches.
-              </p>
+              <EmptyState
+                title="No habits yet"
+                body="Habits appear once a pattern recurs in 3+ of your recent matches."
+              />
             )}
           </section>
         </aside>
