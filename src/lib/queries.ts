@@ -8,6 +8,7 @@ import {
   getHabits,
   getMatchDetail,
   getMatchReport,
+  getRoundReview,
   getRoundTicks,
   getTrends,
   importCorpusDemo,
@@ -44,6 +45,14 @@ export function useRoundTicks(matchId: number, round: number) {
   return useQuery({
     queryKey: ["ticks", matchId, round],
     queryFn: () => getRoundTicks(matchId, round),
+    staleTime: Infinity, // demo data is immutable once imported
+  });
+}
+
+export function useRoundReview(matchId: number) {
+  return useQuery({
+    queryKey: ["round_review", matchId],
+    queryFn: () => getRoundReview(matchId),
     staleTime: Infinity, // demo data is immutable once imported
   });
 }

@@ -11,6 +11,8 @@
 //   MatchReport (+ NarratedInsight/NarrationDto/DeathClassRow/RoundStat)
 //                  <- src-tauri/src/commands.rs + cf-store store.rs
 //   HabitReport (+ HabitEvidence) <- src-tauri/src/commands.rs
+//   EvidenceRefDto <- EvidenceRef, src-tauri/crates/cf-analysis/src/types.rs
+//   RoundReviewDto (+ RailMomentDto) <- src-tauri/src/commands.rs
 //   GridDto (src/replay/heatmap.ts) <- GridRow, src-tauri/crates/cf-store/src/store.rs
 //   GridStatus/CorpusMapCount <- src-tauri/crates/cf-store/src/store.rs
 //   CorpusStatus   <- src-tauri/src/commands.rs
@@ -215,6 +217,40 @@ export function getMatchReport(matchId: number): Promise<MatchReport | null> {
 
 export function getHabits(): Promise<HabitReport[]> {
   return invoke<HabitReport[]>("get_habits");
+}
+
+// ---- V1.2: round-by-round coach rail ----
+
+export interface RailMomentDto {
+  tick: number;
+  headline: string;
+  facts: string[];
+  rule_id: string | null;
+  delta_p: number | null;
+  kind: string;
+  focus: string[];
+}
+
+export interface RoundReviewDto {
+  round: number;
+  impact: number;
+  verdict: string;
+  verdict_label: string;
+  attention: "none" | "dim" | "bright";
+  selected: boolean;
+  pivotal_tick: number;
+  side: "CT" | "T";
+  won: boolean;
+  kills: number;
+  deaths: number;
+  man_context: string | null;
+  moments: RailMomentDto[];
+  why_it_mattered: string | null;
+  what_to_practise: string | null;
+}
+
+export function getRoundReview(matchId: number): Promise<RoundReviewDto[]> {
+  return invoke<RoundReviewDto[]>("get_round_review", { matchId });
 }
 
 export function getMatchDetail(matchId: number): Promise<MatchDetail | null> {
