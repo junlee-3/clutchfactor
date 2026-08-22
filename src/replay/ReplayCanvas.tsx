@@ -57,7 +57,7 @@ export function ReplayCanvas({ getScene, onFrame, onFps }: Props) {
   return (
     <canvas
       ref={canvasRef}
-      className="replay-canvas"
+      className="rpl-canvas"
       role="img"
       aria-label="2D round replay"
     />

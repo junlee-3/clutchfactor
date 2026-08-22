@@ -27,6 +27,27 @@ export function sparkPoints(
   });
 }
 
+export interface Extrema {
+  minIndex: number;
+  maxIndex: number;
+}
+
+/** Index of the series' first minimum and first maximum (a tie keeps the
+ *  earliest occurrence, so a flat run reports its leading edge for both).
+ *  {-1, -1} for an empty series — callers must check length before indexing.
+ *  Used to place the big trend line's min/max annotations (dataviz:
+ *  "label the endpoint, the extreme" — never every point). */
+export function extrema(values: number[]): Extrema {
+  if (values.length === 0) return { minIndex: -1, maxIndex: -1 };
+  let minIndex = 0;
+  let maxIndex = 0;
+  for (let i = 1; i < values.length; i++) {
+    if (values[i] < values[minIndex]) minIndex = i;
+    if (values[i] > values[maxIndex]) maxIndex = i;
+  }
+  return { minIndex, maxIndex };
+}
+
 /** Trailing strictly-monotonic run length (≥2 means a streak; direction -1 down, +1 up, 0 none).
  *  streak([5,4,3,2]) = {len: 4, dir: -1}; streak([1,1,2]) = {len: 2, dir: +1}; streak([2]) = {len: 1, dir: 0}. */
 export function streak(values: number[]): { len: number; dir: -1 | 0 | 1 } {

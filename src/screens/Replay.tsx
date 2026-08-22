@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { KillFeed } from "../components/KillFeed";
 import { RosterPanel } from "../components/RosterPanel";
 import { Scrubber } from "../components/Scrubber";
+import { Button } from "../components/ui/Button";
+import { EmptyState } from "../components/ui/EmptyState";
 import { MatchHeader } from "../components/ui/MatchHeader";
+import { Segmented } from "../components/ui/Segmented";
+import { Skeleton } from "../components/ui/Skeleton";
 import { parseEvidenceParams } from "../lib/evidence";
 import type { BombInfo, KillInfo, MatchDetail } from "../lib/ipc";
+import { mapName } from "../lib/mapName";
 import { useMatchDetail, useMatches, useRoundTicks } from "../lib/queries";
 import { radarImageUrl } from "../replay/coords";
 import type { MapCalibration } from "../replay/coords";
@@ -20,6 +25,7 @@ import type { TimelineSpec } from "../replay/timeline";
 
 const SPEEDS = [1, 2, 4] as const;
 type Speed = (typeof SPEEDS)[number];
+const SPEED_OPTIONS = SPEEDS.map((s) => ({ value: String(s), label: `${s}×` }));
 
 function useCalibration(enabled: boolean) {
   return useQuery({
@@ -44,7 +50,22 @@ function useImage(url: string | null): HTMLImageElement | null {
   }, [url]);
 }
 
+/** Skeleton for the tape's [radar well][side rail] area, at (approximately)
+ * final layout size (design-system.md §10: no layout shift on data
+ * arrival) — shared by both loading branches below. */
+function PlayerAreaSkeleton() {
+  return (
+    <div className="rpl-main">
+      <Skeleton kind="block" className="rpl-well-skeleton" />
+      <div className="rpl-side">
+        <Skeleton kind="card" count={2} />
+      </div>
+    </div>
+  );
+}
+
 export function Replay() {
+  const navigate = useNavigate();
   const { matchId: matchIdRaw } = useParams();
   const matchId = Number(matchIdRaw);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -64,21 +85,30 @@ export function Replay() {
   const mapCal = d && cal.data ? (cal.data[d.map] ?? null) : null;
 
   if (detail.isLoading || cal.isLoading) {
-    return <div className="replay-shell centered">Loading match…</div>;
+    return (
+      <div className="rpl-shell">
+        <Skeleton kind="block" className="rpl-header-skeleton" />
+        <Skeleton kind="rows" className="rpl-round-strip-skeleton" />
+        <PlayerAreaSkeleton />
+      </div>
+    );
   }
   if (!d) {
     return (
-      <div className="replay-shell centered">
-        Match not found. <Link to="/">Back to library</Link>
-      </div>
+      <EmptyState
+        title="Match not found"
+        body="This match may have been deleted from the library."
+        action={{ label: "Back to library", onClick: () => navigate("/") }}
+      />
     );
   }
   if (!mapCal) {
     return (
-      <div className="replay-shell centered">
-        No radar calibration for {d.map} — replay unavailable for this map yet.{" "}
-        <Link to="/">Back to library</Link>
-      </div>
+      <EmptyState
+        title="No radar calibration yet"
+        body={`Replay isn't available for ${mapName(d.map)} yet — its radar calibration hasn't been added.`}
+        action={{ label: "Back to library", onClick: () => navigate("/") }}
+      />
     );
   }
 
@@ -87,7 +117,7 @@ export function Replay() {
   };
 
   return (
-    <div className="replay-shell">
+    <div className="rpl-shell">
       <MatchHeader
         map={d.map}
         score={{ a: d.score_a, b: d.score_b }}
@@ -106,14 +136,14 @@ export function Replay() {
         back={{ to: "/", label: "← Library" }}
         crossLink={{ to: `/report/${matchId}`, label: "Read report →" }}
       />
-      <div className="round-strip" role="tablist" aria-label="Rounds">
+      <div className="rpl-round-strip" role="tablist" aria-label="Rounds">
         {d.rounds.map((r) => (
           <button
             key={r.number}
             role="tab"
             aria-selected={r.number === round}
-            className={`round-chip winner-${r.winner.toLowerCase()} ${
-              r.number === round ? "active" : ""
+            className={`rpl-round-chip type-data rpl-round-chip-winner-${r.winner.toLowerCase()}${
+              r.number === round ? " rpl-round-chip-active" : ""
             }`}
             title={`Round ${r.number} — ${r.winner} (${r.reason})`}
             onClick={() => setRound(r.number)}
@@ -123,7 +153,7 @@ export function Replay() {
         ))}
       </div>
       {ticks.isLoading || !ticks.data ? (
-        <div className="centered">Loading round data…</div>
+        <PlayerAreaSkeleton />
       ) : (
         <RoundPlayer
           // Remount on round / evidence change: playback state resets cleanly.
@@ -341,12 +371,12 @@ function RoundPlayer({
   }, [d.tickrate, seek, setPlaying, setSpeed]);
 
   return (
-    <div className="replay-player">
-      <div className="replay-main">
-        <div className="radar-wrap">
+    <div className="rpl-player">
+      <div className="rpl-main">
+        <div className="rpl-radar-well">
           <ReplayCanvas getScene={getScene} onFrame={onFrame} onFps={setFps} />
         </div>
-        <aside className="replay-side">
+        <aside className="rpl-side">
           <RosterPanel
             tracks={tracks}
             names={names}
@@ -363,25 +393,20 @@ function RoundPlayer({
           />
         </aside>
       </div>
-      <div className="transport">
-        <button
-          className="btn-primary"
+      <div className="rpl-transport">
+        <Button
+          variant="primary"
           onClick={() => setPlaying(!playingRef.current)}
           aria-label={playing ? "Pause" : "Play"}
         >
           {playing ? "Pause" : "Play"}
-        </button>
-        <div className="speeds" role="group" aria-label="Playback speed">
-          {SPEEDS.map((s) => (
-            <button
-              key={s}
-              className={`speed-btn ${speed === s ? "active" : ""}`}
-              onClick={() => setSpeed(s)}
-            >
-              {s}×
-            </button>
-          ))}
-        </div>
+        </Button>
+        <Segmented
+          options={SPEED_OPTIONS}
+          value={String(speed)}
+          onChange={(v) => setSpeed(Number(v) as Speed)}
+          ariaLabel="Playback speed"
+        />
         <Scrubber
           spec={spec}
           tick={displayTick}
@@ -391,7 +416,7 @@ function RoundPlayer({
           names={names}
           onSeek={seek}
         />
-        <span className="fps-meter" data-testid="fps">
+        <span className="type-micro" data-testid="fps">
           {fps} fps
         </span>
       </div>

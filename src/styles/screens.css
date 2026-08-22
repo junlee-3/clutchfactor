@@ -604,6 +604,581 @@
 }
 
 /* ---------------------------------------------------------------------- */
+/* Replay (Replay.tsx, RosterPanel.tsx, KillFeed.tsx, Scrubber.tsx) —       */
+/* design-system.md §9, "the tape"                                         */
+/* ---------------------------------------------------------------------- */
+
+/* rpl-* names are deliberately fresh, same reasoning as rpt-* above: legacy
+   src/styles.css still defines live rules under .radar-wrap/.replay-*/
+   .roster-*/.killfeed/.kill-row/.transport/.speeds/.speed-btn/.scrubber*/
+   .clock/.pips/.pip*/.round-strip/.round-chip/.side-*/.hp-track/.hp-fill/
+   .fps-meter/.centered/.btn-primary and loads before this file — reusing
+   any of those names would let raw-px sizing and the --ct accent (the
+   legacy "accent is a game hue" mistake §2 corrects) cascade through
+   silently. Every rule below restates its own properties from tokens. */
+
+/* height (not min-height): .shell-content-immersive gives this a definite
+   100% to compute against. A mere min-height leaves this block auto-sized —
+   flex:1 on .rpl-player then has no real budget to shrink into, so the
+   round-strip/roster/kill-feed content just grows the whole shell past the
+   window and the transport bar silently scrolls out of view underneath the
+   fold (caught live at 1440×888 with a full roster + 6-row kill feed). */
+.rpl-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.rpl-header-skeleton {
+  height: 56px;
+  margin-bottom: var(--s4);
+}
+
+.rpl-round-strip-skeleton {
+  height: 30px;
+  margin-bottom: var(--s4);
+}
+
+.rpl-well-skeleton {
+  flex: 1;
+  min-width: 0;
+  min-height: 420px;
+}
+
+.rpl-player {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Round strip: a round-select tab bar (role="tablist" in Replay.tsx) — not
+   the Report round strip's per-tracked-outcome cells (rpt-round-strip
+   above). Picking a round to watch is about which SIDE won it, not whether
+   the tracked player did, so the winner mark stays --ct/--t rather than the
+   --win/--loss tokens (design-system.md §9: "that IS side data"). */
+.rpl-round-strip {
+  display: flex;
+  gap: var(--s1);
+  padding-bottom: var(--s4);
+  margin-bottom: var(--s4);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.rpl-round-chip {
+  min-width: 26px;
+  padding: var(--s1) 0;
+  background: var(--bg1);
+  color: var(--chalk-dim);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.rpl-round-chip:hover {
+  border-color: var(--line-strong);
+  color: var(--chalk);
+}
+
+.rpl-round-chip-winner-ct {
+  border-bottom-color: var(--ct);
+}
+
+.rpl-round-chip-winner-t {
+  border-bottom-color: var(--t);
+}
+
+.rpl-round-chip-active {
+  background: var(--bg2);
+  color: var(--chalk-bright);
+}
+
+.rpl-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: var(--s4);
+}
+
+/* The radar well (design-system.md §1, §9): bg-tape + r-lg + s3 padding —
+   the lit screen in the dark room. flex:1 + min-width:0 so it's the panel
+   that shrinks first on resize (charter floor: side panel holds >= 250px at
+   1200px wide — checked live). No border/background needed on the canvas
+   itself (.rpl-canvas below): Renderer.ts already fills --bg-tape every
+   frame (§7), so the well and the tape it holds read as one surface. */
+.rpl-radar-well {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tape);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s3);
+  overflow: hidden;
+}
+
+/* Sized off the viewport, not a percentage of .rpl-radar-well's height:
+   tried the "obviously correct" max-height:100% + aspect-ratio version
+   first, but confirmed live (WKWebView) that a flex item's stretch-computed
+   cross size doesn't reliably count as "definite" through this many nested
+   flex levels for percentage-height resolution — max-height:100% resolved
+   to unconstrained and the canvas blew out past the window. A vh-anchored
+   width sidesteps the whole definite-size chain; 260px approximates the
+   chrome above/below the well (MatchHeader + round strip + transport, each
+   with their own margins/padding) so the square never outgrows the window —
+   any slack just leaves the well a little short of the transport bar. */
+.rpl-canvas {
+  width: min(100%, calc(100vh - 260px));
+  aspect-ratio: 1;
+  height: auto;
+  display: block;
+}
+
+.rpl-side {
+  width: 250px;
+  flex-shrink: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  overflow-y: auto;
+}
+
+.rpl-panel-label {
+  margin: 0 0 var(--s2);
+}
+
+/* ---- RosterPanel: one Card, two side groups ---- */
+
+.rpl-roster-side + .rpl-roster-side {
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+}
+
+.rpl-roster-side-label {
+  margin: 0 0 var(--s2);
+}
+
+.rpl-roster-row {
+  display: grid;
+  grid-template-columns: 1fr auto 28px;
+  column-gap: var(--s2);
+  align-items: baseline;
+  padding: var(--s1) 0;
+}
+
+.rpl-roster-row-dead {
+  opacity: 0.45;
+}
+
+.rpl-roster-row-dead .rpl-roster-name {
+  text-decoration: line-through;
+}
+
+.rpl-roster-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rpl-roster-weapon,
+.rpl-roster-hp {
+  color: var(--chalk-dim);
+}
+
+.rpl-roster-hp {
+  text-align: right;
+}
+
+.rpl-hp-track {
+  grid-column: 1 / -1;
+  height: 6px;
+  background: var(--bg2);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.rpl-hp-fill {
+  height: 100%;
+  transition: width var(--dur-fast) linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rpl-hp-fill {
+    transition: none;
+  }
+}
+
+.rpl-hp-fill-ct {
+  background: color-mix(in srgb, var(--ct) 70%, transparent);
+}
+
+.rpl-hp-fill-t {
+  background: color-mix(in srgb, var(--t) 70%, transparent);
+}
+
+/* Side hues — shared by RosterPanel names and KillFeed names, the only two
+   places design-system.md §9 allows CT/T color off the canvas itself. */
+.rpl-side-ct {
+  color: var(--ct);
+}
+
+.rpl-side-t {
+  color: var(--t);
+}
+
+.rpl-side-none {
+  color: var(--chalk-dim);
+}
+
+/* ---- KillFeed ---- */
+
+.rpl-kf-empty {
+  color: var(--chalk-dim);
+}
+
+.rpl-kf-row {
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+  width: 100%;
+  margin: 0;
+  padding: var(--s1);
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  font: inherit;
+  color: var(--chalk);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.rpl-kf-row:hover {
+  background: var(--bg2);
+}
+
+/* A kill within the last 3s of playback — a quiet chalk fleck, never a
+   game-hue tint: recency is app chrome, not side data (§2). */
+.rpl-kf-row-recent {
+  background: color-mix(in srgb, var(--bg2) 85%, var(--chalk-bright) 8%);
+}
+
+/* Attacker/weapon/victim spans truncate independently instead of wrapping —
+   a long in-game name (Steam names run arbitrarily long, unlatinized
+   scripts included) wrapping a row to two lines grows the whole Card, which
+   can grow .rpl-side taller than the radar well and reopen the .rpl-shell
+   overflow this file just fixed above. */
+.rpl-kf-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rpl-kf-weapon {
+  flex-shrink: 0;
+  color: var(--chalk-dim);
+}
+
+/* ---- Transport ---- */
+
+.rpl-transport {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+}
+
+.rpl-scrubber {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+.rpl-scrubber-clock {
+  color: var(--chalk);
+  min-width: 4ch;
+}
+
+.rpl-scrubber-body {
+  position: relative;
+  flex: 1;
+  height: 26px;
+}
+
+.rpl-scrubber-range {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  accent-color: var(--chalk);
+  cursor: pointer;
+}
+
+.rpl-pips {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 10px;
+  pointer-events: none;
+}
+
+.rpl-pip {
+  position: absolute;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 10px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.rpl-pip::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 2px;
+  width: 2px;
+  height: 6px;
+  background: var(--chalk-faint);
+}
+
+/* Bomb pips — one hue (loss), not the legacy plant/defuse/explode split:
+   design-system.md §2 reserves win/loss-mixed marks for outcome and
+   severity, never a decorative second palette. */
+.rpl-pip-bomb::after {
+  width: 6px;
+  height: 6px;
+  left: 1px;
+  transform: rotate(45deg);
+  background: var(--loss);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Trends (Trends.tsx) — design-system.md §9, "the instrument panel"       */
+/* ---------------------------------------------------------------------- */
+
+/* trends-* names are deliberately fresh, same reasoning as rpt-*/rpl-*
+   above: legacy styles.css already owns .trend-*/.ribbon-cell/.map-chips/
+   .phase-chip, and both files load together until the milestone deletes
+   styles.css — reusing a name would double-apply rules. */
+
+.trends-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--s4);
+  margin-bottom: var(--s6);
+}
+
+.trends-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+}
+
+.trends-ribbon-skeleton {
+  height: 26px;
+}
+
+.trends-line-skeleton {
+  height: 168px;
+}
+
+.trends-rule-skeleton {
+  height: 48px;
+}
+
+/* ---- Match ribbon: one token chip per match, oldest -> newest ---- */
+
+.trends-ribbon {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  margin-bottom: var(--s6);
+}
+
+.trends-ribbon-cell {
+  font: var(--text-data);
+  color: var(--chalk-dim);
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 2px var(--s2);
+}
+
+/* Win/loss surface tints (§2 derived tokens), joined from useMatches() by
+   match_id — TrendMatchRow itself carries no result field. A tie gets no
+   tint: neutral furniture, not a claim (mirrors Library's EDGE_BY_RESULT). */
+.trends-ribbon-cell-win {
+  color: var(--chalk);
+  background: var(--surface-win);
+  border-color: var(--border-win);
+}
+
+.trends-ribbon-cell-loss {
+  color: var(--chalk);
+  background: var(--surface-loss);
+  border-color: var(--border-loss);
+}
+
+.trends-ribbon-note {
+  color: var(--chalk-faint);
+  margin-left: var(--s2);
+}
+
+/* ---- Big line panel (Card) ---- */
+
+.trends-line-card {
+  margin-bottom: var(--s7);
+}
+
+.trends-line-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s4);
+  margin-bottom: var(--s3);
+}
+
+.trends-line-note {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--chalk-dim);
+}
+
+.trends-line-value {
+  flex: none;
+  font-size: 24px;
+  color: var(--chalk-bright);
+  white-space: nowrap;
+}
+
+.trends-line {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  height: 72px;
+}
+
+/* Hit target for the native per-point tooltip — bigger than the painted
+   mark (dataviz interaction: hit area beyond the visible pixels). */
+.trends-line-hit {
+  fill: transparent;
+}
+
+.trends-line-dot-ring {
+  fill: var(--bg1);
+}
+
+.trends-line-dot {
+  fill: var(--chalk);
+}
+
+.trends-line-annotation {
+  font: var(--text-micro);
+  letter-spacing: normal;
+  text-transform: none;
+  fill: var(--chalk-dim);
+}
+
+/* ---- Rule sparkline rows ---- */
+
+.trends-panel-title {
+  margin: 0 0 var(--s3);
+}
+
+.trends-rules {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.trends-rule-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 240px) 220px 40px 1fr;
+  align-items: center;
+  gap: var(--s4);
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.trends-rule-row:last-child {
+  border-bottom: none;
+}
+
+.trends-rule-title {
+  color: var(--chalk);
+}
+
+.trends-spark {
+  display: block;
+  width: 220px;
+  height: 26px;
+}
+
+/* The "current period" dot on the de-emphasized line (dataviz stat-tile
+   figure spec) — chalk-bright, distinct from the big line's plain-chalk
+   marks, since these rows are the compact/muted genre, not the headline
+   chart. */
+.trends-spark-dot-ring {
+  fill: var(--bg1);
+}
+
+.trends-spark-dot {
+  fill: var(--chalk-bright);
+}
+
+.trends-rule-count {
+  color: var(--chalk);
+  text-align: right;
+}
+
+.trends-rule-callout {
+  color: var(--chalk-dim);
+}
+
+/* Win-green only when the streak is genuinely good news (a bad-count metric
+   trending down) — an upward (bad) streak stays neutral ink, never loss-red:
+   this callout reports a fact, it doesn't invent a severity encoding. */
+.trends-rule-callout-good {
+  color: var(--win);
+}
+
+@media (max-width: 860px) {
+  .trends-rule-row {
+    grid-template-columns: 1fr 40px;
+  }
+
+  .trends-spark {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .trends-rule-callout {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ---------------------------------------------------------------------- */
 /* Catch-all (App.tsx `*` route)                                           */
 /* ---------------------------------------------------------------------- */
 

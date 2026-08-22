@@ -12,6 +12,11 @@ interface Props {
   onSeek: (tick: number) => void;
 }
 
+// The transport's scrub bar (design-system.md §9): chalk accent-color on the
+// native range input — the app's one accent is chalk, never --ct. Kill pips
+// are chalk-faint ticks; bomb pips are the round's one loss-colored marker
+// (no legacy plant/defuse/explode split — §2 reserves win/loss-mixed marks
+// for outcome and severity, not a decorative second palette).
 export function Scrubber({
   spec,
   tick,
@@ -26,12 +31,12 @@ export function Scrubber({
     (sid && names.get(sid)) || sid || "world";
 
   return (
-    <div className="scrubber">
-      <span className="clock">{fmtClock(spec, tick, tickrate)}</span>
-      <div className="scrubber-body">
+    <div className="rpl-scrubber">
+      <span className="rpl-scrubber-clock type-data">{fmtClock(spec, tick, tickrate)}</span>
+      <div className="rpl-scrubber-body">
         <input
           type="range"
-          className="scrubber-range"
+          className="rpl-scrubber-range"
           min={0}
           max={1000}
           value={Math.round(frac * 1000)}
@@ -41,11 +46,11 @@ export function Scrubber({
             onSeek(fracToTick(spec, Number(e.target.value) / 1000))
           }
         />
-        <div className="pips" aria-hidden="true">
+        <div className="rpl-pips" aria-hidden="true">
           {kills.map((k, i) => (
             <button
               key={`k${i}`}
-              className="pip pip-kill"
+              className="rpl-pip rpl-pip-kill"
               style={{ left: `${tickToFrac(spec, k.tick) * 100}%` }}
               title={`${name(k.attacker)} → ${name(k.victim)} (${k.weapon})`}
               tabIndex={-1}
@@ -55,7 +60,7 @@ export function Scrubber({
           {bombEvents.map((b, i) => (
             <button
               key={`b${i}`}
-              className={`pip pip-bomb pip-${b.kind}`}
+              className="rpl-pip rpl-pip-bomb"
               style={{ left: `${tickToFrac(spec, b.tick) * 100}%` }}
               title={`bomb ${b.kind}`}
               tabIndex={-1}
