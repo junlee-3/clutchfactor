@@ -100,9 +100,16 @@ export function Replay() {
   const roundCount = d?.rounds.length ?? 0;
   const round = Math.min(Math.max(evidence.round, 1), Math.max(roundCount, 1));
   const ticks = useRoundTicks(matchId, round);
-  // One fetch serves the coach rail (this task) and the round-strip attention
-  // dots (Task 8) — both read the same RoundReviewDto[], threaded down.
+  // One fetch serves the coach rail (Task 7) and the round-strip attention
+  // dots (this task) — both read the same RoundReviewDto[], threaded down.
   const reviews = useRoundReview(matchId);
+  // Round number -> its review, for the strip's attention dots below (issue
+  // #9 §3: presence/size carry attention, never color).
+  const reviewByRound = useMemo(() => {
+    const m = new Map<number, RoundReviewDto>();
+    for (const rv of reviews.data ?? []) m.set(rv.round, rv);
+    return m;
+  }, [reviews.data]);
   const cal = useCalibration(d !== null);
   const mapCal = d && cal.data ? (cal.data[d.map] ?? null) : null;
 
@@ -159,20 +166,34 @@ export function Replay() {
         crossLink={{ to: `/report/${matchId}`, label: "Read report →" }}
       />
       <div className="rpl-round-strip" role="tablist" aria-label="Rounds">
-        {d.rounds.map((r) => (
-          <button
-            key={r.number}
-            role="tab"
-            aria-selected={r.number === round}
-            className={`rpl-round-chip type-data rpl-round-chip-winner-${r.winner.toLowerCase()}${
-              r.number === round ? " rpl-round-chip-active" : ""
-            }`}
-            title={`Round ${r.number} — ${r.winner} (${r.reason})`}
-            onClick={() => setRound(r.number)}
-          >
-            {r.number}
-          </button>
-        ))}
+        {d.rounds.map((r) => {
+          const rv = reviewByRound.get(r.number);
+          const attention = rv?.attention ?? "none";
+          const title =
+            attention === "none"
+              ? `Round ${r.number} — ${r.winner} (${r.reason})`
+              : `Round ${r.number} — ${r.winner} (${r.reason}) · ${rv!.verdict_label}`;
+          return (
+            <button
+              key={r.number}
+              role="tab"
+              aria-selected={r.number === round}
+              className={`rpl-round-chip type-data rpl-round-chip-winner-${r.winner.toLowerCase()}${
+                r.number === round ? " rpl-round-chip-active" : ""
+              }`}
+              title={title}
+              onClick={() => setRound(r.number)}
+            >
+              {attention !== "none" && (
+                <span
+                  className={`rpl-att rpl-att-${attention}`}
+                  aria-hidden="true"
+                />
+              )}
+              {r.number}
+            </button>
+          );
+        })}
       </div>
       {ticks.isLoading || !ticks.data ? (
         <PlayerAreaSkeleton standalone />

@@ -664,6 +664,7 @@
 .rpl-round-strip {
   display: flex;
   gap: var(--s1);
+  padding-top: var(--s2); /* clearance for the attention dot above each chip */
   padding-bottom: var(--s4);
   margin-bottom: var(--s4);
   border-bottom: 1px solid var(--line);
@@ -671,6 +672,7 @@
 }
 
 .rpl-round-chip {
+  position: relative; /* anchors the .rpl-att dot */
   min-width: 26px;
   padding: var(--s1) 0;
   background: var(--bg1);
@@ -701,6 +703,30 @@
 .rpl-round-chip-active {
   background: var(--bg2);
   color: var(--chalk-bright);
+}
+
+/* Attention dots (issue #9 §3): presence and size carry attention, zero
+   color channel — only chalk tokens here, never --ct/--t/--win/--loss (the
+   winner underline above stays the only color in this strip). */
+.rpl-att {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.rpl-att-dim {
+  width: 4px;
+  height: 4px;
+  background: var(--chalk-faint);
+}
+
+.rpl-att-bright {
+  width: 6px;
+  height: 6px;
+  background: var(--chalk-bright);
 }
 
 .rpl-main {
