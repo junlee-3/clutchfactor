@@ -25,7 +25,11 @@ The 8-point model, implemented as small pure sub-functions
    `[start_tick, officially_ended_tick]`. Chosen over tick-sampled state
    because it's exact (no snapshot-interval slop), trivially unit-testable
    with plain struct literals, and backfillable from already-stored DB rows
-   without re-parsing a demo (Task 5's constraint).
+   without re-parsing a demo (Task 5's constraint). A defuse/explode forces
+   the terminal win-prob and **latches** the round as decided: every event
+   after it scores `delta_p: None` unconditionally, so a mop-up/exit-frag
+   kill inside the officially-ended tail never re-enters the table as a
+   phantom swing.
 2. **ΔP per event** = signed win-prob delta from the tracked player's
    perspective; either endpoint `None` → `delta_p: None`, contributing
    nothing (silence bias, PROMPT.md §4: false negative ≫ false positive).

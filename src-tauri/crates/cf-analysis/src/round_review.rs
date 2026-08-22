@@ -11,10 +11,21 @@
 //!    round.t.len(), planted = false)`. Events in tick order within
 //!    `[start_tick, officially_ended_tick.unwrap_or(end_tick)]`: kills with
 //!    that `round` number (skip `round == 0`), plus bomb events in the
-//!    span. Kill → decrement the victim's side (roster lookup; victim on
-//!    neither roster → skip, silence). Plant → `planted = true`. Defuse →
-//!    CT-side P becomes 1.0 (round decided). Explode → CT-side P becomes
-//!    0.0.
+//!    span. The round-number match is the real attribution; the tick clamp
+//!    is a defensive belt-and-suspenders check. When `officially_ended_tick`
+//!    is absent the span collapses to `end_tick` — no mop-up window is
+//!    granted, so only a real `officially_ended_tick` extends the span far
+//!    enough to catch mop-up/exit-frag kills after the round is decided.
+//!    Kill → decrement the victim's side (roster lookup; victim on neither
+//!    roster → skip, silence; attacker == victim == tracked is a self-kill
+//!    and is credited once, as a death, never as a kill too). Plant →
+//!    `planted = true`. Defuse → CT-side P becomes 1.0 (round decided).
+//!    Explode → CT-side P becomes 0.0. **Terminal latch:** once a
+//!    defuse/explode forces that terminal P, latch `decided`; every event
+//!    after it gets `delta_p = None` unconditionally (silence — the round's
+//!    outcome no longer moves — regardless of further roster mutations or
+//!    `planted` staying true), so mop-up kills inside the tail of the span
+//!    never re-enter the table.
 //! 2. **ΔP per event** = `P_after − P_before` where `P` = `p_ct_win(...)`
 //!    if tracked ∈ round.ct else `1 − p_ct_win(...)`; either side `None` →
 //!    event unobserved → `delta_p = None`, contributes nothing.
@@ -266,6 +277,11 @@ fn round_events<'a>(
     kills: &'a [ReviewKill],
     bombs: &'a [ReviewBomb],
 ) -> Vec<RoundEvent<'a>> {
+    // `round.number` is the real attribution for kills; this tick clamp is
+    // defensive. Without an `officially_ended_tick`, the span collapses to
+    // `end_tick` — no mop-up window — so only a real officially-ended tick
+    // extends far enough to catch (and, via the terminal latch, silence)
+    // exit-frag kills after the round is decided.
     let span_end = round.officially_ended_tick.unwrap_or(round.end_tick);
     let mut events: Vec<RoundEvent> = kills
         .iter()
@@ -351,6 +367,9 @@ fn score_round(
     let mut ct_alive = round.ct.len() as u8;
     let mut t_alive = round.t.len() as u8;
     let mut planted = false;
+    // Latches once a defuse/explode forces a terminal P — every later event
+    // is silenced (delta_p: None) rather than re-entering the table.
+    let mut decided = false;
 
     let mut impact = 0.0f32;
     let mut kills_count = 0u32;
@@ -370,19 +389,31 @@ fn score_round(
                 if !on_ct && !on_t {
                     continue; // victim on neither roster: silence, skip entirely
                 }
-                let p_before = tracked_perspective_p(table, side, ct_before, t_before, planted);
+                let p_before = if decided {
+                    None
+                } else {
+                    tracked_perspective_p(table, side, ct_before, t_before, planted)
+                };
                 if on_ct {
                     ct_alive -= 1;
                 } else {
                     t_alive -= 1;
                 }
-                let p_after = tracked_perspective_p(table, side, ct_alive, t_alive, planted);
+                let p_after = if decided {
+                    None
+                } else {
+                    tracked_perspective_p(table, side, ct_alive, t_alive, planted)
+                };
                 let delta = match (p_before, p_after) {
                     (Some(a), Some(b)) => Some(b - a),
                     _ => None,
                 };
 
-                if k.attacker == Some(tracked) {
+                // Self-kill (attacker == victim == tracked) is credited once,
+                // as a death — the attacker-credit branch below is spec-literal
+                // (`kill.attacker == Some(tracked)`) and would otherwise also
+                // fire, double-counting the delta and mislabeling the moment.
+                if k.attacker == Some(tracked) && k.victim != tracked {
                     if enemy_roster.contains(&k.victim) {
                         kills_count += 1;
                     }
@@ -409,7 +440,11 @@ fn score_round(
                 });
             }
             RoundEvent::Bomb(b) => {
-                let p_before = tracked_perspective_p(table, side, ct_before, t_before, planted);
+                let p_before = if decided {
+                    None
+                } else {
+                    tracked_perspective_p(table, side, ct_before, t_before, planted)
+                };
                 let (forced_ct_p, detail) = match b.kind.as_str() {
                     "planted" => {
                         planted = true;
@@ -419,12 +454,16 @@ fn score_round(
                     "exploded" => (Some(0.0), EventDetail::Explode),
                     _ => continue, // unrecognized bomb event kind: silence
                 };
-                let p_after = match forced_ct_p {
-                    Some(p_ct) => Some(match side {
-                        Side::Ct => p_ct,
-                        Side::T => 1.0 - p_ct,
-                    }),
-                    None => tracked_perspective_p(table, side, ct_alive, t_alive, planted),
+                let p_after = if decided {
+                    None
+                } else {
+                    match forced_ct_p {
+                        Some(p_ct) => Some(match side {
+                            Side::Ct => p_ct,
+                            Side::T => 1.0 - p_ct,
+                        }),
+                        None => tracked_perspective_p(table, side, ct_alive, t_alive, planted),
+                    }
                 };
                 let delta = match (p_before, p_after) {
                     (Some(a), Some(b)) => Some(b - a),
@@ -442,6 +481,12 @@ fn score_round(
                 }
                 if let Some(d) = delta {
                     record_pivotal(&mut pivotal, b.tick, d, ct_before, t_before);
+                }
+                // Latch AFTER this event's own delta is scored — the
+                // defuse/explode itself is a real, informative swing; only
+                // events after it are silenced.
+                if matches!(detail, EventDetail::Defuse { .. } | EventDetail::Explode) {
+                    decided = true;
                 }
                 scored.push(ScoredEvent {
                     tick: b.tick,
@@ -645,7 +690,12 @@ fn build_moments(
 
     for ev in events {
         match &ev.detail {
-            EventDetail::Kill { attacker, victim } if *attacker == Some(tracked) => {
+            // Self-kill (attacker == victim == tracked) is excluded here so
+            // it falls through to the tracked_death arm below — it's a
+            // death, not a kill (mirrors the score_round guard).
+            EventDetail::Kill { attacker, victim }
+                if *attacker == Some(tracked) && *victim != tracked =>
+            {
                 moments.push(Moment {
                     tick: ev.tick,
                     kind: "tracked_kill".to_string(),
@@ -705,11 +755,19 @@ fn build_moments(
         if let Some(existing) = moments.iter_mut().find(|m| m.tick == f.tick) {
             if let (Some(obj), Some(fobj)) = (existing.facts.as_object_mut(), f.details.as_object())
             {
+                // Computed facts (killer/traded/round_end_delta_s) are
+                // already in `obj` before any flag merges in — skip keys
+                // that already exist so a flag's `details` can never
+                // clobber them, even if the flag happens to carry a
+                // same-named key.
                 for (k, v) in fobj {
-                    obj.insert(k.clone(), v.clone());
+                    obj.entry(k.clone()).or_insert_with(|| v.clone());
                 }
             }
             let best = best_severity.entry(f.tick).or_insert(f32::MIN);
+            // `>=` (not `>`): a tie resolves to the later flag in iteration
+            // order — deterministic given `flags`' stable ordering, not a
+            // meaningful precedence choice.
             if f.severity >= *best {
                 *best = f.severity;
                 existing.rule_id = Some(f.rule_id.clone());
@@ -889,6 +947,11 @@ mod tests {
         assert_eq!(r1.pivotal_tick, 2000);
         assert_eq!(r1.header.kills, 1);
         assert_eq!(r1.header.deaths, 0);
+        assert_eq!(
+            r1.header.man_context,
+            Some("5v5".to_string()),
+            "man_context pins the alive counts BEFORE the pivotal event"
+        );
     }
 
     #[test]
@@ -1179,5 +1242,201 @@ mod tests {
         assert_eq!(moments.len(), 6);
         let ticks: Vec<i32> = moments.iter().map(|m| m.tick).collect();
         assert_eq!(ticks, vec![1000, 1100, 1200, 1300, 1400, 1500]);
+    }
+
+    #[test]
+    fn post_explode_kill_contributes_nothing_and_moment_delta_is_none() {
+        let round = rr(1, 0, 5000, Side::T, &[1, 2, 3, 4, 5], &[6, 7, 8, 9, 10]);
+        let bomb = ReviewBomb {
+            tick: 4000,
+            kind: "exploded".to_string(),
+            player: None,
+        };
+        // A mop-up/exit-frag kill after the bomb has already decided the round.
+        let inp = input(vec![round], vec![kill(1, 4010, 1, 6)], vec![bomb], vec![]);
+        let mut cfg = DetectorConfig::default();
+        cfg.rbr.attention_threshold_p = 0.0;
+
+        let reviews = review_rounds(&inp, &cfg);
+        let r1 = reviews.iter().find(|r| r.round == 1).unwrap();
+
+        assert_eq!(
+            r1.impact, 0.0,
+            "explode isn't player-attributed and the post-explode kill must be silenced"
+        );
+        assert_eq!(
+            r1.pivotal_tick, 4000,
+            "the explode itself is still the round's real turning point"
+        );
+        let m = r1
+            .moments
+            .iter()
+            .find(|m| m.kind == "tracked_kill")
+            .expect("the post-explode kill still surfaces as a moment");
+        assert_eq!(
+            m.delta_p, None,
+            "a post-decision event must carry no delta, not a computed one"
+        );
+    }
+
+    #[test]
+    fn post_defuse_kill_delta_is_none_despite_valid_cell() {
+        let round = rr(1, 0, 5000, Side::Ct, &[1, 2, 3, 4, 5], &[6, 7, 8, 9, 10]);
+        let bomb = ReviewBomb {
+            tick: 4000,
+            kind: "defused".to_string(),
+            player: Some(2),
+        };
+        // (4, 5, planted=true) is a perfectly valid table cell — proves the
+        // silence comes from the `decided` latch, not from an out-of-range
+        // lookup coincidence.
+        let inp = input(vec![round], vec![kill(1, 4010, 6, 1)], vec![bomb], vec![]);
+        let mut cfg = DetectorConfig::default();
+        cfg.rbr.attention_threshold_p = 0.0;
+
+        let reviews = review_rounds(&inp, &cfg);
+        let r1 = reviews.iter().find(|r| r.round == 1).unwrap();
+
+        let m = r1
+            .moments
+            .iter()
+            .find(|m| m.kind == "tracked_death")
+            .expect("the post-defuse death still surfaces as a moment");
+        assert_eq!(
+            m.delta_p, None,
+            "post-defuse events must not re-enter the table"
+        );
+    }
+
+    #[test]
+    fn self_kill_counts_once_and_labels_as_death() {
+        let round = rr(1, 0, 5000, Side::T, &[1, 2, 3, 4, 5], &[6, 7, 8, 9, 10]);
+        let inp = input(vec![round], vec![kill(1, 2000, 1, 1)], vec![], vec![]);
+        let mut cfg = DetectorConfig::default();
+        cfg.rbr.attention_threshold_p = 0.0;
+
+        let reviews = review_rounds(&inp, &cfg);
+        let r1 = reviews.iter().find(|r| r.round == 1).unwrap();
+
+        let table = WinProbTable::v1();
+        let expected_delta =
+            table.p_ct_win(4, 5, false).unwrap() - table.p_ct_win(5, 5, false).unwrap();
+        assert!(
+            (r1.impact - expected_delta).abs() < 1e-6,
+            "impact must equal a single delta, not double: {} vs {}",
+            r1.impact,
+            expected_delta
+        );
+        assert_eq!(r1.header.deaths, 1);
+        assert_eq!(r1.header.kills, 0);
+        let m = r1
+            .moments
+            .iter()
+            .find(|m| m.tick == 2000)
+            .expect("a moment for the self-kill tick must exist");
+        assert_eq!(m.kind, "tracked_death");
+    }
+
+    #[test]
+    fn computed_death_facts_survive_a_clobbering_flag() {
+        let round = rr(1, 0, 5000, Side::T, &[1, 2, 3, 4, 5], &[6, 7, 8, 9, 10]);
+        let flag = ReviewFlag {
+            rule_id: "H2_ISOLATED_DEATH".to_string(),
+            round: 1,
+            tick: 3000,
+            steamid: 1,
+            severity: 0.8,
+            confidence: 0.75,
+            details: json!({ "killer": "999", "traded": true, "distance": 500.0 }),
+        };
+        let inp = input(vec![round], vec![kill(1, 3000, 6, 1)], vec![], vec![flag]);
+        let mut cfg = DetectorConfig::default();
+        cfg.rbr.attention_threshold_p = 0.0;
+
+        let reviews = review_rounds(&inp, &cfg);
+        let r1 = reviews.iter().find(|r| r.round == 1).unwrap();
+        let m = r1
+            .moments
+            .iter()
+            .find(|m| m.kind == "tracked_death")
+            .unwrap();
+
+        assert_eq!(
+            m.facts["killer"],
+            json!("6"),
+            "computed killer must survive the flag merge"
+        );
+        assert_eq!(
+            m.facts["traded"],
+            json!(false),
+            "computed traded must survive the flag merge"
+        );
+        assert_eq!(
+            m.facts["distance"],
+            json!(500.0),
+            "new flag detail keys still merge in"
+        );
+    }
+
+    #[test]
+    fn traded_boundary_is_inclusive() {
+        let round = rr(1, 0, 5000, Side::Ct, &[1, 2, 3, 4, 5], &[6, 7, 8, 9, 10]);
+        // 3000 + 128 ticks = exactly the 2.0s commit window at 64 tickrate.
+        let inp = input(
+            vec![round],
+            vec![kill(1, 3000, 6, 1), kill(1, 3128, 2, 6)],
+            vec![],
+            vec![],
+        );
+        let cfg = DetectorConfig::default();
+        let reviews = review_rounds(&inp, &cfg);
+        let r1 = reviews.iter().find(|r| r.round == 1).unwrap();
+
+        assert_eq!(
+            r1.verdict,
+            Verdict::Traded,
+            "exactly commit_window_s later must still count as traded (inclusive boundary)"
+        );
+    }
+
+    #[test]
+    fn off_roster_victim_kill_is_skipped_entirely() {
+        let round = rr(1, 0, 5000, Side::Ct, &[1, 2, 3, 4, 5], &[6, 7, 8, 9, 10]);
+        let inp = input(vec![round], vec![kill(1, 2000, 1, 999)], vec![], vec![]);
+        let mut cfg = DetectorConfig::default();
+        cfg.rbr.attention_threshold_p = 0.0;
+
+        let reviews = review_rounds(&inp, &cfg);
+        let r1 = reviews.iter().find(|r| r.round == 1).unwrap();
+
+        assert_eq!(r1.impact, 0.0);
+        assert_eq!(r1.pivotal_tick, 0);
+        assert!(
+            r1.moments.is_empty(),
+            "an off-roster-victim kill must not surface as a moment"
+        );
+    }
+
+    #[test]
+    fn unknown_bomb_kind_is_skipped_entirely() {
+        let round = rr(1, 0, 5000, Side::Ct, &[1, 2, 3, 4, 5], &[6, 7, 8, 9, 10]);
+        let bomb = ReviewBomb {
+            tick: 2000,
+            kind: "aborted".to_string(),
+            player: Some(1),
+        };
+        let inp = input(vec![round], vec![], vec![bomb], vec![]);
+        let mut cfg = DetectorConfig::default();
+        cfg.rbr.attention_threshold_p = 0.0;
+
+        let reviews = review_rounds(&inp, &cfg);
+        let r1 = reviews.iter().find(|r| r.round == 1).unwrap();
+
+        assert_eq!(r1.impact, 0.0);
+        assert_eq!(r1.pivotal_tick, 0);
+        assert!(
+            r1.moments.is_empty(),
+            "an unrecognized bomb event kind must not surface as a moment"
+        );
     }
 }
