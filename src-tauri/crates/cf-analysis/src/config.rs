@@ -115,21 +115,6 @@ fn d_hotspot_min_matches() -> usize {
 fn d_fallthrough_duel_window_s() -> f32 {
     3.0
 }
-fn d_rbr_attention_p() -> f32 {
-    0.18
-}
-fn d_rbr_pivotal_p() -> f32 {
-    0.35
-}
-fn d_rbr_max_rounds() -> usize {
-    6
-}
-fn d_rbr_max_moments() -> usize {
-    6
-}
-fn d_rbr_exculpatory() -> Vec<String> {
-    vec!["H2_BAITED_TRADE".to_string()]
-}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TradeCfg {
@@ -260,6 +245,21 @@ pub struct RbrCfg {
     /// inferred from the absence of flags).
     #[serde(default = "d_rbr_exculpatory")]
     pub exculpatory_rules: Vec<String>,
+}
+fn d_rbr_attention_p() -> f32 {
+    0.18
+}
+fn d_rbr_pivotal_p() -> f32 {
+    0.35
+}
+fn d_rbr_max_rounds() -> usize {
+    6
+}
+fn d_rbr_max_moments() -> usize {
+    6
+}
+fn d_rbr_exculpatory() -> Vec<String> {
+    vec!["H2_BAITED_TRADE".to_string()]
 }
 
 /// §5A cross-demo habit promotion (+ spec H4_REPEAT_HOTSPOT parameters).
