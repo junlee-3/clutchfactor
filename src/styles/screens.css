@@ -971,6 +971,214 @@
 }
 
 /* ---------------------------------------------------------------------- */
+/* Trends (Trends.tsx) — design-system.md §9, "the instrument panel"       */
+/* ---------------------------------------------------------------------- */
+
+/* trends-* names are deliberately fresh, same reasoning as rpt-*/rpl-*
+   above: legacy styles.css already owns .trend-*/.ribbon-cell/.map-chips/
+   .phase-chip, and both files load together until the milestone deletes
+   styles.css — reusing a name would double-apply rules. */
+
+.trends-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--s4);
+  margin-bottom: var(--s6);
+}
+
+.trends-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+}
+
+.trends-ribbon-skeleton {
+  height: 26px;
+}
+
+.trends-line-skeleton {
+  height: 168px;
+}
+
+.trends-rule-skeleton {
+  height: 48px;
+}
+
+/* ---- Match ribbon: one token chip per match, oldest -> newest ---- */
+
+.trends-ribbon {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  margin-bottom: var(--s6);
+}
+
+.trends-ribbon-cell {
+  font: var(--text-data);
+  color: var(--chalk-dim);
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 2px var(--s2);
+}
+
+/* Win/loss surface tints (§2 derived tokens), joined from useMatches() by
+   match_id — TrendMatchRow itself carries no result field. A tie gets no
+   tint: neutral furniture, not a claim (mirrors Library's EDGE_BY_RESULT). */
+.trends-ribbon-cell-win {
+  color: var(--chalk);
+  background: var(--surface-win);
+  border-color: var(--border-win);
+}
+
+.trends-ribbon-cell-loss {
+  color: var(--chalk);
+  background: var(--surface-loss);
+  border-color: var(--border-loss);
+}
+
+.trends-ribbon-note {
+  color: var(--chalk-faint);
+  margin-left: var(--s2);
+}
+
+/* ---- Big line panel (Card) ---- */
+
+.trends-line-card {
+  margin-bottom: var(--s7);
+}
+
+.trends-line-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s4);
+  margin-bottom: var(--s3);
+}
+
+.trends-line-note {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--chalk-dim);
+}
+
+.trends-line-value {
+  flex: none;
+  font-size: 24px;
+  color: var(--chalk-bright);
+  white-space: nowrap;
+}
+
+.trends-line {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  height: 72px;
+}
+
+/* Hit target for the native per-point tooltip — bigger than the painted
+   mark (dataviz interaction: hit area beyond the visible pixels). */
+.trends-line-hit {
+  fill: transparent;
+}
+
+.trends-line-dot-ring {
+  fill: var(--bg1);
+}
+
+.trends-line-dot {
+  fill: var(--chalk);
+}
+
+.trends-line-annotation {
+  font: var(--text-micro);
+  letter-spacing: normal;
+  text-transform: none;
+  fill: var(--chalk-dim);
+}
+
+/* ---- Rule sparkline rows ---- */
+
+.trends-panel-title {
+  margin: 0 0 var(--s3);
+}
+
+.trends-rules {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.trends-rule-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 240px) 220px 40px 1fr;
+  align-items: center;
+  gap: var(--s4);
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.trends-rule-row:last-child {
+  border-bottom: none;
+}
+
+.trends-rule-title {
+  color: var(--chalk);
+}
+
+.trends-spark {
+  display: block;
+  width: 220px;
+  height: 26px;
+}
+
+/* The "current period" dot on the de-emphasized line (dataviz stat-tile
+   figure spec) — chalk-bright, distinct from the big line's plain-chalk
+   marks, since these rows are the compact/muted genre, not the headline
+   chart. */
+.trends-spark-dot-ring {
+  fill: var(--bg1);
+}
+
+.trends-spark-dot {
+  fill: var(--chalk-bright);
+}
+
+.trends-rule-count {
+  color: var(--chalk);
+  text-align: right;
+}
+
+.trends-rule-callout {
+  color: var(--chalk-dim);
+}
+
+/* Win-green only when the streak is genuinely good news (a bad-count metric
+   trending down) — an upward (bad) streak stays neutral ink, never loss-red:
+   this callout reports a fact, it doesn't invent a severity encoding. */
+.trends-rule-callout-good {
+  color: var(--win);
+}
+
+@media (max-width: 860px) {
+  .trends-rule-row {
+    grid-template-columns: 1fr 40px;
+  }
+
+  .trends-spark {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .trends-rule-callout {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ---------------------------------------------------------------------- */
 /* Catch-all (App.tsx `*` route)                                           */
 /* ---------------------------------------------------------------------- */
 

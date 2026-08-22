@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sparkPoints, streak, streakCallout } from "./trends";
+import { extrema, sparkPoints, streak, streakCallout } from "./trends";
 
 describe("sparkPoints", () => {
   it("returns [] for an empty series", () => {
@@ -33,6 +33,28 @@ describe("sparkPoints", () => {
 
   it("defaults padding to 2 when omitted", () => {
     expect(sparkPoints([0, 10], 100, 20)).toEqual(sparkPoints([0, 10], 100, 20, 2));
+  });
+});
+
+describe("extrema", () => {
+  it("returns -1/-1 for an empty series", () => {
+    expect(extrema([])).toEqual({ minIndex: -1, maxIndex: -1 });
+  });
+
+  it("finds the min and max index in a mixed series", () => {
+    expect(extrema([40, 70, 10, 55])).toEqual({ minIndex: 2, maxIndex: 1 });
+  });
+
+  it("keeps the earliest occurrence on a tie", () => {
+    expect(extrema([5, 9, 9, 5])).toEqual({ minIndex: 0, maxIndex: 1 });
+  });
+
+  it("reports the same index for both on a single-value series", () => {
+    expect(extrema([42])).toEqual({ minIndex: 0, maxIndex: 0 });
+  });
+
+  it("reports the same index for both on a constant series", () => {
+    expect(extrema([7, 7, 7])).toEqual({ minIndex: 0, maxIndex: 0 });
   });
 });
 
