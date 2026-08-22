@@ -14,24 +14,24 @@ interface Props {
 export function RoundStripReport({ matchId, rounds }: Props) {
   const navigate = useNavigate();
   return (
-    <div className="rpt-round-strip" role="list" aria-label="Rounds">
+    <ul className="rpt-round-strip" aria-label="Rounds">
       {rounds.map((r) => {
         const result = roundResult(r);
         return (
-          <button
-            key={r.number}
-            role="listitem"
-            className={`report-round-cell${result === "unknown" ? "" : ` report-round-cell-${result}`}`}
-            title={`Round ${r.number} — ${result === "unknown" ? r.winner + " won" : "you " + result}; your K-D ${r.kills}-${r.deaths}. Open in replay.`}
-            onClick={() => navigate(`/replay/${matchId}?round=${r.number}`)}
-          >
-            <span className="type-micro">{r.number}</span>
-            <span className="type-data">
-              {r.kills}-{r.deaths}
-            </span>
-          </button>
+          <li key={r.number}>
+            <button
+              className={`report-round-cell${result === "unknown" ? "" : ` report-round-cell-${result}`}`}
+              title={`Round ${r.number} — ${result === "unknown" ? r.winner + " won" : "you " + result}; your K-D ${r.kills}-${r.deaths}. Open in replay.`}
+              onClick={() => navigate(`/replay/${matchId}?round=${r.number}`)}
+            >
+              <span className="type-micro">{r.number}</span>
+              <span className="type-data">
+                {r.kills}-{r.deaths}
+              </span>
+            </button>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }

@@ -42,7 +42,7 @@ export function Settings() {
         <div className="stg-head">
           <h1 className="type-display">Settings</h1>
         </div>
-        <div className="stg-cards">
+        <div className="stg-cards" role="status" aria-label="Loading settings">
           <Skeleton kind="card" count={3} className="stg-card-skeleton" />
         </div>
       </div>

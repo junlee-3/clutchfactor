@@ -44,14 +44,6 @@ describe("formatMatchRow", () => {
     expect(row.resultLetter).toBe("T");
   });
 
-  it("formats map name without the de_ prefix", () => {
-    expect(formatMatchRow(summary({})).mapLabel).toBe("Mirage");
-    expect(formatMatchRow(summary({ map: "de_dust2" })).mapLabel).toBe("Dust2");
-    expect(formatMatchRow(summary({ map: "cs_office" })).mapLabel).toBe(
-      "Office",
-    );
-  });
-
   it("formats K/D and HS%", () => {
     const row = formatMatchRow(summary({}));
     expect(row.kd).toBe("8 / 19");

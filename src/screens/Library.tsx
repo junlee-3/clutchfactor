@@ -107,7 +107,7 @@ export function Library() {
       )}
 
       {showSkeleton ? (
-        <div className="library-loading">
+        <div className="library-loading" role="status" aria-label="Loading matches">
           <Skeleton kind="rows" count={6} className="library-row-skeleton" />
         </div>
       ) : showEmpty ? (

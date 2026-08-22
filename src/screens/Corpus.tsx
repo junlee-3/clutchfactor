@@ -156,7 +156,9 @@ export function Corpus() {
       )}
 
       {status.isLoading ? (
-        <Skeleton kind="block" className="cps-loading-block" />
+        <div role="status" aria-label="Loading corpus">
+          <Skeleton kind="block" className="cps-loading-block" />
+        </div>
       ) : maps.length === 0 && !importing ? (
         <EmptyState
           title="No reference demos yet"

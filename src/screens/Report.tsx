@@ -28,7 +28,7 @@ export function Report() {
     // Skeletons at (approximately) final layout size, per §10 — no bare
     // loading sentence, no shift when the real header/lead/cards land.
     return (
-      <div className="rpt-shell">
+      <div className="rpt-shell" role="status" aria-label="Loading report">
         <Skeleton kind="block" className="report-header-skeleton" />
         <div className="rpt-main">
           <div className="rpt-feed">

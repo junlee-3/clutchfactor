@@ -101,10 +101,11 @@ Three faces, three jobs, all SIL OFL, **bundled locally** in `assets/fonts/`
 --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 ```
 
-Scale (tokens, px @ base 14 — keep the whole app on these seven):
+Scale (tokens, px @ base 14 — keep the whole app on these eight):
 
 ```css
 --text-display: 26px/1.15 var(--font-display);   /* screen title; weight 560, optical size high */
+--text-stat:    24px/1.2  var(--font-mono);      /* headline stat (display-data role) */
 --text-title:   19px/1.2  var(--font-display);   /* card/section feature moments; weight 540 */
 --text-heading: 15px/1.35 var(--font-sans);      /* section heads; weight 600 */
 --text-body:    14px/1.55 var(--font-sans);      /* prose */
@@ -140,15 +141,18 @@ respects `prefers-reduced-motion` (existing pattern, kept).
 
 ## 5. The signature: chalk annotation
 
-The replay already draws the coach's argument: a **dashed line to the nearest
-teammate with the distance labelled** (issue #9). That gesture becomes the
-system's one memorable device, with a strict grammar:
+Today the system's one memorable device lives in exactly one place: **evidence
+chips get a dashed underline** (chalk, 4-3 dash). V1.2 (issue #9) extends the
+same grammar onto two more surfaces — a **dashed line from the tracked player
+to the nearest teammate with the distance labelled**, drawn on the replay
+canvas, and a **dashed left stripe marking the active moment in the RBR
+rail**. The grammar is one system, phased across surfaces as it ships:
 
 - **Dashed stroke (chalk, 4-3 dash) = evidence.** Evidence chips get a dashed
-  underline; the active moment in the RBR rail gets a dashed left stripe; the
-  replay's teammate-distance line is dashed chalk with a mono distance tag.
-  Everything dashed is interactive and jumps to the tape. Nothing decorative
-  may be dashed.
+  underline today. V1.2 adds the replay's teammate-distance line (dashed
+  chalk with a mono distance tag) and the RBR rail's active-moment left
+  stripe. Everything dashed is interactive and jumps to the tape. Nothing
+  decorative may be dashed.
 - **Solid hairline (`--line`) = furniture.** Dividers, card edges.
 - Hover on a dashed element brightens it to `--chalk-bright` — the coach
   presses the chalk down.

@@ -434,6 +434,7 @@
   flex-wrap: wrap;
   gap: var(--s1);
   margin-bottom: var(--s6);
+  list-style: none;
 }
 
 .report-round-cell {
@@ -1046,7 +1047,7 @@
 }
 
 .trends-ribbon-note {
-  color: var(--chalk-faint);
+  color: var(--chalk-dim);
   margin-left: var(--s2);
 }
 
@@ -1072,7 +1073,7 @@
 
 .trends-line-value {
   flex: none;
-  font-size: 24px;
+  font: var(--text-stat);
   color: var(--chalk-bright);
   white-space: nowrap;
 }
@@ -1325,7 +1326,7 @@
 }
 
 .cps-gate-note {
-  color: var(--chalk-faint);
+  color: var(--chalk-dim);
   white-space: nowrap;
 }
 

@@ -40,8 +40,9 @@
   --font-sans:    "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
   --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  /* Scale (tokens, px @ base 14 — the whole app stays on these seven) */
+  /* Scale (tokens, px @ base 14 — the whole app stays on these eight) */
   --text-display: 26px/1.15 var(--font-display);   /* screen title; weight 560, optical size high */
+  --text-stat:    24px/1.2  var(--font-mono);      /* headline stat (display-data role) */
   --text-title:   19px/1.2  var(--font-display);   /* card/section feature moments; weight 540 */
   --text-heading: 15px/1.35 var(--font-sans);      /* section heads; weight 600 */
   --text-body:    14px/1.55 var(--font-sans);      /* prose */

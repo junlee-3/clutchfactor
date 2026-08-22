@@ -52,10 +52,22 @@ function useImage(url: string | null): HTMLImageElement | null {
 
 /** Skeleton for the tape's [radar well][side rail] area, at (approximately)
  * final layout size (design-system.md §10: no layout shift on data
- * arrival) — shared by both loading branches below. */
-function PlayerAreaSkeleton() {
+ * arrival) — shared by both loading branches below.
+ *
+ * `standalone` marks this as its own screen-level loading state (the
+ * round-tick reload, once the header/round-strip are already real content)
+ * so it gets the one `role="status"` landmark itself. When nested inside
+ * the full-screen loading branch, the outer `.rpl-shell` already owns that
+ * landmark, so this stays a plain group — an extra wrapping div would also
+ * break `.rpl-main`'s `flex: 1` (it needs to be a direct child of the
+ * `.rpl-shell` flex column to fill the remaining height). */
+function PlayerAreaSkeleton({ standalone }: { standalone?: boolean } = {}) {
   return (
-    <div className="rpl-main">
+    <div
+      className="rpl-main"
+      role={standalone ? "status" : undefined}
+      aria-label={standalone ? "Loading round" : undefined}
+    >
       <Skeleton kind="block" className="rpl-well-skeleton" />
       <div className="rpl-side">
         <Skeleton kind="card" count={2} />
@@ -86,7 +98,7 @@ export function Replay() {
 
   if (detail.isLoading || cal.isLoading) {
     return (
-      <div className="rpl-shell">
+      <div className="rpl-shell" role="status" aria-label="Loading replay">
         <Skeleton kind="block" className="rpl-header-skeleton" />
         <Skeleton kind="rows" className="rpl-round-strip-skeleton" />
         <PlayerAreaSkeleton />
@@ -153,7 +165,7 @@ export function Replay() {
         ))}
       </div>
       {ticks.isLoading || !ticks.data ? (
-        <PlayerAreaSkeleton />
+        <PlayerAreaSkeleton standalone />
       ) : (
         <RoundPlayer
           // Remount on round / evidence change: playback state resets cleanly.

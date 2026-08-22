@@ -42,6 +42,8 @@
 *,
 *::before,
 *::after {
+  margin: 0;
+  padding: 0;
   box-sizing: border-box;
 }
 
@@ -58,11 +60,16 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Type scale — the seven classes from design-system.md §3. */
+/* Type scale — the eight classes from design-system.md §3. */
 .type-display {
   font: var(--text-display);
   font-weight: 560;
   font-optical-sizing: auto;
+}
+
+.type-stat {
+  font: var(--text-stat);
+  font-variant-numeric: tabular-nums;
 }
 
 .type-title {

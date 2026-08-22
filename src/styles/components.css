@@ -140,6 +140,7 @@
   font: var(--text-data);
   font-variant-numeric: tabular-nums;
   border: none;
+  white-space: nowrap;
 }
 
 /* evidence — the chalk-annotation grammar (§5): dashed = evidence, always
