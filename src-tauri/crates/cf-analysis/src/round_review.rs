@@ -216,8 +216,9 @@ pub struct Moment {
     pub delta_p: Option<f32>,
     /// Structured facts, RAW callouts (prettified only at narration):
     /// merged flag `details` plus computed keys — for tracked_death:
-    /// "killer", "traded" (bool), "round_end_delta_s"; for tracked_kill:
-    /// "victim"; plant/defuse: none extra.
+    /// "victim" (== the tracked player, always), "killer", "traded" (bool),
+    /// "round_end_delta_s"; for tracked_kill: "victim" (the enemy killed);
+    /// plant/defuse: none extra.
     pub facts: serde_json::Value,
 }
 
@@ -749,6 +750,14 @@ fn build_moments(
                     rule_id: None,
                     delta_p: ev.delta_p,
                     facts: json!({
+                        // Redundant with `kind` (the victim of a
+                        // tracked_death IS the tracked player) but required
+                        // so commands.rs's `moment_focus` — which reads
+                        // "victim"/"killer"/"nearest_teammate" uniformly off
+                        // `facts` for every moment kind — can put the victim
+                        // first in `RailMomentDto.focus` for the replay
+                        // canvas annotation (Task 9, issue #9 §5).
+                        "victim": tracked.to_string(),
                         "killer": killer.map(|k| k.to_string()),
                         "traded": traded,
                         "round_end_delta_s": round_end_delta_s,
@@ -1041,6 +1050,12 @@ mod tests {
         assert_eq!(m.facts["place"], json!("Catwalk"));
         assert_eq!(m.facts["nearest_teammate"], json!("2"));
         assert_eq!(m.facts["killer"], json!("6"));
+        assert_eq!(
+            m.facts["victim"],
+            json!("1"),
+            "tracked_death must carry its own victim id — the replay canvas \
+             annotation (Task 9) needs it as focus[0]"
+        );
         assert_eq!(m.rule_id.as_deref(), Some("H2_ISOLATED_DEATH"));
         assert!(m.delta_p.unwrap() < 0.0);
     }

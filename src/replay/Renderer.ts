@@ -3,6 +3,8 @@
 
 import type { KillInfo } from "../lib/ipc";
 import { getToken, rgba } from "../lib/theme";
+import type { AnnotationPoint } from "./annotation";
+import { fmtUnits, nearestLivingTeammate } from "./annotation";
 import { radarLayer, worldToRadar } from "./coords";
 import type { MapCalibration } from "./coords";
 import { stateAt } from "./interp";
@@ -42,6 +44,11 @@ export interface Scene {
   tick: number;
   tickrate: number;
   focus: Set<string>; // empty = no dimming
+  // Non-null only while playback sits inside a tracked_death moment's
+  // overlay window (Replay.tsx gates this) — the coach's chalk diagram for
+  // THAT death: dashed line to the nearest living teammate (with distance),
+  // solid --loss line to the killer. null = no annotation drawn this frame.
+  annotation: { victimId: string; killerId: string | null } | null;
 }
 
 function sideColor(side: "CT" | "T" | undefined): string {
@@ -77,7 +84,13 @@ export function draw(ctx: CanvasRenderingContext2D, scene: Scene): void {
   drawUtility(ctx, scene);
   drawBomb(ctx, scene);
   drawDeaths(ctx, scene);
+  drawAnnotation(ctx, scene);
   drawPlayers(ctx, scene, layer);
+  // The distance tag draws LAST — on top of the player dots — so it stays
+  // legible over a crowded radar; the lines it labels stay underneath them
+  // (§5: dashed = evidence, and evidence must read, but dots are the scene's
+  // primary subject and shouldn't be occluded by furniture).
+  drawAnnotationTag(ctx, scene);
 }
 
 function drawUtility(ctx: CanvasRenderingContext2D, scene: Scene): void {
@@ -162,6 +175,123 @@ function drawDeaths(ctx: CanvasRenderingContext2D, scene: Scene): void {
     ctx.stroke();
     ctx.globalAlpha = 1;
   }
+}
+
+interface AnnotationGeometry {
+  victim: { u: number; v: number };
+  killer: { u: number; v: number } | null;
+  teammate: { u: number; v: number; label: string } | null;
+}
+
+/** Builds the annotation diagram's geometry, anchored to the death tick
+ *  itself (not the live scrubbing `scene.tick`) — the coach's diagram is a
+ *  held frame, not a live-tracking line, so it doesn't jitter as playback
+ *  scrubs through the moment's -5s/+2s window (design choice: see Task 9
+ *  report). World-unit distance is computed here, before any radar-pixel
+ *  transform. Returns null when the annotation can't be grounded (no
+ *  matching kill / victim position on record) — silence over a guess. */
+function annotationGeometry(scene: Scene): AnnotationGeometry | null {
+  const ann = scene.annotation;
+  if (!ann) return null;
+  const k = scene.kills.find((kill) => kill.victim === ann.victimId);
+  const victimWorld = k ? scene.killPositions.get(k) : undefined;
+  if (!k || !victimWorld) return null;
+
+  const states: AnnotationPoint[] = [];
+  for (const t of scene.tracks) {
+    const s = stateAt(t, k.tick);
+    if (!s) continue;
+    states.push({ id: t.steamid, x: s.x, y: s.y, side: scene.sides.get(t.steamid), alive: s.isAlive });
+  }
+  // killPositions is the authoritative victim spot (see drawDeaths) — make
+  // sure it's present even if the victim's own track sample at k.tick is
+  // missing for some reason.
+  if (!states.some((s) => s.id === ann.victimId)) {
+    states.push({
+      id: ann.victimId,
+      x: victimWorld.x,
+      y: victimWorld.y,
+      side: scene.sides.get(ann.victimId),
+      alive: false,
+    });
+  }
+
+  const victim = worldToRadar(scene.cal, victimWorld.x, victimWorld.y);
+
+  let killer: { u: number; v: number } | null = null;
+  if (ann.killerId) {
+    const ks = states.find((s) => s.id === ann.killerId);
+    if (ks) killer = worldToRadar(scene.cal, ks.x, ks.y);
+  }
+
+  let teammate: { u: number; v: number; label: string } | null = null;
+  const mate = nearestLivingTeammate(states, ann.victimId);
+  if (mate) {
+    const ms = states.find((s) => s.id === mate.id);
+    if (ms) {
+      const pt = worldToRadar(scene.cal, ms.x, ms.y);
+      teammate = { u: pt.u, v: pt.v, label: fmtUnits(mate.dist) };
+    }
+  }
+
+  return { victim, killer, teammate };
+}
+
+/** The two annotation lines — dashed chalk to the nearest living teammate,
+ *  solid --loss to the killer. Drawn under the player dots. Restraint: no
+ *  glow, no arrowheads (issue #9 §5). */
+function drawAnnotation(ctx: CanvasRenderingContext2D, scene: Scene): void {
+  const geo = annotationGeometry(scene);
+  if (!geo) return;
+
+  if (geo.teammate) {
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = rgba("--chalk", 0.9);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(geo.victim.u, geo.victim.v);
+    ctx.lineTo(geo.teammate.u, geo.teammate.v);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  if (geo.killer) {
+    ctx.strokeStyle = rgba("--loss", 0.8);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(geo.victim.u, geo.victim.v);
+    ctx.lineTo(geo.killer.u, geo.killer.v);
+    ctx.stroke();
+  }
+}
+
+/** The teammate-distance tag: rounded --bg-tape chip, bold 8px
+ *  ui-monospace (the bomb-text convention), --chalk-bright text. Drawn
+ *  after the player dots so it's never occluded by them. */
+function drawAnnotationTag(ctx: CanvasRenderingContext2D, scene: Scene): void {
+  const geo = annotationGeometry(scene);
+  if (!geo?.teammate) return;
+
+  const { u, v, label } = geo.teammate;
+  const midX = (geo.victim.u + u) / 2;
+  const midY = (geo.victim.v + v) / 2;
+
+  ctx.font = "bold 8px ui-monospace, monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const textW = ctx.measureText(label).width;
+  const padX = 4;
+  const padY = 3;
+  const w = textW + padX * 2;
+  const h = 8 + padY * 2;
+
+  ctx.fillStyle = getToken("--bg-tape");
+  ctx.beginPath();
+  ctx.roundRect(midX - w / 2, midY - h / 2, w, h, 3);
+  ctx.fill();
+
+  ctx.fillStyle = rgba("--chalk-bright", 1);
+  ctx.fillText(label, midX, midY);
 }
 
 function drawPlayers(

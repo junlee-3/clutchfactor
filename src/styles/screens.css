@@ -664,6 +664,7 @@
 .rpl-round-strip {
   display: flex;
   gap: var(--s1);
+  padding-top: var(--s2); /* clearance for the attention dot above each chip */
   padding-bottom: var(--s4);
   margin-bottom: var(--s4);
   border-bottom: 1px solid var(--line);
@@ -671,6 +672,7 @@
 }
 
 .rpl-round-chip {
+  position: relative; /* anchors the .rpl-att dot */
   min-width: 26px;
   padding: var(--s1) 0;
   background: var(--bg1);
@@ -701,6 +703,30 @@
 .rpl-round-chip-active {
   background: var(--bg2);
   color: var(--chalk-bright);
+}
+
+/* Attention dots (issue #9 §3): presence and size carry attention, zero
+   color channel — only chalk tokens here, never --ct/--t/--win/--loss (the
+   winner underline above stays the only color in this strip). */
+.rpl-att {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.rpl-att-dim {
+  width: 4px;
+  height: 4px;
+  background: var(--chalk-faint);
+}
+
+.rpl-att-bright {
+  width: 6px;
+  height: 6px;
+  background: var(--chalk-bright);
 }
 
 .rpl-main {
@@ -892,6 +918,158 @@
 .rpl-kf-weapon {
   flex-shrink: 0;
   color: var(--chalk-dim);
+}
+
+/* ---- CoachRail (CoachRail.tsx) — issue #9, design-system.md §5/§6/§9 ---- */
+
+/* Third .rpl-main column, mirroring .rpl-side's own shape (own scroll, own
+   fixed width) so the radar well is always the one panel that shrinks. */
+.rpl-coach-rail {
+  width: 330px;
+  flex-shrink: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  overflow-y: auto;
+}
+
+.rpl-rail-header {
+  margin-bottom: var(--s3);
+}
+
+.rpl-rail-heading-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s2);
+  margin-bottom: var(--s1);
+}
+
+.rpl-rail-round-num {
+  margin: 0;
+  color: var(--chalk-bright);
+}
+
+.rpl-rail-context {
+  margin: 0;
+  color: var(--chalk-dim);
+}
+
+/* Result word only — game hues, same restraint as .match-header-result-*
+   (§2: side hues never leave the canvas/roster/kill-feed; win/loss are
+   outcome, not side, so they're allowed here). */
+.rpl-rail-result-won {
+  color: var(--win);
+}
+
+.rpl-rail-result-lost {
+  color: var(--loss);
+}
+
+/* Verdict chip tints — the two measured-impact verdicts only, via the §2
+   derived surface tokens (no fresh color-mix here). "Not on you"/"Traded"/
+   "Quiet" stay the Chip default (bg2/chalk-dim): the verdict is named, not
+   graded. */
+.rpl-rail-verdict-won {
+  background: var(--surface-win);
+  color: var(--win);
+}
+
+.rpl-rail-verdict-loss {
+  background: var(--surface-loss);
+  color: var(--loss);
+}
+
+.rpl-rail-moments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+}
+
+.rpl-rail-moment {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  column-gap: var(--s2);
+  width: 100%;
+  margin: 0;
+  padding: var(--s2);
+  background: none;
+  /* Reserve the stripe's width on every row (transparent) so the active
+     row's dashed stripe never nudges the text (§10: no layout shift). */
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: var(--r-sm);
+  font: inherit;
+  color: var(--chalk);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.rpl-rail-moment:hover {
+  background: var(--bg2);
+}
+
+.rpl-rail-moment-time {
+  padding-top: 1px;
+  color: var(--chalk-dim);
+}
+
+.rpl-rail-moment-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rpl-rail-moment-headline {
+  color: var(--chalk-bright);
+}
+
+.rpl-rail-moment-fact {
+  color: var(--chalk-dim);
+}
+
+/* The §5 signature grammar: dashed chalk marks the moment the tape is
+   currently at. The one dashed stripe this component spends. */
+.rpl-rail-moment-active {
+  border-left: 2px dashed var(--chalk);
+  background: var(--bg2);
+}
+
+.rpl-rail-moment-active:hover {
+  border-left-color: var(--chalk-bright);
+}
+
+.rpl-rail-note {
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+}
+
+.rpl-rail-note-label {
+  margin: 0 0 var(--s1);
+}
+
+.rpl-rail-quiet {
+  margin: var(--s3) 0 0;
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+  color: var(--chalk-dim);
+}
+
+.rpl-rail-footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s2);
+}
+
+.rpl-rail-footer > :last-child {
+  justify-self: end;
 }
 
 /* ---- Transport ---- */

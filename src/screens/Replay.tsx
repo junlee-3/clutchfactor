@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { CoachRail } from "../components/CoachRail";
 import { KillFeed } from "../components/KillFeed";
 import { RosterPanel } from "../components/RosterPanel";
 import { Scrubber } from "../components/Scrubber";
@@ -10,13 +11,14 @@ import { MatchHeader } from "../components/ui/MatchHeader";
 import { Segmented } from "../components/ui/Segmented";
 import { Skeleton } from "../components/ui/Skeleton";
 import { parseEvidenceParams } from "../lib/evidence";
-import type { BombInfo, KillInfo, MatchDetail } from "../lib/ipc";
+import type { BombInfo, KillInfo, MatchDetail, RoundReviewDto } from "../lib/ipc";
 import { mapName } from "../lib/mapName";
-import { useMatchDetail, useMatches, useRoundTicks } from "../lib/queries";
+import { useMatchDetail, useMatches, useRoundReview, useRoundTicks } from "../lib/queries";
 import { radarImageUrl } from "../replay/coords";
 import type { MapCalibration } from "../replay/coords";
 import { buildTracks, stateAt } from "../replay/interp";
 import type { PlayerTrack } from "../replay/interp";
+import { annotationMomentIndex } from "../replay/rail";
 import { ReplayCanvas } from "../replay/ReplayCanvas";
 import type { BombState, Scene } from "../replay/Renderer";
 import { utilityWindows } from "../replay/utility";
@@ -50,9 +52,12 @@ function useImage(url: string | null): HTMLImageElement | null {
   }, [url]);
 }
 
-/** Skeleton for the tape's [radar well][side rail] area, at (approximately)
- * final layout size (design-system.md §10: no layout shift on data
- * arrival) — shared by both loading branches below.
+/** Skeleton for the tape's [radar well][side rail][coach rail] area, at
+ * (approximately) final layout size (design-system.md §10: no layout shift
+ * on data arrival) — shared by both loading branches below. The coach rail
+ * column renders unconditionally here (not gated on the reviews fetch,
+ * which this function knows nothing about) so the outer loading state and
+ * the real 3-column layout never differ in shape.
  *
  * `standalone` marks this as its own screen-level loading state (the
  * round-tick reload, once the header/round-strip are already real content)
@@ -72,6 +77,9 @@ function PlayerAreaSkeleton({ standalone }: { standalone?: boolean } = {}) {
       <div className="rpl-side">
         <Skeleton kind="card" count={2} />
       </div>
+      <aside className="rpl-coach-rail">
+        <Skeleton kind="card" count={1} />
+      </aside>
     </div>
   );
 }
@@ -93,6 +101,16 @@ export function Replay() {
   const roundCount = d?.rounds.length ?? 0;
   const round = Math.min(Math.max(evidence.round, 1), Math.max(roundCount, 1));
   const ticks = useRoundTicks(matchId, round);
+  // One fetch serves the coach rail (Task 7) and the round-strip attention
+  // dots (this task) — both read the same RoundReviewDto[], threaded down.
+  const reviews = useRoundReview(matchId);
+  // Round number -> its review, for the strip's attention dots below (issue
+  // #9 §3: presence/size carry attention, never color).
+  const reviewByRound = useMemo(() => {
+    const m = new Map<number, RoundReviewDto>();
+    for (const rv of reviews.data ?? []) m.set(rv.round, rv);
+    return m;
+  }, [reviews.data]);
   const cal = useCalibration(d !== null);
   const mapCal = d && cal.data ? (cal.data[d.map] ?? null) : null;
 
@@ -149,20 +167,34 @@ export function Replay() {
         crossLink={{ to: `/report/${matchId}`, label: "Read report →" }}
       />
       <div className="rpl-round-strip" role="tablist" aria-label="Rounds">
-        {d.rounds.map((r) => (
-          <button
-            key={r.number}
-            role="tab"
-            aria-selected={r.number === round}
-            className={`rpl-round-chip type-data rpl-round-chip-winner-${r.winner.toLowerCase()}${
-              r.number === round ? " rpl-round-chip-active" : ""
-            }`}
-            title={`Round ${r.number} — ${r.winner} (${r.reason})`}
-            onClick={() => setRound(r.number)}
-          >
-            {r.number}
-          </button>
-        ))}
+        {d.rounds.map((r) => {
+          const rv = reviewByRound.get(r.number);
+          const attention = rv?.attention ?? "none";
+          const title =
+            attention === "none"
+              ? `Round ${r.number} — ${r.winner} (${r.reason})`
+              : `Round ${r.number} — ${r.winner} (${r.reason}) · ${rv!.verdict_label}`;
+          return (
+            <button
+              key={r.number}
+              role="tab"
+              aria-selected={r.number === round}
+              className={`rpl-round-chip type-data rpl-round-chip-winner-${r.winner.toLowerCase()}${
+                r.number === round ? " rpl-round-chip-active" : ""
+              }`}
+              title={title}
+              onClick={() => setRound(r.number)}
+            >
+              {attention !== "none" && (
+                <span
+                  className={`rpl-att rpl-att-${attention}`}
+                  aria-hidden="true"
+                />
+              )}
+              {r.number}
+            </button>
+          );
+        })}
       </div>
       {ticks.isLoading || !ticks.data ? (
         <PlayerAreaSkeleton standalone />
@@ -176,6 +208,10 @@ export function Replay() {
           roundTicksData={ticks.data}
           evidenceTick={evidence.tick}
           focus={evidence.focus}
+          reviews={reviews.data}
+          reviewsLoading={reviews.isLoading}
+          reviewsError={reviews.isError}
+          onRound={setRound}
         />
       )}
     </div>
@@ -189,6 +225,10 @@ interface RoundPlayerProps {
   roundTicksData: import("../lib/ipc").RoundTicks;
   evidenceTick: number | null;
   focus: string[];
+  reviews: RoundReviewDto[] | undefined;
+  reviewsLoading: boolean;
+  reviewsError: boolean;
+  onRound: (round: number) => void;
 }
 
 function RoundPlayer({
@@ -198,6 +238,10 @@ function RoundPlayer({
   roundTicksData,
   evidenceTick,
   focus,
+  reviews,
+  reviewsLoading,
+  reviewsError,
+  onRound,
 }: RoundPlayerProps) {
   const roundInfo = d.rounds.find((r) => r.number === round) ?? null;
   const spec: TimelineSpec = useMemo(
@@ -309,7 +353,47 @@ function RoundPlayer({
     [spec],
   );
 
-  const focusSet = useMemo(() => new Set(focus), [focus]);
+  // This round's own review moments, read directly off the `reviews` fetch
+  // this component already holds — decoupled from CoachRail's own
+  // `activeMomentIndex` (last moment with tick <= displayTick), which can
+  // only become true AT OR AFTER a moment's tick and therefore can never be
+  // active during the -5s pre-roll. That pre-roll is the entire point of
+  // the overlay window: showing the play develop BEFORE the death, while
+  // the victim is still alive (issue #9 §5's mockup frame). CoachRail's own
+  // highlight (the bolded moment in its list) is untouched by this — it
+  // still uses `activeMomentIndex` for that unrelated purpose.
+  const review = useMemo(
+    () => reviews?.find((r) => r.round === round) ?? null,
+    [reviews, round],
+  );
+  const moments = useMemo(() => review?.moments ?? [], [review]);
+
+  // Whichever tracked_death moment's overlay window (-5s/+2s around the
+  // death, per rail.ts's `overlayWindow`) CONTAINS displayTick right now —
+  // by containment, not "most recently passed." Round change remounts this
+  // whole component (the `key` on RoundPlayer in Replay()), which resets
+  // `displayTick` back to the round start — overrides never leak across
+  // rounds.
+  const annotationIdx = useMemo(
+    () => annotationMomentIndex(moments, displayTick, d.tickrate),
+    [moments, displayTick, d.tickrate],
+  );
+  const annotationMoment = annotationIdx >= 0 ? moments[annotationIdx] : null;
+
+  // While inside that window, the canvas annotation takes over both dimming
+  // and the chalk diagram; outside it (or with no active death moment), the
+  // URL's evidence focus is what's dimmed and there's no annotation.
+  const focusSet = useMemo(
+    () => new Set(annotationMoment ? annotationMoment.focus : focus),
+    [annotationMoment, focus],
+  );
+
+  const annotation = useMemo(() => {
+    if (!annotationMoment) return null;
+    const [victimId, killerId] = annotationMoment.focus;
+    return victimId ? { victimId, killerId: killerId ?? null } : null;
+  }, [annotationMoment]);
+
   const getScene = useCallback(
     (): Scene => ({
       cal: mapCal,
@@ -325,6 +409,7 @@ function RoundPlayer({
       tick: tickRef.current,
       tickrate: d.tickrate,
       focus: focusSet,
+      annotation,
     }),
     [
       mapCal,
@@ -339,6 +424,7 @@ function RoundPlayer({
       bomb,
       d.tickrate,
       focusSet,
+      annotation,
     ],
   );
 
@@ -404,6 +490,21 @@ function RoundPlayer({
             onJump={seek}
           />
         </aside>
+        {reviewsLoading ? (
+          <aside className="rpl-coach-rail">
+            <Skeleton kind="card" count={1} />
+          </aside>
+        ) : reviewsError || !reviews ? null : (
+          <CoachRail
+            reviews={reviews}
+            round={round}
+            spec={spec}
+            tickrate={d.tickrate}
+            displayTick={displayTick}
+            onJump={seek}
+            onRound={onRound}
+          />
+        )}
       </div>
       <div className="rpl-transport">
         <Button
