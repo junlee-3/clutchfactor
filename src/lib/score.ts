@@ -3,7 +3,6 @@
 import type { MatchSummary } from "./ipc";
 
 export interface MatchRow {
-  mapLabel: string;
   /** Own score first when the tracked player played, else A–B as stored. */
   scoreline: string;
   resultLetter: "W" | "L" | "T" | null;
@@ -12,10 +11,6 @@ export interface MatchRow {
 }
 
 export function formatMatchRow(m: MatchSummary): MatchRow {
-  const mapLabel = m.map
-    .replace(/^(de|cs|ar)_/, "")
-    .replace(/^./, (c) => c.toUpperCase());
-
   const hi = Math.max(m.score_a, m.score_b);
   const lo = Math.min(m.score_a, m.score_b);
   let scoreline: string;
@@ -44,5 +39,5 @@ export function formatMatchRow(m: MatchSummary): MatchRow {
   const hs =
     m.tracked_hs_pct != null ? `${Math.round(m.tracked_hs_pct)}% HS` : null;
 
-  return { mapLabel, scoreline, resultLetter, kd, hs };
+  return { scoreline, resultLetter, kd, hs };
 }

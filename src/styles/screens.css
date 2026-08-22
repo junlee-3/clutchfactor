@@ -1,8 +1,8 @@
 /* ClutchFactor shell & screen composition (design-system.md §7-§8). Thin:
    layout only, everything else is tokens.css + components.css. Loads last
-   (see src/main.tsx import order) so it wins over the legacy styles.css
-   .app-shell/.topbar rules it replaces (those go dead here — Task 11
-   sweeps styles.css). */
+   (see src/main.tsx import order). The legacy src/styles.css this replaced
+   (.app-shell/.topbar and friends) was deleted in Task 11 — this file is
+   now the only source. */
 
 /* ---------------------------------------------------------------------- */
 /* Shell (AppShell.tsx)                                                    */
@@ -349,13 +349,13 @@
 /* Report (Report.tsx) — design-system.md §9, "the coach's write-up"       */
 /* ---------------------------------------------------------------------- */
 
-/* rpt-* container names are deliberately fresh (not report-shell/-main/
-   -feed/-side/-round-strip): the legacy src/styles.css still defines live
-   rules under those exact names (:662-722) and loads before this file, so
-   reusing them would let un-restated legacy properties (raw-px padding,
-   the 1180px max-width magic number) cascade through silently. Every
-   property these rules need is restated here from tokens — zero reliance
-   on any ancestor or legacy rule. */
+/* rpt-* container names were deliberately fresh (not report-shell/-main/
+   -feed/-side/-round-strip): the deleted legacy src/styles.css defined
+   live rules under those exact names, so reusing them would have let
+   un-restated legacy properties (raw-px padding, the 1180px max-width
+   magic number) cascade through silently. Every property these rules
+   need is restated here from tokens — zero reliance on any ancestor
+   rule. */
 .rpt-shell {
   /* editorial content width (§7) + gap + 300px side rail — Report is
      rail-mode but reads editorially */
@@ -425,14 +425,16 @@
 }
 
 /* Round strip — a compact mono grid (frontend-design pass). rpt- prefixed
-   for the same reason as the containers above: legacy styles.css:717 has a
-   live `.report-round-strip` rule this would otherwise collide with, even
-   though every property here was already fully restated. */
+   for the same reason as the containers above: the deleted legacy
+   styles.css had a `.report-round-strip` rule this would otherwise have
+   collided with, even though every property here was already fully
+   restated. */
 .rpt-round-strip {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s1);
   margin-bottom: var(--s6);
+  list-style: none;
 }
 
 .report-round-cell {
@@ -608,14 +610,16 @@
 /* design-system.md §9, "the tape"                                         */
 /* ---------------------------------------------------------------------- */
 
-/* rpl-* names are deliberately fresh, same reasoning as rpt-* above: legacy
-   src/styles.css still defines live rules under .radar-wrap/.replay-*/
-   .roster-*/.killfeed/.kill-row/.transport/.speeds/.speed-btn/.scrubber*/
-   .clock/.pips/.pip*/.round-strip/.round-chip/.side-*/.hp-track/.hp-fill/
-   .fps-meter/.centered/.btn-primary and loads before this file — reusing
-   any of those names would let raw-px sizing and the --ct accent (the
-   legacy "accent is a game hue" mistake §2 corrects) cascade through
-   silently. Every rule below restates its own properties from tokens. */
+/* rpl-* names were deliberately fresh, same reasoning as the rpt- section
+   above: the deleted legacy src/styles.css defined live rules under
+   radar-wrap, replay-, roster-, killfeed, kill-row, transport, speeds,
+   speed-btn, scrubber, clock, pips, pip, round-strip, round-chip, side-,
+   hp-track, hp-fill, fps-meter, centered and btn-primary (note: a literal
+   star-slash inside this comment would close it early, so class names
+   here drop the trailing glob star). Reusing any of those names would
+   have let raw-px sizing and the --ct accent (the legacy "accent is a
+   game hue" mistake §2 corrects) cascade through silently. Every rule
+   below restates its own properties from tokens. */
 
 /* height (not min-height): .shell-content-immersive gives this a definite
    100% to compute against. A mere min-height leaves this block auto-sized —
@@ -974,10 +978,12 @@
 /* Trends (Trends.tsx) — design-system.md §9, "the instrument panel"       */
 /* ---------------------------------------------------------------------- */
 
-/* trends-* names are deliberately fresh, same reasoning as rpt-*/rpl-*
-   above: legacy styles.css already owns .trend-*/.ribbon-cell/.map-chips/
-   .phase-chip, and both files load together until the milestone deletes
-   styles.css — reusing a name would double-apply rules. */
+/* trends-* names were deliberately fresh, same reasoning as the rpt- and
+   rpl- sections above: the deleted legacy styles.css owned trend-,
+   ribbon-cell, map-chips and phase-chip (note: a literal star-slash inside
+   this comment would close it early, so class names here drop the
+   trailing glob star) — reusing a name would have double-applied
+   rules. */
 
 .trends-head {
   display: flex;
@@ -1041,7 +1047,7 @@
 }
 
 .trends-ribbon-note {
-  color: var(--chalk-faint);
+  color: var(--chalk-dim);
   margin-left: var(--s2);
 }
 
@@ -1067,7 +1073,7 @@
 
 .trends-line-value {
   flex: none;
-  font-size: 24px;
+  font: var(--text-stat);
   color: var(--chalk-bright);
   white-space: nowrap;
 }
@@ -1176,6 +1182,276 @@
   .trends-rule-callout {
     grid-column: 1 / -1;
   }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Corpus (Corpus.tsx, HeatmapCanvas.tsx) — design-system.md §9,           */
+/* "the archive"                                                           */
+/* ---------------------------------------------------------------------- */
+
+/* cps- names were deliberately fresh, same reasoning as the rpt-, rpl-,
+   trends- sections above: the deleted legacy src/styles.css defined live
+   rules under corpus-, gate-, grid-table, viewer-, side-chip, phase-,
+   map-select and heatmap- (note: a literal star-slash inside this comment
+   would close it early, so class names here drop the trailing glob star).
+   Reusing any of those names would have let un-restated legacy properties
+   (raw-px sizing, the flat --btn-primary accent) cascade through
+   silently. Every rule below restates its own properties from tokens. */
+
+.cps-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  margin-bottom: var(--s6);
+}
+
+.cps-actions {
+  display: flex;
+  gap: var(--s2);
+}
+
+.cps-error {
+  margin-bottom: var(--s5);
+}
+
+.cps-queue {
+  margin-bottom: var(--s5);
+}
+
+.cps-loading-block {
+  height: 420px;
+}
+
+/* First column (the gate list only — a map name, a meter, a count) stays
+   narrow; the viewer takes the rest. The built-grids table below is its own
+   full-width section rather than a cell in this grid: a 6-column table
+   (map/side/phase/demos/samples/built) needs more room than a two-column
+   split at the 1200px charter floor can spare it alongside a ~512px
+   heatmap — tried it as a grid cell first and the "built" column and the
+   longer phase labels ("post-plant") wrapped and clipped. */
+.cps-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(320px, 1fr);
+  gap: var(--s6);
+  align-items: start;
+}
+
+.cps-eyebrow {
+  margin: var(--s6) 0 var(--s3);
+}
+
+.cps-eyebrow:first-child {
+  margin-top: 0;
+}
+
+.cps-inventory {
+  min-width: 0;
+}
+
+.cps-gate-list {
+  list-style: none;
+  margin: 0 0 var(--s2);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Reuses the sidebar nav's own selection grammar (design-system.md §7:
+   "active item chalk-bright with a 2px chalk left edge") — picking a map
+   in the archive lights up exactly like picking a screen in the sidebar. */
+.cps-gate-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  color: var(--chalk);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.cps-gate-list li:last-child .cps-gate-row {
+  border-bottom: none;
+}
+
+.cps-gate-row:hover {
+  background: var(--bg2);
+}
+
+.cps-gate-row-active {
+  background: var(--bg2);
+  box-shadow: inset 2px 0 0 0 var(--chalk-bright);
+}
+
+.cps-gate-row-active .cps-gate-map {
+  color: var(--chalk-bright);
+}
+
+.cps-gate-map {
+  flex: 0 0 auto;
+  min-width: 84px;
+}
+
+/* The gate meter: a real unit count, not a faked percentage bar (dataviz —
+   one cell per demo needed). Chalk-filled = have it, hairline = still
+   need it. */
+.cps-gate-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.cps-gate-cell {
+  width: 6px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+}
+
+.cps-gate-cell-filled {
+  background: var(--chalk);
+  border-color: var(--chalk);
+}
+
+.cps-gate-count {
+  margin-left: auto;
+  color: var(--chalk-dim);
+  white-space: nowrap;
+}
+
+.cps-gate-note {
+  color: var(--chalk-dim);
+  white-space: nowrap;
+}
+
+.cps-note {
+  color: var(--chalk-dim);
+}
+
+.cps-viewer {
+  min-width: 0;
+}
+
+.cps-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+}
+
+/* The heatmap well (design-system.md §1, §9): bg-tape + r-lg, the lit
+   screen in the dark room — same idea as .rpl-radar-well, sized for the
+   canvas's fixed 512px resolution instead of a viewport-driven square.
+   CT/T blue is correct inside it (HeatmapCanvas.tsx, unchanged): corpus
+   grids are per-side data, not chrome. */
+.cps-heatmap-well {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s3);
+  background: var(--bg-tape);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s4);
+}
+
+.cps-heatmap-well-empty {
+  min-height: 240px;
+  justify-content: center;
+}
+
+.cps-heatmap-canvas {
+  display: block;
+  width: 100%;
+  max-width: 512px;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: var(--r-md);
+}
+
+.cps-heatmap-caption,
+.cps-heatmap-empty {
+  color: var(--chalk-dim);
+}
+
+.cps-viewer-built {
+  margin: var(--s2) 0 0;
+}
+
+.cps-built {
+  margin-top: var(--s6);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Settings (Settings.tsx) — design-system.md §9, "the desk drawer"        */
+/* ---------------------------------------------------------------------- */
+
+/* stg- names were deliberately fresh, same reasoning as the cps- section
+   above (see its comment for why this one avoids the class-name glob star):
+   the deleted legacy src/styles.css defined live rules under settings- and
+   grid-table. */
+
+.stg-head {
+  margin-bottom: var(--s6);
+}
+
+.stg-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+}
+
+.stg-card-skeleton {
+  height: 140px;
+}
+
+.stg-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: 0 0 var(--s2);
+}
+
+.stg-line:last-child {
+  margin-bottom: 0;
+}
+
+.stg-label {
+  min-width: 96px;
+}
+
+.stg-path {
+  word-break: break-all;
+}
+
+.stg-hint-inline {
+  color: var(--chalk-dim);
+}
+
+.stg-override {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin: var(--s3) 0;
+}
+
+.stg-override .ui-input {
+  min-width: 260px;
+  flex: 1;
+}
+
+.stg-hint {
+  margin: var(--s3) 0 0;
+  color: var(--chalk-dim);
 }
 
 /* ---------------------------------------------------------------------- */

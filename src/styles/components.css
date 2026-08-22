@@ -26,8 +26,8 @@
 
 .ui-btn:disabled {
   cursor: not-allowed;
-  /* no disabled-opacity token exists yet — 0.5 mirrors the legacy
-     .btn-secondary:disabled precedent (styles.css:1074-1077). */
+  /* no disabled-opacity token exists yet — 0.5 mirrors the deleted legacy
+     .btn-secondary:disabled precedent. */
   opacity: 0.5;
 }
 
@@ -110,8 +110,8 @@
 }
 
 /* Edge variants — 2px inset left border, no layout shift. Win/loss use the
-   derived border tokens; severity reuses the legacy .ic-spine color-mix
-   pattern (styles.css:821) against the new token names. */
+   derived border tokens; severity reuses the deleted legacy .ic-spine
+   color-mix pattern against the new token names. */
 .ui-card-edge-win {
   box-shadow: inset 2px 0 0 0 var(--border-win);
 }
@@ -140,6 +140,7 @@
   font: var(--text-data);
   font-variant-numeric: tabular-nums;
   border: none;
+  white-space: nowrap;
 }
 
 /* evidence — the chalk-annotation grammar (§5): dashed = evidence, always

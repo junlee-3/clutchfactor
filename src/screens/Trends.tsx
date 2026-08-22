@@ -99,7 +99,7 @@ export function Trends() {
       </div>
 
       {isLoading ? (
-        <div className="trends-loading">
+        <div className="trends-loading" role="status" aria-label="Loading trends">
           <Skeleton kind="rows" count={1} className="trends-ribbon-skeleton" />
           <Skeleton kind="block" className="trends-line-skeleton" />
           <Skeleton kind="rows" count={3} className="trends-rule-skeleton" />

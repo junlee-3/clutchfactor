@@ -8,8 +8,7 @@ describe("mapName", () => {
 
   // Rust parity (cf-narrator's map_name, templates.rs): capitalize() only
   // uppercases the string's first character — it does not insert a space
-  // before the trailing digit. score.test.ts already locks this in for
-  // formatMatchRow's own mapLabel ("Dust2", not "Dust 2").
+  // before the trailing digit ("Dust2", not "Dust 2").
   it("keeps a compound map slug as one capitalized word", () => {
     expect(mapName("de_dust2")).toBe("Dust2");
   });

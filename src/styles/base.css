@@ -42,6 +42,8 @@
 *,
 *::before,
 *::after {
+  margin: 0;
+  padding: 0;
   box-sizing: border-box;
 }
 
@@ -58,11 +60,16 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Type scale — the seven classes from design-system.md §3. */
+/* Type scale — the eight classes from design-system.md §3. */
 .type-display {
   font: var(--text-display);
   font-weight: 560;
   font-optical-sizing: auto;
+}
+
+.type-stat {
+  font: var(--text-stat);
+  font-variant-numeric: tabular-nums;
 }
 
 .type-title {
@@ -99,6 +106,25 @@ body {
 :focus-visible {
   outline: 2px solid var(--chalk-bright);
   outline-offset: 2px;
+}
+
+/* Native <select> — styled once here rather than growing an Input/Select
+   ui/ component for its one call site (Corpus's map picker). color-scheme:
+   dark (tokens.css) already themes the native popup list; this covers the
+   closed control itself. */
+select {
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: var(--s2) var(--s3);
+  font: var(--text-ui);
+  color: var(--chalk);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+
+select:hover {
+  border-color: var(--line-strong);
 }
 
 @media (prefers-reduced-motion: reduce) {
