@@ -62,23 +62,25 @@ export function HeatmapCanvas({ grid, map }: Props) {
 
   if (!grid || grid.demos === 0) {
     return (
-      <div className="heatmap-canvas-wrap">
-        <p className="heatmap-empty">No corpus data for this map yet.</p>
+      <div className="cps-heatmap-well cps-heatmap-well-empty">
+        <p className="type-body cps-heatmap-empty">
+          No corpus data for this map yet.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="heatmap-canvas-wrap">
+    <div className="cps-heatmap-well">
       <canvas
         ref={canvasRef}
-        className="heatmap-canvas"
+        className="cps-heatmap-canvas"
         width={CANVAS_PX}
         height={CANVAS_PX}
         role="img"
         aria-label={`Pro-corpus occupancy heatmap for ${map}`}
       />
-      <p className="heatmap-caption">
+      <p className="type-data cps-heatmap-caption">
         {grid.demos} demos · {grid.samples} samples
       </p>
     </div>

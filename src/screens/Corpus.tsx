@@ -5,7 +5,6 @@ import {
   finishFile,
   initQueue,
   queueDone,
-  queueSummary,
   startFile,
   type QueueFile,
 } from "../lib/importQueue";
@@ -15,8 +14,16 @@ import {
   useGrid,
   useImportCorpusDemo,
 } from "../lib/queries";
+import { mapName } from "../lib/mapName";
 import { ImportProgress } from "../components/ImportProgress";
 import { HeatmapCanvas } from "../components/HeatmapCanvas";
+import { Button } from "../components/ui/Button";
+import { DataTable } from "../components/ui/DataTable";
+import { EmptyState } from "../components/ui/EmptyState";
+import { ImportQueuePanel } from "../components/ui/ImportQueuePanel";
+import { Segmented } from "../components/ui/Segmented";
+import { Skeleton } from "../components/ui/Skeleton";
+import { cardClass } from "../components/ui/classes";
 
 const PHASES = [
   { id: "freeze_end", label: "freeze end" },
@@ -25,11 +32,21 @@ const PHASES = [
   { id: "post_plant", label: "post-plant" },
 ] as const;
 
+const SIDE_OPTIONS = [
+  { value: "CT", label: "CT" },
+  { value: "T", label: "T" },
+] as const;
+
 export function Corpus() {
   const status = useCorpusStatus();
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
   const [queue, setQueue] = useState<QueueFile[] | null>(null);
   const [building, setBuilding] = useState(false);
+  // Build-only error (V1.0 deferred minor, closed here): the import queue's
+  // own per-file errors live in ImportQueuePanel now, so this state is
+  // build_corpus's alone — cleared at the start of EITHER action so a stale
+  // failure from a previous build never survives to sit alongside a fresh
+  // import.
   const [error, setError] = useState<string | null>(null);
   const [side, setSide] = useState<"CT" | "T">("CT");
   const [phase, setPhase] = useState<string>("freeze_end");
@@ -52,6 +69,7 @@ export function Corpus() {
       filters: [{ name: "CS2 demo", extensions: ["dem"] }],
     });
     if (!Array.isArray(paths) || paths.length === 0) return;
+    setError(null);
     let q = initQueue(paths);
     setQueue(q);
     for (let i = 0; i < q.length; i++) {
@@ -84,214 +102,164 @@ export function Corpus() {
     }
   }
 
+  const gridRows = grids.map((g) => [
+    mapName(g.map),
+    g.side,
+    g.phase.replace("_", " "),
+    g.demos,
+    g.samples,
+    g.built_at,
+  ]);
+
   return (
-    <div className="content">
-      <div className="section-head">
-        <h1>Reference corpus</h1>
-        <div className="corpus-actions">
-          <button
-            className="btn-secondary"
+    <div className="cps-shell">
+      <div className="cps-head">
+        <h1 className="type-display">Reference corpus</h1>
+        <div className="cps-actions">
+          <Button
+            variant="secondary"
             onClick={() => void build()}
             disabled={building || importing || maps.length === 0}
           >
             {building ? "Building…" : "Build grids"}
-          </button>
-          <button
-            className="btn-primary"
+          </Button>
+          <Button
+            variant="primary"
             onClick={() => void pickAndImport()}
             disabled={importing || building}
           >
             {importing ? "Importing…" : "Add pro demos"}
-          </button>
+          </Button>
         </div>
       </div>
 
       {error && (
-        <div className="error-banner" role="alert">
-          {error}
+        <div className={`${cardClass("loss")} cps-error`} role="alert">
+          <span className="type-body">{error}</span>
         </div>
       )}
 
       {queue && (
-        <div className="import-queue">
-          {importing && current && (
-            <ImportProgress
-              fileName={`${queue.indexOf(current) + 1} of ${queue.length}: ${current.name}`}
-              progress={progress}
-            />
-          )}
-          <ul className="queue-list">
-            {queue.map((f) => (
-              <li key={f.path} className={`queue-row queue-${f.status}`}>
-                <span className="import-file">{f.name}</span>
-                <span className="import-detail">
-                  {f.status === "done" && "imported"}
-                  {f.status === "skipped" && "already in library"}
-                  {f.status === "failed" && f.error}
-                  {f.status === "pending" && "waiting"}
-                  {f.status === "importing" && "importing…"}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {queueDone(queue) && (
-            <div
-              className={
-                queue.some((f) => f.status === "failed") ? "error-banner" : "queue-summary"
-              }
-              role={queue.some((f) => f.status === "failed") ? "alert" : "status"}
-            >
-              {queueSummary(queue)}
-              <button className="btn-secondary" onClick={() => setQueue(null)}>
-                Dismiss
-              </button>
-            </div>
-          )}
+        <div className="cps-queue">
+          <ImportQueuePanel
+            queue={queue}
+            progress={progress}
+            current={current}
+            onDismiss={() => setQueue(null)}
+          />
         </div>
       )}
       {building && (
-        <ImportProgress fileName="Building occupancy grids" progress={progress} />
+        <div className="cps-queue">
+          <ImportProgress fileName="Building occupancy grids" progress={progress} />
+        </div>
       )}
 
-      {maps.length === 0 && !importing ? (
-        <div className="empty-state">
-          <p className="empty-title">No reference demos yet</p>
-          <p className="empty-note">
-            Add pro demos (.dem) and ClutchFactor learns where strong players
-            stand. {gate} demos per map unlock positioning insights.
-          </p>
-        </div>
+      {status.isLoading ? (
+        <Skeleton kind="block" className="cps-loading-block" />
+      ) : maps.length === 0 && !importing ? (
+        <EmptyState
+          title="No reference demos yet"
+          body={`Add pro demos (.dem) and ClutchFactor learns where strong players stand. ${gate} demos per map unlock positioning insights.`}
+          action={{ label: "Add pro demos", onClick: () => void pickAndImport() }}
+        />
       ) : (
-        <div className="corpus-grid">
-          <section className="corpus-inventory">
-            <h2 className="corpus-subhead">Demos per map</h2>
-            <ul className="gate-list">
-              {maps.map((m) => (
-                <li key={m.map}>
-                  <button
-                    className={`gate-row${m.map === map ? " gate-row-active" : ""}`}
-                    onClick={() => setPickedMap(m.map)}
-                    title={`View ${m.map} heatmaps`}
-                  >
-                    <span className="gate-map">{m.map}</span>
-                    <span
-                      className="gate-meter"
-                      role="img"
-                      aria-label={`${m.demos} of ${gate} demos`}
+        <>
+          <div className="cps-grid">
+            <section className="cps-inventory">
+              <h2 className="type-micro cps-eyebrow">Demos per map</h2>
+              <ul className="cps-gate-list">
+                {maps.map((m) => (
+                  <li key={m.map}>
+                    <button
+                      type="button"
+                      className={`cps-gate-row${m.map === map ? " cps-gate-row-active" : ""}`}
+                      onClick={() => setPickedMap(m.map)}
+                      title={`View ${mapName(m.map)} heatmaps`}
                     >
-                      {Array.from({ length: gate }, (_, i) => (
-                        <i
-                          key={i}
-                          className={
-                            i < m.demos ? "gate-cell gate-cell-filled" : "gate-cell"
-                          }
-                        />
-                      ))}
-                    </span>
-                    <span className="gate-count">
-                      {m.demos}/{gate}
+                      <span className="type-body cps-gate-map">{mapName(m.map)}</span>
+                      <span
+                        className="cps-gate-meter"
+                        role="img"
+                        aria-label={`${m.demos} of ${gate} demos`}
+                      >
+                        {Array.from({ length: gate }, (_, i) => (
+                          <i
+                            key={i}
+                            className={`cps-gate-cell${i < m.demos ? " cps-gate-cell-filled" : ""}`}
+                          />
+                        ))}
+                      </span>
+                      <span className="type-data cps-gate-count">
+                        {m.demos}/{gate}
+                      </span>
                       {m.demos < gate && (
-                        <em className="gate-note">
-                          {" "}
-                          — detector silent until {gate}
-                        </em>
+                        <span className="type-micro cps-gate-note">
+                          silent until {gate}
+                        </span>
                       )}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
 
-            <h2 className="corpus-subhead">Built grids</h2>
+            <section className="cps-viewer">
+              <h2 className="type-micro cps-eyebrow">Viewer</h2>
+              <div className="cps-controls">
+                <select
+                  value={map ?? ""}
+                  onChange={(e) => setPickedMap(e.target.value)}
+                  aria-label="Map"
+                >
+                  {maps.map((m) => (
+                    <option key={m.map} value={m.map}>
+                      {mapName(m.map)}
+                    </option>
+                  ))}
+                </select>
+                <Segmented
+                  ariaLabel="Side"
+                  value={side}
+                  onChange={(v) => setSide(v as "CT" | "T")}
+                  options={[...SIDE_OPTIONS]}
+                />
+                <Segmented
+                  ariaLabel="Round phase"
+                  value={phase}
+                  onChange={setPhase}
+                  options={PHASES.map((p) => ({ value: p.id, label: p.label }))}
+                />
+              </div>
+              {map ? (
+                <HeatmapCanvas grid={grid.data ?? null} map={map} />
+              ) : (
+                <p className="type-body cps-note">Add demos to view heatmaps.</p>
+              )}
+              {gridMeta && (
+                <p className="type-micro cps-viewer-built">built {gridMeta.built_at}</p>
+              )}
+            </section>
+          </div>
+
+          <section className="cps-built">
+            <h2 className="type-micro cps-eyebrow">Built grids</h2>
             {grids.length === 0 ? (
-              <p className="empty-note">
+              <p className="type-body cps-note">
                 Grids not built yet — press Build grids after adding demos.
               </p>
             ) : (
-              <table className="grid-table">
-                <thead>
-                  <tr>
-                    <th>map</th>
-                    <th>side</th>
-                    <th>phase</th>
-                    <th>demos</th>
-                    <th>samples</th>
-                    <th>built</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {grids.map((g) => (
-                    <tr key={`${g.map}-${g.side}-${g.phase}`}>
-                      <td>{g.map}</td>
-                      <td>{g.side}</td>
-                      <td>{g.phase.replace("_", " ")}</td>
-                      <td>{g.demos}</td>
-                      <td>{g.samples}</td>
-                      <td>{g.built_at}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <DataTable
+                head={["map", "side", "phase", "demos", "samples", "built"]}
+                rows={gridRows}
+                rowKey={(i) => {
+                  const g = grids[i];
+                  return `${g.map}-${g.side}-${g.phase}`;
+                }}
+              />
             )}
           </section>
-
-          <section className="corpus-viewer">
-            <div className="viewer-controls">
-              <select
-                className="map-select"
-                value={map ?? ""}
-                onChange={(e) => setPickedMap(e.target.value)}
-                aria-label="Map"
-              >
-                {maps.map((m) => (
-                  <option key={m.map} value={m.map}>
-                    {m.map}
-                  </option>
-                ))}
-              </select>
-              <div className="side-chips" role="radiogroup" aria-label="Side">
-                {(["CT", "T"] as const).map((s) => (
-                  <button
-                    key={s}
-                    role="radio"
-                    aria-checked={side === s}
-                    className={`side-chip side-chip-${s.toLowerCase()}${
-                      side === s ? " side-chip-active" : ""
-                    }`}
-                    onClick={() => setSide(s)}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-              <div
-                className="phase-strip"
-                role="radiogroup"
-                aria-label="Round phase"
-              >
-                {PHASES.map((p) => (
-                  <button
-                    key={p.id}
-                    role="radio"
-                    aria-checked={phase === p.id}
-                    className={`phase-chip${phase === p.id ? " phase-chip-active" : ""}`}
-                    onClick={() => setPhase(p.id)}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {map ? (
-              <HeatmapCanvas grid={grid.data ?? null} map={map} />
-            ) : (
-              <p className="empty-note">Add demos to view heatmaps.</p>
-            )}
-            {gridMeta && (
-              <p className="viewer-built">built {gridMeta.built_at}</p>
-            )}
-          </section>
-        </div>
+        </>
       )}
     </div>
   );

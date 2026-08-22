@@ -1,128 +1,130 @@
 import { useState } from "react";
 import { useAppSettings, useSetTrackedOverride } from "../lib/queries";
+import { Button } from "../components/ui/Button";
+import { Card } from "../components/ui/Card";
+import { DataTable } from "../components/ui/DataTable";
+import { Input } from "../components/ui/Input";
+import { Skeleton } from "../components/ui/Skeleton";
+import { useToast } from "../components/ui/Toast";
 
 export function Settings() {
   const settings = useAppSettings();
   const setOverride = useSetTrackedOverride();
+  const toast = useToast();
   const [draft, setDraft] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
 
   const s = settings.data;
   const input = draft ?? s?.tracked_override ?? "";
 
+  // Routing both outcomes through the toast queue (design-system.md §6, §9:
+  // "§7-voice errors via Toast or inline") closes the V1.0 deferred minor
+  // for this screen by construction — a toast auto-expires (lib/toast.ts),
+  // so a save's result can never linger as a stale banner once a later
+  // save starts.
   async function save(steamid: string | null) {
-    setError(null);
-    setSaved(null);
     try {
       await setOverride.mutateAsync(steamid);
       setDraft(null);
-      setSaved(
+      toast.push(
+        "status",
         steamid
           ? `Now tracking ${steamid}.`
           : "Override cleared — back to the auto-detected player.",
       );
     } catch (e) {
-      setError(String(e));
+      toast.push("error", String(e));
     }
   }
 
+  if (settings.isLoading) {
+    return (
+      <div className="stg-shell">
+        <div className="stg-head">
+          <h1 className="type-display">Settings</h1>
+        </div>
+        <div className="stg-cards">
+          <Skeleton kind="card" count={3} className="stg-card-skeleton" />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="content">
-      <div className="section-head">
-        <h1>Settings</h1>
+    <div className="stg-shell">
+      <div className="stg-head">
+        <h1 className="type-display">Settings</h1>
       </div>
 
-      {error && (
-        <div className="error-banner" role="alert">
-          {error}
-        </div>
-      )}
-      {saved && (
-        <p className="settings-saved" role="status">
-          {saved}
-        </p>
-      )}
-
       {s && (
-        <div className="settings-grid">
-          <section className="settings-card">
-            <h2 className="corpus-subhead">Tracked player</h2>
-            <p className="settings-line">
-              <span className="settings-label">Coaching</span>
-              <span className="mono">
+        <div className="stg-cards">
+          <Card eyebrow="Tracked player">
+            <p className="type-body stg-line">
+              <span className="type-micro stg-label">Coaching</span>
+              <span className="type-data">
                 {s.tracked_name ? `${s.tracked_name} · ` : ""}
                 {s.tracked_effective ?? "nobody yet — import a demo"}
               </span>
               {!s.tracked_override && s.tracked_effective && (
-                <em className="settings-hint"> (auto-detected)</em>
+                <span className="type-body stg-hint-inline"> (auto-detected)</span>
               )}
             </p>
-            <div className="settings-override">
-              <input
-                className="settings-input mono"
+            <div className="stg-override">
+              <Input
+                mono
                 placeholder="SteamID64, e.g. 76561199228328773"
                 value={input}
                 onChange={(e) => setDraft(e.target.value)}
                 aria-label="Tracked SteamID64 override"
               />
-              <button
-                className="btn-primary"
+              <Button
+                variant="primary"
                 disabled={setOverride.isPending || input.trim() === ""}
                 onClick={() => void save(input.trim())}
               >
                 Track this player
-              </button>
+              </Button>
               {s.tracked_override && (
-                <button
-                  className="btn-secondary"
+                <Button
+                  variant="secondary"
                   disabled={setOverride.isPending}
                   onClick={() => void save(null)}
                 >
                   Clear override
-                </button>
+                </Button>
               )}
             </div>
-            <p className="settings-hint">
-              Applies to new imports. To re-analyze an existing match,
-              delete it in the Library and import the demo again.
+            <p className="type-body stg-hint">
+              Applies to new imports. To re-analyze an existing match, delete
+              it in the Library and import the demo again.
             </p>
-          </section>
+          </Card>
 
-          <section className="settings-card">
-            <h2 className="corpus-subhead">Detector thresholds</h2>
-            <table className="grid-table">
-              <tbody>
-                {s.thresholds.map((t) => (
-                  <tr key={t.name}>
-                    <td>{t.name}</td>
-                    <td>{t.value}</td>
-                    <td>{t.unit}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="settings-hint">
+          <Card eyebrow="Detector thresholds">
+            <DataTable
+              head={["threshold", "value", "unit"]}
+              rows={s.thresholds.map((t) => [t.name, t.value, t.unit])}
+              rowKey={(i) => s.thresholds[i].name}
+            />
+            <p className="type-body stg-hint">
               v0 ships these fixed defaults — tuned against real demos, not
               editable yet.
             </p>
-          </section>
+          </Card>
 
-          <section className="settings-card">
-            <h2 className="corpus-subhead">Data</h2>
-            <p className="settings-line">
-              <span className="settings-label">Database</span>
-              <span className="mono settings-path">{s.db_path}</span>
+          <Card eyebrow="Data">
+            <p className="type-body stg-line">
+              <span className="type-micro stg-label">Database</span>
+              <span className="type-data stg-path">{s.db_path}</span>
             </p>
-            <p className="settings-line">
-              <span className="settings-label">Your matches</span>
-              <span className="mono">{s.own_matches}</span>
+            <p className="type-body stg-line">
+              <span className="type-micro stg-label">Your matches</span>
+              <span className="type-data">{s.own_matches}</span>
             </p>
-            <p className="settings-line">
-              <span className="settings-label">Reference demos</span>
-              <span className="mono">{s.corpus_demos}</span>
+            <p className="type-body stg-line">
+              <span className="type-micro stg-label">Reference demos</span>
+              <span className="type-data">{s.corpus_demos}</span>
             </p>
-          </section>
+          </Card>
         </div>
       )}
     </div>
