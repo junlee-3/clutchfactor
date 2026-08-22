@@ -24,6 +24,7 @@ use crate::MatchContext;
 
 const ISOLATED: &str = "H2_ISOLATED_DEATH";
 const FAILED_TRADE: &str = "H2_FAILED_TRADE";
+const BAITED_TRADE: &str = "H2_BAITED_TRADE";
 const UNSUPPORTED_ENTRY: &str = "H14_UNSUPPORTED_ENTRY";
 const PUSH_WITHOUT_INFO: &str = "H6_PUSH_WITHOUT_INFO";
 const EARLY_AGGRESSIVE: &str = "H11_EARLY_AGGRESSIVE_DEATH";
@@ -182,6 +183,7 @@ fn kill_headline(rule_id: &Option<String>) -> String {
 fn death_headline(rule_id: &Option<String>) -> String {
     match rule_id.as_deref() {
         Some(ISOLATED) => "Died isolated",
+        Some(BAITED_TRADE) => "Traded in alone",
         Some(UNSUPPORTED_ENTRY) => "Lost the entry",
         Some(EARLY_AGGRESSIVE) => "Died pushing early",
         Some(PUSH_WITHOUT_INFO) => "Pushed blind",
@@ -190,10 +192,14 @@ fn death_headline(rule_id: &Option<String>) -> String {
     .to_string()
 }
 
+/// H2_BAITED_TRADE is always death-anchored (h2.rs emits it at the tracked
+/// player's own death tick), so `build_moments` always absorbs it into a
+/// `tracked_death` moment — it never survives as a standalone `flag` kind.
+/// This arm is defensive only; `flag_facts`' generic fallback covers it if
+/// that ever changes.
 fn flag_headline(rule_id: Option<&str>) -> String {
     match rule_id {
         Some(FAILED_TRADE) => "Missed trade".to_string(),
-        Some("H2_BAITED_TRADE") => "Traded in alone".to_string(),
         Some(UNSUPPORTED_ENTRY) => "Unsupported entry".to_string(),
         Some(EARLY_AGGRESSIVE) => "Early aggression".to_string(),
         Some(PUSH_WITHOUT_INFO) => "Pushed blind".to_string(),
@@ -252,6 +258,22 @@ fn death_facts(m: &Moment, ctx: &MatchContext) -> Vec<String> {
                 fmt_units(spawn_dist)
             ),
             None => format!("{} from spawn", fmt_units(spawn_dist)),
+        });
+    }
+    // H2_BAITED_TRADE's schema (always merged in here — see flag_headline's
+    // comment). The spec's own requirement: name the teammate who didn't
+    // follow, numbers-first, so this reads as "third man in a two-man
+    // fight" rather than blame.
+    if let (Some(nf), Some(dist)) = (
+        name_of(&m.facts, "non_following_teammate", ctx),
+        num(&m.facts, "their_distance"),
+    ) {
+        out.push(match name_of(&m.facts, "dead_teammate", ctx) {
+            Some(dead) => format!(
+                "{nf} {} back when {dead} went down — never in trade range",
+                fmt_units(dist)
+            ),
+            None => format!("{nf} {} back — never in trade range", fmt_units(dist)),
         });
     }
     if let Some(traded) = m.facts.get("traded").and_then(|v| v.as_bool()) {
@@ -347,6 +369,7 @@ mod tests {
     const TAKENOUCHI: u64 = 76561198000000002;
     const UNCLE_BUBBLES: u64 = 76561198000000007;
     const VICTIM8: u64 = 76561198000000008;
+    const KANAE: u64 = 76561198000000009;
 
     fn ctx() -> MatchContext {
         MatchContext {
@@ -356,6 +379,7 @@ mod tests {
                 (TAKENOUCHI, "Takenouchi".to_string()),
                 (UNCLE_BUBBLES, "UncleBubbles".to_string()),
                 (VICTIM8, "UncleBubbles".to_string()),
+                (KANAE, "Kanae".to_string()),
             ]),
             score: (7, 13),
             tracked_result: Some("loss".to_string()),
@@ -604,16 +628,57 @@ mod tests {
             delta_p: Some(0.5),
             facts: json!({}),
         };
+        // H2_FAILED_TRADE genuinely stays standalone (teammate-death-anchored,
+        // not tracked-death-anchored — see h2.rs:251-264), so this exercises
+        // the real standalone-flag path. H2_BAITED_TRADE is NOT used here:
+        // it's always death-anchored and always merges into a tracked_death
+        // moment (see the real-shape test below), so a standalone-flag
+        // H2_BAITED_TRADE moment never occurs in production.
         let flag = Moment {
             tick: 30,
             kind: "flag".to_string(),
-            rule_id: Some("H2_BAITED_TRADE".to_string()),
+            rule_id: Some("H2_FAILED_TRADE".to_string()),
             delta_p: None,
-            facts: json!({ "non_following_teammate": TAKENOUCHI.to_string() }),
+            facts: json!({ "teammate": TAKENOUCHI.to_string(), "distance": 300.0 }),
         };
         assert_eq!(narrate_moment(&plant, &c).headline, "Bomb planted");
         assert_eq!(narrate_moment(&defuse, &c).headline, "Defused");
-        assert_eq!(narrate_moment(&flag, &c).headline, "Traded in alone");
+        assert_eq!(narrate_moment(&flag, &c).headline, "Missed trade");
+    }
+
+    /// Real-shape regression: H2_BAITED_TRADE is emitted death-anchored
+    /// (h2.rs:303-322, tick = tracked's own death tick), so `build_moments`
+    /// always merges it into the `tracked_death` moment, never a standalone
+    /// `flag`. The merged facts carry the computed death facts (killer,
+    /// traded, round_end_delta_s) alongside the flag's own
+    /// non_following_teammate/their_distance/dead_teammate — this must
+    /// render a headline and a fact line naming the non-follower, not the
+    /// generic "Death" fallback.
+    #[test]
+    fn baited_trade_merges_into_the_death_moment_and_names_the_non_follower() {
+        let m = Moment {
+            tick: 64_000,
+            kind: "tracked_death".to_string(),
+            rule_id: Some("H2_BAITED_TRADE".to_string()),
+            delta_p: Some(-0.18),
+            facts: json!({
+                "killer": UNCLE_BUBBLES.to_string(),
+                "traded": false,
+                "round_end_delta_s": 9.0,
+                "non_following_teammate": TAKENOUCHI.to_string(),
+                "their_distance": 1850.0,
+                "dead_teammate": KANAE.to_string(),
+            }),
+        };
+        let t = narrate_moment(&m, &ctx());
+        assert_eq!(t.headline, "Traded in alone");
+        assert_eq!(
+            t.facts,
+            vec![
+                "Takenouchi 1,850 u back when Kanae went down — never in trade range".to_string(),
+                "Not traded — round lost 9 s later".to_string(),
+            ]
+        );
     }
 
     #[test]
@@ -621,6 +686,11 @@ mod tests {
         assert_eq!(fmt_units(818.0), "818 u");
         assert_eq!(fmt_units(1223.4), "1,223 u");
         assert_eq!(fmt_units(12_345.0), "12,345 u");
+        assert_eq!(
+            fmt_units(12_345.6),
+            "12,346 u",
+            "rounding must apply before grouping across a thousands boundary"
+        );
     }
 
     #[test]
