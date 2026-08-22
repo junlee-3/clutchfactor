@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { CoachRail } from "../components/CoachRail";
 import { KillFeed } from "../components/KillFeed";
 import { RosterPanel } from "../components/RosterPanel";
 import { Scrubber } from "../components/Scrubber";
@@ -10,9 +11,9 @@ import { MatchHeader } from "../components/ui/MatchHeader";
 import { Segmented } from "../components/ui/Segmented";
 import { Skeleton } from "../components/ui/Skeleton";
 import { parseEvidenceParams } from "../lib/evidence";
-import type { BombInfo, KillInfo, MatchDetail } from "../lib/ipc";
+import type { BombInfo, KillInfo, MatchDetail, RailMomentDto, RoundReviewDto } from "../lib/ipc";
 import { mapName } from "../lib/mapName";
-import { useMatchDetail, useMatches, useRoundTicks } from "../lib/queries";
+import { useMatchDetail, useMatches, useRoundReview, useRoundTicks } from "../lib/queries";
 import { radarImageUrl } from "../replay/coords";
 import type { MapCalibration } from "../replay/coords";
 import { buildTracks, stateAt } from "../replay/interp";
@@ -50,9 +51,12 @@ function useImage(url: string | null): HTMLImageElement | null {
   }, [url]);
 }
 
-/** Skeleton for the tape's [radar well][side rail] area, at (approximately)
- * final layout size (design-system.md §10: no layout shift on data
- * arrival) — shared by both loading branches below.
+/** Skeleton for the tape's [radar well][side rail][coach rail] area, at
+ * (approximately) final layout size (design-system.md §10: no layout shift
+ * on data arrival) — shared by both loading branches below. The coach rail
+ * column renders unconditionally here (not gated on the reviews fetch,
+ * which this function knows nothing about) so the outer loading state and
+ * the real 3-column layout never differ in shape.
  *
  * `standalone` marks this as its own screen-level loading state (the
  * round-tick reload, once the header/round-strip are already real content)
@@ -71,6 +75,9 @@ function PlayerAreaSkeleton({ standalone }: { standalone?: boolean } = {}) {
       <Skeleton kind="block" className="rpl-well-skeleton" />
       <div className="rpl-side">
         <Skeleton kind="card" count={2} />
+      </div>
+      <div className="rpl-coach-rail">
+        <Skeleton kind="card" count={1} />
       </div>
     </div>
   );
@@ -93,6 +100,9 @@ export function Replay() {
   const roundCount = d?.rounds.length ?? 0;
   const round = Math.min(Math.max(evidence.round, 1), Math.max(roundCount, 1));
   const ticks = useRoundTicks(matchId, round);
+  // One fetch serves the coach rail (this task) and the round-strip attention
+  // dots (Task 8) — both read the same RoundReviewDto[], threaded down.
+  const reviews = useRoundReview(matchId);
   const cal = useCalibration(d !== null);
   const mapCal = d && cal.data ? (cal.data[d.map] ?? null) : null;
 
@@ -176,6 +186,10 @@ export function Replay() {
           roundTicksData={ticks.data}
           evidenceTick={evidence.tick}
           focus={evidence.focus}
+          reviews={reviews.data}
+          reviewsLoading={reviews.isLoading}
+          reviewsError={reviews.isError}
+          onRound={setRound}
         />
       )}
     </div>
@@ -189,6 +203,10 @@ interface RoundPlayerProps {
   roundTicksData: import("../lib/ipc").RoundTicks;
   evidenceTick: number | null;
   focus: string[];
+  reviews: RoundReviewDto[] | undefined;
+  reviewsLoading: boolean;
+  reviewsError: boolean;
+  onRound: (round: number) => void;
 }
 
 function RoundPlayer({
@@ -198,6 +216,10 @@ function RoundPlayer({
   roundTicksData,
   evidenceTick,
   focus,
+  reviews,
+  reviewsLoading,
+  reviewsError,
+  onRound,
 }: RoundPlayerProps) {
   const roundInfo = d.rounds.find((r) => r.number === round) ?? null;
   const spec: TimelineSpec = useMemo(
@@ -291,6 +313,10 @@ function RoundPlayer({
   const [playing, setPlayingState] = useState(false);
   const [speed, setSpeedState] = useState<Speed>(1);
   const [fps, setFps] = useState(0);
+  // Task 9 consumes this (canvas annotation + focus dimming); held as a
+  // plain state setter here so its identity is stable across renders and
+  // the coach rail's effect dependency array stays honest.
+  const [, setActiveMoment] = useState<RailMomentDto | null>(null);
 
   const setPlaying = useCallback((v: boolean) => {
     playingRef.current = v;
@@ -404,6 +430,22 @@ function RoundPlayer({
             onJump={seek}
           />
         </aside>
+        {reviewsLoading ? (
+          <div className="rpl-coach-rail">
+            <Skeleton kind="card" count={1} />
+          </div>
+        ) : reviewsError || !reviews ? null : (
+          <CoachRail
+            reviews={reviews}
+            round={round}
+            spec={spec}
+            tickrate={d.tickrate}
+            displayTick={displayTick}
+            onJump={seek}
+            onRound={onRound}
+            onActiveMomentChange={setActiveMoment}
+          />
+        )}
       </div>
       <div className="rpl-transport">
         <Button
