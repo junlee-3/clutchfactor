@@ -145,6 +145,23 @@ impl Verdict {
     }
 }
 
+/// Inverse of `as_str` — needed by the command layer to reconstruct a
+/// `RoundReview` from its stored (already-`as_str`'d) DB row.
+impl std::str::FromStr for Verdict {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "won_it" => Verdict::WonIt,
+            "cost_you" => Verdict::CostYou,
+            "not_on_you" => Verdict::NotOnYou,
+            "traded" => Verdict::Traded,
+            "quiet" => Verdict::Quiet,
+            _ => return Err(()),
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Attention {
@@ -160,6 +177,21 @@ impl Attention {
             Attention::Dim => "dim",
             Attention::Bright => "bright",
         }
+    }
+}
+
+/// Inverse of `as_str` — needed by the command layer to reconstruct a
+/// `RoundReview` from its stored (already-`as_str`'d) DB row.
+impl std::str::FromStr for Attention {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "none" => Attention::None,
+            "dim" => Attention::Dim,
+            "bright" => Attention::Bright,
+            _ => return Err(()),
+        })
     }
 }
 
@@ -885,6 +917,25 @@ pub fn review_rounds(input: &RoundReviewInput, cfg: &DetectorConfig) -> Vec<Roun
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn verdict_and_attention_round_trip_through_str() {
+        for v in [
+            Verdict::WonIt,
+            Verdict::CostYou,
+            Verdict::NotOnYou,
+            Verdict::Traded,
+            Verdict::Quiet,
+        ] {
+            assert_eq!(v.as_str().parse::<Verdict>(), Ok(v));
+        }
+        assert!("bogus".parse::<Verdict>().is_err());
+
+        for a in [Attention::None, Attention::Dim, Attention::Bright] {
+            assert_eq!(a.as_str().parse::<Attention>(), Ok(a));
+        }
+        assert!("bogus".parse::<Attention>().is_err());
+    }
 
     fn rr(n: u32, start: i32, end: i32, winner: Side, ct: &[u64], t: &[u64]) -> ReviewRound {
         ReviewRound {
