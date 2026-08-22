@@ -306,20 +306,29 @@ fn insight_from_row(row: &cf_store::store::InsightRow) -> Option<cf_analysis::In
     })
 }
 
-/// Builds the narrator's per-match context (display names, score, tracked
-/// result, class-13 share) shared by `get_match_report` and
-/// `get_round_review`. `None` when the match doesn't exist.
-fn match_context(
-    store: &Store,
-    match_id: i64,
-) -> Result<Option<cf_narrator::MatchContext>, String> {
+/// Bundle of everything `get_match_report` and `get_round_review` both need
+/// out of a single pass over the store: the narrator's per-match context
+/// (display names, score, tracked result, class-13 share) plus the raw
+/// fields `get_match_report` also serializes directly onto `MatchReport`.
+/// Computing these once here — instead of once inline in `get_match_report`
+/// and again inside this helper — is the point: two call sites, one set of
+/// store reads.
+struct MatchCtxBundle {
+    ctx: cf_narrator::MatchContext,
+    death_classes: Vec<cf_store::store::DeathClassDbRow>,
+    tracked: Option<String>,
+    tracked_result: Option<String>,
+    class_13_share_pct: f32,
+}
+
+/// Builds the shared match-context bundle. `None` when the match doesn't
+/// exist.
+fn match_context(store: &Store, match_id: i64) -> Result<Option<MatchCtxBundle>, String> {
     let Some(detail) = store.match_detail(match_id).map_err(|e| e.to_string())? else {
         return Ok(None);
     };
-    let tracked_u64 = store
-        .tracked_steamid()
-        .map_err(|e| e.to_string())?
-        .and_then(|t| t.parse::<u64>().ok());
+    let tracked = store.tracked_steamid().map_err(|e| e.to_string())?;
+    let tracked_u64 = tracked.as_ref().and_then(|t| t.parse::<u64>().ok());
 
     let death_classes = store
         .death_classes_for_match(match_id)
@@ -338,7 +347,7 @@ fn match_context(
         .find(|m| m.id == match_id)
         .and_then(|m| m.tracked_result);
 
-    Ok(Some(cf_narrator::MatchContext {
+    let ctx = cf_narrator::MatchContext {
         map: detail.map.clone(),
         tracked: tracked_u64.unwrap_or(0),
         names: detail
@@ -347,8 +356,16 @@ fn match_context(
             .filter_map(|p| Some((p.steamid.parse::<u64>().ok()?, p.name.clone())))
             .collect(),
         score: (detail.score_a, detail.score_b),
-        tracked_result,
+        tracked_result: tracked_result.clone(),
         total_deaths: death_classes.len(),
+        class_13_share_pct,
+    };
+
+    Ok(Some(MatchCtxBundle {
+        ctx,
+        death_classes,
+        tracked,
+        tracked_result,
         class_13_share_pct,
     }))
 }
@@ -363,26 +380,14 @@ pub fn get_match_report(
     let Some(detail) = store.match_detail(match_id).map_err(|e| e.to_string())? else {
         return Ok(None);
     };
-    let tracked = store.tracked_steamid().map_err(|e| e.to_string())?;
-
-    let death_classes = store
-        .death_classes_for_match(match_id)
-        .map_err(|e| e.to_string())?;
-    let class_13 = death_classes.iter().filter(|d| d.class_id == 13).count();
-    let class_13_share_pct = if death_classes.is_empty() {
-        0.0
-    } else {
-        (class_13 as f32 / death_classes.len() as f32 * 1000.0).round() / 10.0
-    };
-
-    let tracked_result = store
-        .list_matches()
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|m| m.id == match_id)
-        .and_then(|m| m.tracked_result);
-
-    let Some(ctx) = match_context(&store, match_id)? else {
+    let Some(MatchCtxBundle {
+        ctx,
+        death_classes,
+        tracked,
+        tracked_result,
+        class_13_share_pct,
+    }) = match_context(&store, match_id)?
+    else {
         return Ok(None); // detail is already confirmed Some above
     };
 
@@ -1172,24 +1177,27 @@ pub fn get_round_review(
             .map_err(|e| e.to_string())?;
     }
 
-    let Some(ctx) = match_context(&store, match_id)? else {
+    let Some(MatchCtxBundle { ctx, .. }) = match_context(&store, match_id)? else {
         return Ok(vec![]);
     };
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
-        let header: RoundHeader =
-            serde_json::from_str(&row.header_json).map_err(|e| e.to_string())?;
-        let moments: Vec<Moment> =
-            serde_json::from_str(&row.moments_json).map_err(|e| e.to_string())?;
-        let verdict: Verdict = row
-            .verdict
-            .parse()
-            .map_err(|_| format!("unknown verdict: {}", row.verdict))?;
-        let attention: Attention = row
-            .attention
-            .parse()
-            .map_err(|_| format!("unknown attention: {}", row.attention))?;
+        // A single corrupt row (bad JSON, or an unrecognized verdict/
+        // attention string) must not blank the whole rail — skip just that
+        // round rather than erroring the entire response.
+        let Ok(header) = serde_json::from_str::<RoundHeader>(&row.header_json) else {
+            continue;
+        };
+        let Ok(moments) = serde_json::from_str::<Vec<Moment>>(&row.moments_json) else {
+            continue;
+        };
+        let Ok(verdict) = row.verdict.parse::<Verdict>() else {
+            continue;
+        };
+        let Ok(attention) = row.attention.parse::<Attention>() else {
+            continue;
+        };
 
         let review = RoundReview {
             round: row.round,
@@ -1308,12 +1316,12 @@ fn threshold_rows(cfg: &cf_analysis::DetectorConfig) -> Vec<ThresholdRow> {
             "demos per map",
         ),
         row(
-            "rbr.attention_threshold_p",
+            "Coach rail attention threshold",
             format!("{}", cfg.rbr.attention_threshold_p),
-            "win-prob swing that earns a round the coach rail",
+            "win-prob Δp",
         ),
         row(
-            "rbr.max_rounds",
+            "Coach rail max rounds",
             format!("{}", cfg.rbr.max_rounds),
             "rounds",
         ),
