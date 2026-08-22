@@ -14,7 +14,7 @@ interface Props {
 export function RoundStripReport({ matchId, rounds }: Props) {
   const navigate = useNavigate();
   return (
-    <div className="report-round-strip" role="list" aria-label="Rounds">
+    <div className="rpt-round-strip" role="list" aria-label="Rounds">
       {rounds.map((r) => {
         const result = roundResult(r);
         return (

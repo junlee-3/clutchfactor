@@ -349,24 +349,37 @@
 /* Report (Report.tsx) — design-system.md §9, "the coach's write-up"       */
 /* ---------------------------------------------------------------------- */
 
-.report-shell {
-  max-width: 1180px;
+/* rpt-* container names are deliberately fresh (not report-shell/-main/
+   -feed/-side/-round-strip): the legacy src/styles.css still defines live
+   rules under those exact names (:662-722) and loads before this file, so
+   reusing them would let un-restated legacy properties (raw-px padding,
+   the 1180px max-width magic number) cascade through silently. Every
+   property these rules need is restated here from tokens — zero reliance
+   on any ancestor or legacy rule. */
+.rpt-shell {
+  /* editorial content width (§7) + gap + 300px side rail — Report is
+     rail-mode but reads editorially */
+  max-width: calc(960px + var(--s6) + 300px);
   margin: 0 auto;
 }
 
-.report-main {
+.rpt-main {
   display: flex;
   align-items: flex-start;
   gap: var(--s6);
+  /* Immersive gutters, restated (not inherited): side breathing room plus
+     generous scroll room past the last card. */
+  padding: 0 var(--s4) var(--s8);
 }
 
-.report-feed {
+.rpt-feed {
   flex: 1;
   min-width: 0;
 }
 
-/* Fixed side rail (charter: holds at 1200×760, spec §9). */
-.report-side {
+/* Fixed side rail (charter: holds at 1200×760, spec §9) — 300px is a
+   plan-named value, not a token. */
+.rpt-side {
   width: 300px;
   flex-shrink: 0;
   display: flex;
@@ -411,8 +424,11 @@
   color: var(--chalk);
 }
 
-/* Round strip — a compact mono grid (frontend-design pass). */
-.report-round-strip {
+/* Round strip — a compact mono grid (frontend-design pass). rpt- prefixed
+   for the same reason as the containers above: legacy styles.css:717 has a
+   live `.report-round-strip` rule this would otherwise collide with, even
+   though every property here was already fully restated. */
+.rpt-round-strip {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s1);

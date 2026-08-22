@@ -28,14 +28,14 @@ export function Report() {
     // Skeletons at (approximately) final layout size, per §10 — no bare
     // loading sentence, no shift when the real header/lead/cards land.
     return (
-      <div className="report-shell">
+      <div className="rpt-shell">
         <Skeleton kind="block" className="report-header-skeleton" />
-        <div className="report-main">
-          <div className="report-feed">
+        <div className="rpt-main">
+          <div className="rpt-feed">
             <Skeleton kind="block" className="report-lead-skeleton" />
             <Skeleton kind="card" count={3} />
           </div>
-          <div className="report-side">
+          <div className="rpt-side">
             <Skeleton kind="card" count={2} />
           </div>
         </div>
@@ -57,7 +57,7 @@ export function Report() {
   const groups = groupInsights(r.insights);
 
   return (
-    <div className="report-shell">
+    <div className="rpt-shell">
       <MatchHeader
         map={r.map}
         score={{ a: r.score_a, b: r.score_b }}
@@ -77,8 +77,8 @@ export function Report() {
         crossLink={{ to: `/replay/${matchId}`, label: "Watch replay →" }}
       />
 
-      <div className="report-main">
-        <div className="report-feed">
+      <div className="rpt-main">
+        <div className="rpt-feed">
           {r.summary && (
             // The editorial lead (design-system.md §9): the coach's write-up
             // in its own voice, the one place the serif speaks at length. A
@@ -115,7 +115,7 @@ export function Report() {
           ))}
         </div>
 
-        <aside className="report-side">
+        <aside className="rpt-side">
           <ClassBreakdown
             rows={r.death_classes}
             class13SharePct={r.class_13_share_pct}
