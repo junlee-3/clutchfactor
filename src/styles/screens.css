@@ -346,6 +346,248 @@
 }
 
 /* ---------------------------------------------------------------------- */
+/* Report (Report.tsx) — design-system.md §9, "the coach's write-up"       */
+/* ---------------------------------------------------------------------- */
+
+.report-shell {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.report-main {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s6);
+}
+
+.report-feed {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Fixed side rail (charter: holds at 1200×760, spec §9). */
+.report-side {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.report-header-skeleton {
+  height: 56px;
+  margin-bottom: var(--s4);
+}
+
+.report-lead-skeleton {
+  height: 88px;
+  margin-bottom: var(--s6);
+}
+
+/* The editorial lead (design-system.md §5, §9): the coach's write-up in
+   its own voice — "the one place the serif speaks at length". A solid 2px
+   chalk edge, not dashed: this is furniture around a quote, not a claim
+   you click through to the tape. */
+.report-lead {
+  margin: 0 0 var(--s6);
+  padding-left: var(--s4);
+  border-left: 2px solid var(--chalk);
+}
+
+.report-lead-title {
+  margin: 0 0 var(--s2);
+  font-style: italic;
+  color: var(--chalk-bright);
+}
+
+/* Body copy stays on the --text-body token (size/line-height) — only the
+   face and slant swap to Fraunces italic, so the "speaks at length" moment
+   never leaves the app's seven-size scale (§3, §9). */
+.report-lead-body {
+  margin: 0;
+  font: var(--text-body);
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--chalk);
+}
+
+/* Round strip — a compact mono grid (frontend-design pass). */
+.report-round-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  margin-bottom: var(--s6);
+}
+
+.report-round-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  width: 36px;
+  padding: var(--s1) 0;
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--chalk);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.report-round-cell:hover {
+  border-color: var(--line-strong);
+}
+
+/* Win/loss surface tints from the §2 derived tokens — never a fresh
+   color-mix here, the derivation lives once in tokens.css. */
+.report-round-cell-won {
+  background: var(--surface-win);
+  border-color: var(--border-win);
+}
+
+.report-round-cell-won:hover {
+  border-color: var(--win);
+}
+
+.report-round-cell-lost {
+  background: var(--surface-loss);
+  border-color: var(--border-loss);
+}
+
+.report-round-cell-lost:hover {
+  border-color: var(--loss);
+}
+
+/* Insight feed — one Card per insight (InsightCard.tsx), grouped by
+   category under the app's one eyebrow label style (§3 type-micro). */
+.rpt-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin-bottom: var(--s6);
+}
+
+.rpt-section-title {
+  margin: 0;
+}
+
+/* Shared Card interior layout — InsightCard and HabitCard are the same
+   shape: title + count chip, body, evidence chips. */
+.rpt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s3);
+}
+
+.rpt-head h4 {
+  margin: 0;
+  min-width: 0;
+}
+
+.rpt-body {
+  margin: var(--s2) 0 0;
+  color: var(--chalk);
+}
+
+.rpt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+
+/* Habits side-rail section — one Card per habit (HabitCard.tsx), capped at
+   4 by Report.tsx. */
+.report-habits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+/* The rail is 300px wide — EmptyState's editorial padding (§6) is tuned for
+   a full content column, so it's turned down here to fit the narrower box
+   without feeling like dead space. */
+.report-habits .ui-empty {
+  padding: var(--s5) var(--s4);
+}
+
+/* Class breakdown bars (ClassBreakdown.tsx) — dataviz pass: single
+   baseline, 4px rounded data-end / square at the baseline, count labeled
+   directly at the tip. */
+.rpt-cb-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: var(--s2);
+  row-gap: var(--s1);
+  align-items: baseline;
+  margin-bottom: var(--s2);
+}
+
+.rpt-cb-label {
+  color: var(--chalk);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rpt-cb-count {
+  color: var(--chalk-dim);
+  text-align: right;
+}
+
+.rpt-cb-track {
+  grid-column: 1 / -1;
+  height: 6px;
+  background: var(--bg2);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.rpt-cb-fill {
+  height: 100%;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+
+/* Preventable classes: chalk — the coach's actionable material. */
+.rpt-cb-fill-preventable {
+  background: var(--chalk);
+}
+
+/* Class 13 ONLY: win-green, the one "good news" status (a fair duel lost
+   on mechanics, not a mistake) — never reused for any other class. */
+.rpt-cb-fill-good {
+  background: var(--win);
+}
+
+/* Hygiene/unclassified: chalk-faint, quieter without a border drawn around
+   it (a border-as-separator is the dataviz anti-pattern the legacy
+   .cb-hygiene committed). */
+.rpt-cb-fill-hygiene {
+  background: var(--chalk-faint);
+}
+
+.rpt-cb-row:hover .rpt-cb-fill-preventable {
+  background: var(--chalk-bright);
+}
+
+.rpt-cb-row:hover .rpt-cb-fill-hygiene {
+  background: var(--chalk-dim);
+}
+
+.rpt-cb-note {
+  margin: var(--s3) 0 0;
+  color: var(--chalk);
+}
+
+.rpt-cb-honesty {
+  margin: var(--s2) 0 0;
+  color: var(--chalk-dim);
+}
+
+/* ---------------------------------------------------------------------- */
 /* Catch-all (App.tsx `*` route)                                           */
 /* ---------------------------------------------------------------------- */
 
