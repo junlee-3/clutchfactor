@@ -18,6 +18,7 @@ import { radarImageUrl } from "../replay/coords";
 import type { MapCalibration } from "../replay/coords";
 import { buildTracks, stateAt } from "../replay/interp";
 import type { PlayerTrack } from "../replay/interp";
+import { overlayWindow } from "../replay/rail";
 import { ReplayCanvas } from "../replay/ReplayCanvas";
 import type { BombState, Scene } from "../replay/Renderer";
 import { utilityWindows } from "../replay/utility";
@@ -334,10 +335,12 @@ function RoundPlayer({
   const [playing, setPlayingState] = useState(false);
   const [speed, setSpeedState] = useState<Speed>(1);
   const [fps, setFps] = useState(0);
-  // Task 9 consumes this (canvas annotation + focus dimming); held as a
-  // plain state setter here so its identity is stable across renders and
-  // the coach rail's effect dependency array stays honest.
-  const [, setActiveMoment] = useState<RailMomentDto | null>(null);
+  // The canvas annotation + focus-dimming override (issue #9 §5): whichever
+  // moment CoachRail says is "active" as displayTick moves. Drives the
+  // overlay window check below — this state's setter identity is stable
+  // (useState), so CoachRail's `onActiveMomentChange` effect dependency
+  // stays honest across renders.
+  const [activeMoment, setActiveMoment] = useState<RailMomentDto | null>(null);
 
   const setPlaying = useCallback((v: boolean) => {
     playingRef.current = v;
@@ -356,7 +359,30 @@ function RoundPlayer({
     [spec],
   );
 
-  const focusSet = useMemo(() => new Set(focus), [focus]);
+  // While playback sits inside a tracked_death moment's overlay window
+  // (-5s/+2s around the death, per rail.ts's `overlayWindow`), the coach
+  // rail's canvas annotation takes over both dimming and the chalk diagram;
+  // outside it (or with no active death moment), the URL's evidence focus
+  // is what's dimmed and there's no annotation. Round change remounts this
+  // whole component (the `key` on RoundPlayer in Replay()), which resets
+  // `activeMoment` to null — overrides never leak across rounds.
+  const inDeathWindow = useMemo(() => {
+    if (!activeMoment || activeMoment.kind !== "tracked_death") return false;
+    const w = overlayWindow(activeMoment.tick, d.tickrate);
+    return displayTick >= w.start && displayTick <= w.end;
+  }, [activeMoment, displayTick, d.tickrate]);
+
+  const focusSet = useMemo(
+    () => new Set(inDeathWindow ? activeMoment!.focus : focus),
+    [inDeathWindow, activeMoment, focus],
+  );
+
+  const annotation = useMemo(() => {
+    if (!inDeathWindow) return null;
+    const [victimId, killerId] = activeMoment!.focus;
+    return victimId ? { victimId, killerId: killerId ?? null } : null;
+  }, [inDeathWindow, activeMoment]);
+
   const getScene = useCallback(
     (): Scene => ({
       cal: mapCal,
@@ -372,6 +398,7 @@ function RoundPlayer({
       tick: tickRef.current,
       tickrate: d.tickrate,
       focus: focusSet,
+      annotation,
     }),
     [
       mapCal,
@@ -386,6 +413,7 @@ function RoundPlayer({
       bomb,
       d.tickrate,
       focusSet,
+      annotation,
     ],
   );
 
