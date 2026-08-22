@@ -76,9 +76,9 @@ function PlayerAreaSkeleton({ standalone }: { standalone?: boolean } = {}) {
       <div className="rpl-side">
         <Skeleton kind="card" count={2} />
       </div>
-      <div className="rpl-coach-rail">
+      <aside className="rpl-coach-rail">
         <Skeleton kind="card" count={1} />
-      </div>
+      </aside>
     </div>
   );
 }
@@ -431,9 +431,9 @@ function RoundPlayer({
           />
         </aside>
         {reviewsLoading ? (
-          <div className="rpl-coach-rail">
+          <aside className="rpl-coach-rail">
             <Skeleton kind="card" count={1} />
-          </div>
+          </aside>
         ) : reviewsError || !reviews ? null : (
           <CoachRail
             reviews={reviews}

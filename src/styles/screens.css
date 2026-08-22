@@ -1015,6 +1015,10 @@
   background: var(--bg2);
 }
 
+.rpl-rail-moment-active:hover {
+  border-left-color: var(--chalk-bright);
+}
+
 .rpl-rail-note {
   margin-top: var(--s3);
   padding-top: var(--s3);
