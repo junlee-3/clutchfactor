@@ -11,14 +11,14 @@ import { MatchHeader } from "../components/ui/MatchHeader";
 import { Segmented } from "../components/ui/Segmented";
 import { Skeleton } from "../components/ui/Skeleton";
 import { parseEvidenceParams } from "../lib/evidence";
-import type { BombInfo, KillInfo, MatchDetail, RailMomentDto, RoundReviewDto } from "../lib/ipc";
+import type { BombInfo, KillInfo, MatchDetail, RoundReviewDto } from "../lib/ipc";
 import { mapName } from "../lib/mapName";
 import { useMatchDetail, useMatches, useRoundReview, useRoundTicks } from "../lib/queries";
 import { radarImageUrl } from "../replay/coords";
 import type { MapCalibration } from "../replay/coords";
 import { buildTracks, stateAt } from "../replay/interp";
 import type { PlayerTrack } from "../replay/interp";
-import { overlayWindow } from "../replay/rail";
+import { annotationMomentIndex } from "../replay/rail";
 import { ReplayCanvas } from "../replay/ReplayCanvas";
 import type { BombState, Scene } from "../replay/Renderer";
 import { utilityWindows } from "../replay/utility";
@@ -335,12 +335,6 @@ function RoundPlayer({
   const [playing, setPlayingState] = useState(false);
   const [speed, setSpeedState] = useState<Speed>(1);
   const [fps, setFps] = useState(0);
-  // The canvas annotation + focus-dimming override (issue #9 §5): whichever
-  // moment CoachRail says is "active" as displayTick moves. Drives the
-  // overlay window check below — this state's setter identity is stable
-  // (useState), so CoachRail's `onActiveMomentChange` effect dependency
-  // stays honest across renders.
-  const [activeMoment, setActiveMoment] = useState<RailMomentDto | null>(null);
 
   const setPlaying = useCallback((v: boolean) => {
     playingRef.current = v;
@@ -359,29 +353,46 @@ function RoundPlayer({
     [spec],
   );
 
-  // While playback sits inside a tracked_death moment's overlay window
-  // (-5s/+2s around the death, per rail.ts's `overlayWindow`), the coach
-  // rail's canvas annotation takes over both dimming and the chalk diagram;
-  // outside it (or with no active death moment), the URL's evidence focus
-  // is what's dimmed and there's no annotation. Round change remounts this
-  // whole component (the `key` on RoundPlayer in Replay()), which resets
-  // `activeMoment` to null — overrides never leak across rounds.
-  const inDeathWindow = useMemo(() => {
-    if (!activeMoment || activeMoment.kind !== "tracked_death") return false;
-    const w = overlayWindow(activeMoment.tick, d.tickrate);
-    return displayTick >= w.start && displayTick <= w.end;
-  }, [activeMoment, displayTick, d.tickrate]);
+  // This round's own review moments, read directly off the `reviews` fetch
+  // this component already holds — decoupled from CoachRail's own
+  // `activeMomentIndex` (last moment with tick <= displayTick), which can
+  // only become true AT OR AFTER a moment's tick and therefore can never be
+  // active during the -5s pre-roll. That pre-roll is the entire point of
+  // the overlay window: showing the play develop BEFORE the death, while
+  // the victim is still alive (issue #9 §5's mockup frame). CoachRail's own
+  // highlight (the bolded moment in its list) is untouched by this — it
+  // still uses `activeMomentIndex` for that unrelated purpose.
+  const review = useMemo(
+    () => reviews?.find((r) => r.round === round) ?? null,
+    [reviews, round],
+  );
+  const moments = useMemo(() => review?.moments ?? [], [review]);
 
+  // Whichever tracked_death moment's overlay window (-5s/+2s around the
+  // death, per rail.ts's `overlayWindow`) CONTAINS displayTick right now —
+  // by containment, not "most recently passed." Round change remounts this
+  // whole component (the `key` on RoundPlayer in Replay()), which resets
+  // `displayTick` back to the round start — overrides never leak across
+  // rounds.
+  const annotationIdx = useMemo(
+    () => annotationMomentIndex(moments, displayTick, d.tickrate),
+    [moments, displayTick, d.tickrate],
+  );
+  const annotationMoment = annotationIdx >= 0 ? moments[annotationIdx] : null;
+
+  // While inside that window, the canvas annotation takes over both dimming
+  // and the chalk diagram; outside it (or with no active death moment), the
+  // URL's evidence focus is what's dimmed and there's no annotation.
   const focusSet = useMemo(
-    () => new Set(inDeathWindow ? activeMoment!.focus : focus),
-    [inDeathWindow, activeMoment, focus],
+    () => new Set(annotationMoment ? annotationMoment.focus : focus),
+    [annotationMoment, focus],
   );
 
   const annotation = useMemo(() => {
-    if (!inDeathWindow) return null;
-    const [victimId, killerId] = activeMoment!.focus;
+    if (!annotationMoment) return null;
+    const [victimId, killerId] = annotationMoment.focus;
     return victimId ? { victimId, killerId: killerId ?? null } : null;
-  }, [inDeathWindow, activeMoment]);
+  }, [annotationMoment]);
 
   const getScene = useCallback(
     (): Scene => ({
@@ -492,7 +503,6 @@ function RoundPlayer({
             displayTick={displayTick}
             onJump={seek}
             onRound={onRound}
-            onActiveMomentChange={setActiveMoment}
           />
         )}
       </div>

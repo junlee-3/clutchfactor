@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   activeMomentIndex,
+  annotationMomentIndex,
   nextFlagged,
   overlayWindow,
   prevFlagged,
@@ -86,5 +87,54 @@ describe("overlayWindow", () => {
   it("never produces a negative start below the moment tick minus the window", () => {
     // No clamping to 0 here — that's the caller's job when seeking ticks.
     expect(overlayWindow(100, 64)).toEqual({ start: -220, end: 228 });
+  });
+});
+
+describe("annotationMomentIndex", () => {
+  const tickrate = 64;
+  // Far enough apart (10,000 ticks) that their individual windows
+  // (-320/+128 ticks) never overlap — isolates the containment check from
+  // the nearest-wins tie-break, which gets its own dedicated moments below.
+  const moments = [
+    { tick: 10_000, kind: "tracked_death" },
+    { tick: 20_000, kind: "tracked_death" },
+  ];
+
+  it("hits the pre-roll: 3s before the death tick, victim still alive", () => {
+    // The whole point of the fix — this was unreachable via activeMomentIndex.
+    expect(annotationMomentIndex(moments, 10_000 - 3 * tickrate, tickrate)).toBe(0);
+  });
+
+  it("hits the post window: 1s after the death tick", () => {
+    expect(annotationMomentIndex(moments, 10_000 + 1 * tickrate, tickrate)).toBe(0);
+  });
+
+  it("is -1 outside both edges", () => {
+    // 6s before: past the 5s pre-roll boundary.
+    expect(annotationMomentIndex(moments, 10_000 - 6 * tickrate, tickrate)).toBe(-1);
+    // 3s after: past the 2s post-roll boundary.
+    expect(annotationMomentIndex(moments, 10_000 + 3 * tickrate, tickrate)).toBe(-1);
+  });
+
+  it("picks the nearer moment when two windows overlap", () => {
+    // 100 ticks (~1.56s) apart at 64 tickrate — well inside each other's
+    // 5s pre-roll, so both windows contain ticks between them.
+    const overlapping = [
+      { tick: 10_000, kind: "tracked_death" },
+      { tick: 10_100, kind: "tracked_death" },
+    ];
+    // Closer to the first moment (30 vs 70 ticks away).
+    expect(annotationMomentIndex(overlapping, 10_030, tickrate)).toBe(0);
+    // Closer to the second moment (70 vs 30 ticks away).
+    expect(annotationMomentIndex(overlapping, 10_070, tickrate)).toBe(1);
+  });
+
+  it("ignores non-death kinds", () => {
+    const mixed = [{ tick: 10_000, kind: "utility_wasted" }];
+    expect(annotationMomentIndex(mixed, 10_000, tickrate)).toBe(-1);
+  });
+
+  it("is -1 for an empty moment list", () => {
+    expect(annotationMomentIndex([], 10_000, tickrate)).toBe(-1);
   });
 });

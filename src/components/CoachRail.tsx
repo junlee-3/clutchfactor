@@ -1,5 +1,4 @@
-import { useEffect } from "react";
-import type { RailMomentDto, RoundReviewDto } from "../lib/ipc";
+import type { RoundReviewDto } from "../lib/ipc";
 import { activeMomentIndex, nextFlagged, prevFlagged } from "../replay/rail";
 import { fmtClock } from "../replay/timeline";
 import type { TimelineSpec } from "../replay/timeline";
@@ -15,7 +14,6 @@ interface Props {
   displayTick: number;
   onJump: (tick: number) => void;
   onRound: (round: number) => void;
-  onActiveMomentChange: (m: RailMomentDto | null) => void;
 }
 
 /** Verdict -> extra Chip class. Only the two measured-impact verdicts get a
@@ -53,21 +51,19 @@ export function CoachRail({
   displayTick,
   onJump,
   onRound,
-  onActiveMomentChange,
 }: Props) {
   const review = reviews.find((r) => r.round === round) ?? null;
   const moments = review?.moments ?? [];
+  // This rail's own "which moment just played" highlight (the bolded row in
+  // the list below) — last moment with tick <= displayTick. Kept as-is:
+  // the canvas annotation/focus override (Replay.tsx) no longer derives
+  // from this; it computes `annotationMomentIndex` (window containment,
+  // reachable during the -5s pre-roll) directly off the round's own review
+  // moments instead. This highlight is a different, simpler question
+  // ("what did we just pass") and stays exactly as it was.
   const activeIdx = activeMomentIndex(moments, displayTick);
-  const activeMoment = moments[activeIdx] ?? null;
   const prev = prevFlagged(reviews, round);
   const next = nextFlagged(reviews, round);
-
-  // Fires whenever playback crosses into a new moment (or leaves them all,
-  // -1 -> null) — Task 9 drives the canvas annotation + focus dimming off
-  // this; wired here regardless so the contract is live from day one.
-  useEffect(() => {
-    onActiveMomentChange(activeMoment);
-  }, [activeMoment, onActiveMomentChange]);
 
   if (!review) return null;
 
