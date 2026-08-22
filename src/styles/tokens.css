@@ -2,8 +2,8 @@
    Every custom property here is copied verbatim from
    docs/design/design-system.md §2-§4 (color, type, space/radius/motion).
    Canvas/TS code reads these same values via src/lib/theme.ts — no second
-   color system. This file loads AFTER the legacy src/styles.css (see
-   src/main.tsx import order) so these :root values win app-wide. */
+   color system. This file loads first (see src/main.tsx import order);
+   base.css, components.css and screens.css all build on these tokens. */
 
 :root {
   color-scheme: dark; /* native controls render dark */
@@ -62,11 +62,4 @@
   --shadow-float: 0 8px 24px rgb(0 0 0 / 0.45); /* toasts, menus */
 
   --dur-fast: 120ms; --dur: 200ms; --ease: cubic-bezier(0.2, 0, 0, 1);
-
-  /* Legacy aliases — styles.css consumers during migration; Task 11 deletes
-     styles.css, keep the aliases until then. */
-  --text: var(--chalk);
-  --text-dim: var(--chalk-dim);
-  --mono: var(--font-mono);
-  --sans: var(--font-sans);
 }

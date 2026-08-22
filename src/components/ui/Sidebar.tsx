@@ -1,8 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { useTrackedPlayer } from "../../lib/queries";
+import type { ShellMode } from "../../lib/shellMode";
 import { Chip } from "./Chip";
-
-export type ShellMode = "full" | "rail";
 
 interface NavItem {
   to: string;

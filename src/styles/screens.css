@@ -1,8 +1,8 @@
 /* ClutchFactor shell & screen composition (design-system.md §7-§8). Thin:
    layout only, everything else is tokens.css + components.css. Loads last
-   (see src/main.tsx import order) so it wins over the legacy styles.css
-   .app-shell/.topbar rules it replaces (those go dead here — Task 11
-   sweeps styles.css). */
+   (see src/main.tsx import order). The legacy src/styles.css this replaced
+   (.app-shell/.topbar and friends) was deleted in Task 11 — this file is
+   now the only source. */
 
 /* ---------------------------------------------------------------------- */
 /* Shell (AppShell.tsx)                                                    */
@@ -349,13 +349,13 @@
 /* Report (Report.tsx) — design-system.md §9, "the coach's write-up"       */
 /* ---------------------------------------------------------------------- */
 
-/* rpt-* container names are deliberately fresh (not report-shell/-main/
-   -feed/-side/-round-strip): the legacy src/styles.css still defines live
-   rules under those exact names (:662-722) and loads before this file, so
-   reusing them would let un-restated legacy properties (raw-px padding,
-   the 1180px max-width magic number) cascade through silently. Every
-   property these rules need is restated here from tokens — zero reliance
-   on any ancestor or legacy rule. */
+/* rpt-* container names were deliberately fresh (not report-shell/-main/
+   -feed/-side/-round-strip): the deleted legacy src/styles.css defined
+   live rules under those exact names, so reusing them would have let
+   un-restated legacy properties (raw-px padding, the 1180px max-width
+   magic number) cascade through silently. Every property these rules
+   need is restated here from tokens — zero reliance on any ancestor
+   rule. */
 .rpt-shell {
   /* editorial content width (§7) + gap + 300px side rail — Report is
      rail-mode but reads editorially */
@@ -425,9 +425,10 @@
 }
 
 /* Round strip — a compact mono grid (frontend-design pass). rpt- prefixed
-   for the same reason as the containers above: legacy styles.css:717 has a
-   live `.report-round-strip` rule this would otherwise collide with, even
-   though every property here was already fully restated. */
+   for the same reason as the containers above: the deleted legacy
+   styles.css had a `.report-round-strip` rule this would otherwise have
+   collided with, even though every property here was already fully
+   restated. */
 .rpt-round-strip {
   display: flex;
   flex-wrap: wrap;
@@ -608,14 +609,16 @@
 /* design-system.md §9, "the tape"                                         */
 /* ---------------------------------------------------------------------- */
 
-/* rpl-* names are deliberately fresh, same reasoning as rpt-* above: legacy
-   src/styles.css still defines live rules under .radar-wrap/.replay-*/
-   .roster-*/.killfeed/.kill-row/.transport/.speeds/.speed-btn/.scrubber*/
-   .clock/.pips/.pip*/.round-strip/.round-chip/.side-*/.hp-track/.hp-fill/
-   .fps-meter/.centered/.btn-primary and loads before this file — reusing
-   any of those names would let raw-px sizing and the --ct accent (the
-   legacy "accent is a game hue" mistake §2 corrects) cascade through
-   silently. Every rule below restates its own properties from tokens. */
+/* rpl-* names were deliberately fresh, same reasoning as the rpt- section
+   above: the deleted legacy src/styles.css defined live rules under
+   radar-wrap, replay-, roster-, killfeed, kill-row, transport, speeds,
+   speed-btn, scrubber, clock, pips, pip, round-strip, round-chip, side-,
+   hp-track, hp-fill, fps-meter, centered and btn-primary (note: a literal
+   star-slash inside this comment would close it early, so class names
+   here drop the trailing glob star). Reusing any of those names would
+   have let raw-px sizing and the --ct accent (the legacy "accent is a
+   game hue" mistake §2 corrects) cascade through silently. Every rule
+   below restates its own properties from tokens. */
 
 /* height (not min-height): .shell-content-immersive gives this a definite
    100% to compute against. A mere min-height leaves this block auto-sized —
@@ -974,10 +977,12 @@
 /* Trends (Trends.tsx) — design-system.md §9, "the instrument panel"       */
 /* ---------------------------------------------------------------------- */
 
-/* trends-* names are deliberately fresh, same reasoning as rpt-*/rpl-*
-   above: legacy styles.css already owns .trend-*/.ribbon-cell/.map-chips/
-   .phase-chip, and both files load together until the milestone deletes
-   styles.css — reusing a name would double-apply rules. */
+/* trends-* names were deliberately fresh, same reasoning as the rpt- and
+   rpl- sections above: the deleted legacy styles.css owned trend-,
+   ribbon-cell, map-chips and phase-chip (note: a literal star-slash inside
+   this comment would close it early, so class names here drop the
+   trailing glob star) — reusing a name would have double-applied
+   rules. */
 
 .trends-head {
   display: flex;
@@ -1183,15 +1188,14 @@
 /* "the archive"                                                           */
 /* ---------------------------------------------------------------------- */
 
-/* cps- names are deliberately fresh, same reasoning as the rpt-, rpl-,
-   trends- sections above: legacy src/styles.css still defines live rules
-   under corpus-, gate-, grid-table, viewer-, side-chip, phase-, map-select
-   and heatmap- (note: a literal star-slash inside this comment would close
-   it early, so class names here drop the trailing glob star) and loads
-   before this file — reusing any of those names would let un-restated
-   legacy properties (raw-px sizing, the flat --btn-primary accent) cascade
-   through silently. Every rule below restates its own properties from
-   tokens. */
+/* cps- names were deliberately fresh, same reasoning as the rpt-, rpl-,
+   trends- sections above: the deleted legacy src/styles.css defined live
+   rules under corpus-, gate-, grid-table, viewer-, side-chip, phase-,
+   map-select and heatmap- (note: a literal star-slash inside this comment
+   would close it early, so class names here drop the trailing glob star).
+   Reusing any of those names would have let un-restated legacy properties
+   (raw-px sizing, the flat --btn-primary accent) cascade through
+   silently. Every rule below restates its own properties from tokens. */
 
 .cps-head {
   display: flex;
@@ -1388,10 +1392,10 @@
 /* Settings (Settings.tsx) — design-system.md §9, "the desk drawer"        */
 /* ---------------------------------------------------------------------- */
 
-/* stg- names are deliberately fresh, same reasoning as the cps- section
+/* stg- names were deliberately fresh, same reasoning as the cps- section
    above (see its comment for why this one avoids the class-name glob star):
-   legacy src/styles.css still defines live rules under settings- and
-   grid-table, and loads before this file. */
+   the deleted legacy src/styles.css defined live rules under settings- and
+   grid-table. */
 
 .stg-head {
   margin-bottom: var(--s6);

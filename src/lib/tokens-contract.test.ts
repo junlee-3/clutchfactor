@@ -14,12 +14,10 @@ const REQUIRED = [
   "--s1", "--s2", "--s3", "--s4", "--s5", "--s6", "--s7", "--s8",
   "--r-sm", "--r-md", "--r-lg", "--r-full",
   "--shadow-float", "--dur-fast", "--dur", "--ease",
-  // legacy aliases styles.css still consumes during migration
-  "--text:", "--text-dim:", "--mono:", "--sans:",
 ];
 
 describe("tokens.css contract", () => {
-  it("defines every token the system and legacy styles depend on", () => {
+  it("defines every token the design system depends on", () => {
     for (const t of REQUIRED) expect(css, `missing ${t}`).toContain(t);
   });
   it("keeps game hues at their calibrated values", () => {
