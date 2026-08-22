@@ -6,6 +6,7 @@
 mod templates;
 
 pub mod callouts;
+pub mod rail;
 
 pub use templates::narrate_habit;
 

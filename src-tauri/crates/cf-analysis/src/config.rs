@@ -224,6 +224,44 @@ fn d_phase_mid_end() -> f32 {
     50.0
 }
 
+/// Issue #9 round selection + attention thresholds. Impact is a win-prob
+/// delta (0..1 scale) from the tracked player's side. Tunable
+/// approximations — calibrated during the V1.2 §12 hand-verification pass.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RbrCfg {
+    /// A round is selected for coaching when |impact| ≥ this (dim dot).
+    #[serde(default = "d_rbr_attention_p")]
+    pub attention_threshold_p: f32,
+    /// Selected rounds at/above this show the bright "pivotal" dot.
+    #[serde(default = "d_rbr_pivotal_p")]
+    pub pivotal_threshold_p: f32,
+    /// Cap on surfaced rounds (threshold-with-cap, never fixed top-N).
+    #[serde(default = "d_rbr_max_rounds")]
+    pub max_rounds: usize,
+    /// Cap on moments per round (kept in tick order).
+    #[serde(default = "d_rbr_max_moments")]
+    pub max_moments: usize,
+    /// Rules that positively establish "Not on you" (issue #9: never
+    /// inferred from the absence of flags).
+    #[serde(default = "d_rbr_exculpatory")]
+    pub exculpatory_rules: Vec<String>,
+}
+fn d_rbr_attention_p() -> f32 {
+    0.18
+}
+fn d_rbr_pivotal_p() -> f32 {
+    0.35
+}
+fn d_rbr_max_rounds() -> usize {
+    6
+}
+fn d_rbr_max_moments() -> usize {
+    6
+}
+fn d_rbr_exculpatory() -> Vec<String> {
+    vec!["H2_BAITED_TRADE".to_string()]
+}
+
 /// §5A cross-demo habit promotion (+ spec H4_REPEAT_HOTSPOT parameters).
 #[derive(Debug, Clone, Deserialize)]
 pub struct HabitCfg {
@@ -406,7 +444,8 @@ default_impl!(
     HabitCfg,
     GeneralCfg,
     SeverityCfg,
-    PhaseCfg
+    PhaseCfg,
+    RbrCfg
 );
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -437,6 +476,8 @@ pub struct DetectorConfig {
     pub severity: SeverityCfg,
     #[serde(default)]
     pub phase: PhaseCfg,
+    #[serde(default)]
+    pub rbr: RbrCfg,
 }
 
 impl DetectorConfig {
@@ -464,6 +505,12 @@ mod tests {
         assert_eq!(c.entry.support_distance_u, 700.0);
         assert_eq!(c.habit.min_matches, 3);
         assert_eq!(c.habit.hotspot_radius_u, 250.0);
+        // V1.2 RBR round selection & attention thresholds (issue #9).
+        assert_eq!(c.rbr.attention_threshold_p, 0.18);
+        assert_eq!(c.rbr.pivotal_threshold_p, 0.35);
+        assert_eq!(c.rbr.max_rounds, 6);
+        assert_eq!(c.rbr.max_moments, 6);
+        assert_eq!(c.rbr.exculpatory_rules, vec!["H2_BAITED_TRADE"]);
     }
 
     #[test]
@@ -472,6 +519,16 @@ mod tests {
         assert_eq!(c.trade.isolation_u, 1200.0);
         assert_eq!(c.trade.window_s, 3.0, "untouched fields keep defaults");
         assert_eq!(c.flash.effective_s, 1.1);
+        // RBR YAML merge: max_rounds override keeps other fields at defaults.
+        let c = DetectorConfig::from_yaml("rbr:\n  max_rounds: 3\n").unwrap();
+        assert_eq!(c.rbr.max_rounds, 3);
+        assert_eq!(
+            c.rbr.attention_threshold_p, 0.18,
+            "untouched fields keep defaults"
+        );
+        assert_eq!(c.rbr.pivotal_threshold_p, 0.35);
+        assert_eq!(c.rbr.max_moments, 6);
+        assert_eq!(c.rbr.exculpatory_rules, vec!["H2_BAITED_TRADE"]);
     }
 
     #[test]

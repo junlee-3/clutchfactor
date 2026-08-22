@@ -30,6 +30,7 @@ pub fn run() {
             commands::get_habits,
             commands::get_trends,
             commands::get_round_ticks,
+            commands::get_round_review,
             commands::import_corpus_demo,
             commands::build_corpus,
             commands::corpus_status,

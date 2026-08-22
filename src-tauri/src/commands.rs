@@ -177,6 +177,8 @@ pub async fn import_demo(
         store
             .save_analysis(match_id, &analysis)
             .map_err(|e| e.to_string())?;
+        send(&on_progress, "analyzing", 0.95, "Scoring rounds");
+        run_round_review(&mut store, match_id)?;
         // D6 runs outside analyze(): it needs the corpus grids, which only
         // exist once pro demos were imported and built for this map.
         let has_grids = !store
@@ -304,13 +306,24 @@ fn insight_from_row(row: &cf_store::store::InsightRow) -> Option<cf_analysis::In
     })
 }
 
-#[tauri::command]
-pub fn get_match_report(
-    state: State<'_, AppState>,
-    match_id: i64,
-) -> Result<Option<MatchReport>, String> {
-    use cf_narrator::{CoachingNarrator, TemplateNarrator};
-    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+/// Bundle of everything `get_match_report` and `get_round_review` both need
+/// out of a single pass over the store: the narrator's per-match context
+/// (display names, score, tracked result, class-13 share) plus the raw
+/// fields `get_match_report` also serializes directly onto `MatchReport`.
+/// Computing these once here — instead of once inline in `get_match_report`
+/// and again inside this helper — is the point: two call sites, one set of
+/// store reads.
+struct MatchCtxBundle {
+    ctx: cf_narrator::MatchContext,
+    death_classes: Vec<cf_store::store::DeathClassDbRow>,
+    tracked: Option<String>,
+    tracked_result: Option<String>,
+    class_13_share_pct: f32,
+}
+
+/// Builds the shared match-context bundle. `None` when the match doesn't
+/// exist.
+fn match_context(store: &Store, match_id: i64) -> Result<Option<MatchCtxBundle>, String> {
     let Some(detail) = store.match_detail(match_id).map_err(|e| e.to_string())? else {
         return Ok(None);
     };
@@ -346,6 +359,36 @@ pub fn get_match_report(
         tracked_result: tracked_result.clone(),
         total_deaths: death_classes.len(),
         class_13_share_pct,
+    };
+
+    Ok(Some(MatchCtxBundle {
+        ctx,
+        death_classes,
+        tracked,
+        tracked_result,
+        class_13_share_pct,
+    }))
+}
+
+#[tauri::command]
+pub fn get_match_report(
+    state: State<'_, AppState>,
+    match_id: i64,
+) -> Result<Option<MatchReport>, String> {
+    use cf_narrator::{CoachingNarrator, TemplateNarrator};
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    let Some(detail) = store.match_detail(match_id).map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let Some(MatchCtxBundle {
+        ctx,
+        death_classes,
+        tracked,
+        tracked_result,
+        class_13_share_pct,
+    }) = match_context(&store, match_id)?
+    else {
+        return Ok(None); // detail is already confirmed Some above
     };
 
     let narrator = TemplateNarrator;
@@ -936,6 +979,277 @@ pub fn analyze_positioning(state: State<'_, AppState>, match_id: i64) -> Result<
     run_positioning(&mut store, match_id)
 }
 
+// ---- V1.2: round-by-round review (issue #9; ADR-0008) ----
+
+/// Assembles `cf_analysis::round_review`'s narrow input from stored rows.
+/// `None` when there is no tracked player — nothing to score from their
+/// perspective, so the caller stays silent rather than scoring round 0.
+fn build_review_input(
+    store: &Store,
+    match_id: i64,
+) -> Result<Option<cf_analysis::round_review::RoundReviewInput>, String> {
+    use cf_analysis::round_review::{ReviewBomb, ReviewFlag, ReviewKill, ReviewRound};
+
+    let Some(tracked) = store
+        .tracked_steamid()
+        .map_err(|e| e.to_string())?
+        .and_then(|t| t.parse::<u64>().ok())
+    else {
+        return Ok(None);
+    };
+    let Some(detail) = store.match_detail(match_id).map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+
+    let mut rounds = Vec::with_capacity(detail.rounds.len());
+    for r in &detail.rounds {
+        // Defensive: a malformed winner should never happen (`side_from_str`
+        // only ever writes "CT"/"T") — skip rather than guess.
+        let Some(winner) = side_from_str(&r.winner) else {
+            continue;
+        };
+        let (mut ct, mut t) = (vec![], vec![]);
+        for (steamid, side) in store
+            .sides_for_round(match_id, r.number)
+            .map_err(|e| e.to_string())?
+        {
+            let Some(sid) = steamid.parse::<u64>().ok() else {
+                continue; // unparseable steamid: silence, drop the roster slot
+            };
+            match side_from_str(&side) {
+                Some(Side::Ct) => ct.push(sid),
+                Some(Side::T) => t.push(sid),
+                None => {}
+            }
+        }
+        rounds.push(ReviewRound {
+            number: r.number,
+            start_tick: r.start_tick,
+            freeze_end_tick: r.freeze_end_tick,
+            end_tick: r.end_tick,
+            officially_ended_tick: r.officially_ended_tick,
+            winner,
+            ct,
+            t,
+        });
+    }
+
+    let kills = detail
+        .kills
+        .iter()
+        .filter_map(|k| {
+            Some(ReviewKill {
+                round: k.round,
+                tick: k.tick,
+                attacker: k.attacker.as_ref().and_then(|a| a.parse::<u64>().ok()),
+                victim: k.victim.parse::<u64>().ok()?,
+                weapon: k.weapon.clone(),
+            })
+        })
+        .collect();
+
+    let bomb_events = detail
+        .bomb_events
+        .iter()
+        .map(|b| ReviewBomb {
+            tick: b.tick,
+            kind: b.kind.clone(),
+            player: b.player.as_ref().and_then(|p| p.parse::<u64>().ok()),
+        })
+        .collect();
+
+    let flags = store
+        .flags_for_match(match_id)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter_map(|f| {
+            Some(ReviewFlag {
+                rule_id: f.rule_id,
+                round: f.round,
+                tick: f.tick,
+                steamid: f.steamid.parse::<u64>().ok()?,
+                severity: f.severity,
+                confidence: f.confidence,
+                details: serde_json::from_str(&f.details_json).unwrap_or(serde_json::Value::Null),
+            })
+        })
+        .collect();
+
+    Ok(Some(cf_analysis::round_review::RoundReviewInput {
+        tracked,
+        tickrate: detail.tickrate,
+        rounds,
+        kills,
+        bomb_events,
+        flags,
+    }))
+}
+
+/// Scores every round of a match and (re)persists the result — the same
+/// DELETE+INSERT-in-one-tx replace `save_round_reviews` already does. A
+/// no-op (not an error) when there's no tracked player yet.
+fn run_round_review(store: &mut Store, match_id: i64) -> Result<(), String> {
+    let Some(input) = build_review_input(store, match_id)? else {
+        return Ok(());
+    };
+    let cfg = detector_config();
+    let reviews = cf_analysis::round_review::review_rounds(&input, &cfg);
+    let rows: Vec<cf_store::store::RoundReviewRow> = reviews
+        .iter()
+        .map(|r| -> Result<cf_store::store::RoundReviewRow, String> {
+            Ok(cf_store::store::RoundReviewRow {
+                round: r.round,
+                impact: r.impact,
+                verdict: r.verdict.as_str().to_string(),
+                attention: r.attention.as_str().to_string(),
+                selected: r.selected,
+                pivotal_tick: r.pivotal_tick,
+                header_json: serde_json::to_string(&r.header).map_err(|e| e.to_string())?,
+                moments_json: serde_json::to_string(&r.moments).map_err(|e| e.to_string())?,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    store
+        .save_round_reviews(match_id, &rows)
+        .map_err(|e| e.to_string())
+}
+
+/// Focus steamids for the replay overlay (Task 9's canvas rail): victim
+/// first, killer second when known, nearest teammate third when known — raw
+/// steamid strings, built straight from the moment's own facts. Name
+/// resolution is the frontend's job.
+fn moment_focus(m: &cf_analysis::round_review::Moment) -> Vec<String> {
+    ["victim", "killer", "nearest_teammate"]
+        .iter()
+        .filter_map(|k| m.facts.get(*k).and_then(|v| v.as_str()).map(str::to_string))
+        .collect()
+}
+
+#[derive(serde::Serialize)]
+pub struct RailMomentDto {
+    pub tick: i32,
+    pub headline: String,
+    pub facts: Vec<String>,
+    pub rule_id: Option<String>,
+    pub delta_p: Option<f32>,
+    pub kind: String,
+    pub focus: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct RoundReviewDto {
+    pub round: u32,
+    pub impact: f32,
+    pub verdict: String,       // snake_case
+    pub verdict_label: String, // "Cost you"
+    pub attention: String,     // "none"|"dim"|"bright"
+    pub selected: bool,
+    pub pivotal_tick: i32,
+    pub side: String,
+    pub won: bool,
+    pub kills: u32,
+    pub deaths: u32,
+    pub man_context: Option<String>,
+    pub moments: Vec<RailMomentDto>,
+    pub why_it_mattered: Option<String>,
+    pub what_to_practise: Option<String>,
+}
+
+/// Every round's review, narrated for the coach rail. Computes and persists
+/// on first call for a match imported before V1.2 (lazy backfill) — imports
+/// from here on already have rows via the `import_demo` hook.
+#[tauri::command]
+pub fn get_round_review(
+    state: State<'_, AppState>,
+    match_id: i64,
+) -> Result<Vec<RoundReviewDto>, String> {
+    use cf_analysis::round_review::{Attention, Moment, RoundHeader, RoundReview, Verdict};
+    use cf_narrator::rail;
+
+    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    let mut rows = store
+        .load_round_reviews(match_id)
+        .map_err(|e| e.to_string())?;
+    if rows.is_empty() {
+        run_round_review(&mut store, match_id)?;
+        rows = store
+            .load_round_reviews(match_id)
+            .map_err(|e| e.to_string())?;
+    }
+
+    let Some(MatchCtxBundle { ctx, .. }) = match_context(&store, match_id)? else {
+        return Ok(vec![]);
+    };
+
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        // A single corrupt row (bad JSON, or an unrecognized verdict/
+        // attention string) must not blank the whole rail — skip just that
+        // round rather than erroring the entire response.
+        let Ok(header) = serde_json::from_str::<RoundHeader>(&row.header_json) else {
+            continue;
+        };
+        let Ok(moments) = serde_json::from_str::<Vec<Moment>>(&row.moments_json) else {
+            continue;
+        };
+        let Ok(verdict) = row.verdict.parse::<Verdict>() else {
+            continue;
+        };
+        let Ok(attention) = row.attention.parse::<Attention>() else {
+            continue;
+        };
+
+        let review = RoundReview {
+            round: row.round,
+            impact: row.impact,
+            verdict,
+            attention,
+            selected: row.selected,
+            pivotal_tick: row.pivotal_tick,
+            header: header.clone(),
+            moments: moments.clone(),
+        };
+
+        let rail_moments: Vec<RailMomentDto> = moments
+            .iter()
+            .map(|m| {
+                let text = rail::narrate_moment(m, &ctx);
+                RailMomentDto {
+                    tick: m.tick,
+                    headline: text.headline,
+                    facts: text.facts,
+                    rule_id: text.rule_id,
+                    delta_p: m.delta_p,
+                    kind: m.kind.clone(),
+                    focus: moment_focus(m),
+                }
+            })
+            .collect();
+
+        let why_it_mattered = rail::why_it_mattered(&review, &ctx);
+        let what_to_practise = rail::what_to_practise(&review, &ctx);
+
+        out.push(RoundReviewDto {
+            round: row.round,
+            impact: row.impact,
+            verdict: row.verdict,
+            verdict_label: rail::verdict_label(verdict).to_string(),
+            attention: row.attention,
+            selected: row.selected,
+            pivotal_tick: row.pivotal_tick,
+            side: header.side,
+            won: header.won,
+            kills: header.kills,
+            deaths: header.deaths,
+            man_context: header.man_context,
+            moments: rail_moments,
+            why_it_mattered,
+            what_to_practise,
+        });
+    }
+    Ok(out)
+}
+
 // ---- M6: settings + housekeeping ----
 
 #[derive(serde::Serialize)]
@@ -1000,6 +1314,16 @@ fn threshold_rows(cfg: &cf_analysis::DetectorConfig) -> Vec<ThresholdRow> {
             "Positioning corpus gate",
             format!("{}", cfg.corpus.min_demos_per_map),
             "demos per map",
+        ),
+        row(
+            "Coach rail attention threshold",
+            format!("{}", cfg.rbr.attention_threshold_p),
+            "win-prob Δp",
+        ),
+        row(
+            "Coach rail max rounds",
+            format!("{}", cfg.rbr.max_rounds),
+            "rounds",
         ),
     ]
 }
