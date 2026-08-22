@@ -182,6 +182,36 @@ pub struct DeathClassDbRow {
     pub confidence: f32,
 }
 
+/// One stored rule-flag row for a match (issue #9 round-review backfill
+/// input) — the same shape `save_analysis` writes, read back per-match
+/// instead of aggregated across the corpus like `rule_counts_across_matches`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct FlagRow {
+    pub rule_id: String,
+    pub round: u32,
+    pub tick: i32,
+    pub steamid: String,
+    pub severity: f32,
+    pub confidence: f32,
+    pub details_json: String,
+}
+
+/// A persisted round review row (issue #9 §7; ADR-0008). DB-shaped —
+/// `verdict`/`attention` are already `as_str()`, `header`/`moments` are
+/// JSON — conversion from `cf_analysis::round_review::RoundReview` happens
+/// at the call site, keeping this crate's dependency surface unchanged.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RoundReviewRow {
+    pub round: u32,
+    pub impact: f32,
+    pub verdict: String,   // snake_case verdict
+    pub attention: String, // "none" | "dim" | "bright"
+    pub selected: bool,
+    pub pivotal_tick: i32,
+    pub header_json: String,  // RoundHeader as JSON
+    pub moments_json: String, // Vec<Moment> as JSON
+}
+
 /// One own match's trend point (Trends screen chart, PROMPT.md M6).
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct TrendMatchRow {
@@ -677,6 +707,88 @@ impl Store {
         }
         tx.commit()?;
         Ok(())
+    }
+
+    /// All rule flags stored for one match (issue #9 round-review backfill
+    /// input — the round-review engine wants a match's whole flag list, not
+    /// a cross-corpus rule aggregate).
+    pub fn flags_for_match(&self, match_id: i64) -> Result<Vec<FlagRow>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT rule_id, round, tick, steamid, severity, confidence, details_json
+             FROM rule_flags WHERE match_id = ?1 ORDER BY round, tick",
+        )?;
+        let rows = st
+            .query_map([match_id], |r| {
+                Ok(FlagRow {
+                    rule_id: r.get(0)?,
+                    round: r.get(1)?,
+                    tick: r.get(2)?,
+                    steamid: r.get(3)?,
+                    severity: r.get(4)?,
+                    confidence: r.get(5)?,
+                    details_json: r.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Persists a match's round-by-round reviews (issue #9 §7), replacing
+    /// any previous run — the same DELETE+INSERT-in-one-tx model as
+    /// `save_analysis`.
+    pub fn save_round_reviews(
+        &mut self,
+        match_id: i64,
+        rows: &[RoundReviewRow],
+    ) -> Result<(), StoreError> {
+        let tx = self.conn.transaction()?;
+        tx.execute("DELETE FROM round_review WHERE match_id = ?1", [match_id])?;
+        {
+            let mut st = tx.prepare(
+                "INSERT INTO round_review (match_id, round, impact, verdict, attention,
+                                           selected, pivotal_tick, header_json, moments_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            )?;
+            for r in rows {
+                st.execute(params![
+                    match_id,
+                    r.round,
+                    r.impact,
+                    r.verdict,
+                    r.attention,
+                    r.selected,
+                    r.pivotal_tick,
+                    r.header_json,
+                    r.moments_json,
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Loads a match's round-by-round reviews, ordered by round.
+    pub fn load_round_reviews(&self, match_id: i64) -> Result<Vec<RoundReviewRow>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT round, impact, verdict, attention, selected, pivotal_tick,
+                    header_json, moments_json
+             FROM round_review WHERE match_id = ?1 ORDER BY round",
+        )?;
+        let rows = st
+            .query_map([match_id], |r| {
+                Ok(RoundReviewRow {
+                    round: r.get(0)?,
+                    impact: r.get(1)?,
+                    verdict: r.get(2)?,
+                    attention: r.get(3)?,
+                    selected: r.get(4)?,
+                    pivotal_tick: r.get(5)?,
+                    header_json: r.get(6)?,
+                    moments_json: r.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     /// Per-match flag counts for one rule for the tracked player, newest
@@ -1608,11 +1720,11 @@ mod tests {
         let path = dir.path().join("test.db");
         {
             let store = Store::open(&path).unwrap();
-            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 5);
+            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 6);
         }
         // Reopen: migrations must not re-apply / error.
         let store = Store::open(&path).unwrap();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 5);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 6);
     }
 
     #[test]
@@ -1795,7 +1907,7 @@ mod tests {
     fn cross_demo_queries_aggregate_flags_positions_and_rounds() {
         use cf_analysis::{AnalysisOutput, EvidenceRef, RuleFlag};
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 5);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 6);
         store.set_setting("tracked_steamid", "1").unwrap();
         let flag = |round: u32, tick: i32| RuleFlag {
             rule_id: "H2_ISOLATED_DEATH",
@@ -2018,7 +2130,7 @@ mod tests {
     #[test]
     fn migration_2_analysis_tables_and_rule_inputs_persist() {
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 5);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 6);
         let id = store
             .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
             .unwrap();
@@ -2532,5 +2644,102 @@ mod tests {
         // Name lookup survives for players of remaining matches.
         assert_eq!(store.player_name("1").unwrap().as_deref(), Some("alice"));
         assert_eq!(store.player_name("999").unwrap(), None);
+    }
+
+    #[test]
+    fn flags_for_match_returns_details_and_position() {
+        use cf_analysis::{AnalysisOutput, EvidenceRef, RuleFlag};
+        let (_dir, mut store) = open_tmp();
+        let flag = |round: u32, tick: i32| RuleFlag {
+            rule_id: "H2_ISOLATED_DEATH",
+            round,
+            tick,
+            steamid: 1,
+            confidence: 0.75,
+            severity: 0.8,
+            details: serde_json::json!({ "place": "Catwalk" }),
+            evidence: EvidenceRef {
+                round,
+                tick_start: tick - 320,
+                tick_end: tick + 128,
+                focus_players: vec![1],
+                camera_hint: None,
+            },
+        };
+        let m1 = store
+            .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
+            .unwrap();
+        store
+            .save_analysis(
+                m1,
+                &AnalysisOutput {
+                    flags: vec![flag(1, 1200), flag(2, 2200)],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let rows = store.flags_for_match(m1).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].rule_id, "H2_ISOLATED_DEATH");
+        assert_eq!(rows[0].round, 1);
+        assert_eq!(rows[0].tick, 1200);
+        assert_eq!(rows[0].steamid, "1");
+        assert_eq!(rows[1].round, 2);
+        assert_eq!(rows[1].tick, 2200);
+        for row in &rows {
+            let parsed: serde_json::Value = serde_json::from_str(&row.details_json).unwrap();
+            assert_eq!(parsed["place"], serde_json::json!("Catwalk"));
+        }
+    }
+
+    #[test]
+    fn round_reviews_roundtrip_and_replace() {
+        let (_dir, mut store) = open_tmp();
+        let m1 = store
+            .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
+            .unwrap();
+
+        let row = |round: u32, verdict: &str| RoundReviewRow {
+            round,
+            impact: 0.25,
+            verdict: verdict.to_string(),
+            attention: "bright".to_string(),
+            selected: true,
+            pivotal_tick: 1200,
+            header_json: serde_json::json!({
+                "side": "CT", "won": true, "kills": 1, "deaths": 0, "man_context": "5v5"
+            })
+            .to_string(),
+            moments_json: serde_json::json!([{
+                "tick": 1200, "kind": "tracked_kill", "rule_id": null,
+                "delta_p": 0.1, "facts": {}
+            }])
+            .to_string(),
+        };
+
+        store
+            .save_round_reviews(m1, &[row(1, "won_it"), row(2, "cost_you")])
+            .unwrap();
+        let loaded = store.load_round_reviews(m1).unwrap();
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0].round, 1, "ordered by round");
+        assert_eq!(loaded[0].verdict, "won_it");
+        assert_eq!(loaded[1].round, 2);
+        assert_eq!(loaded[1].verdict, "cost_you");
+        assert_eq!(loaded, vec![row(1, "won_it"), row(2, "cost_you")]);
+
+        // Replace semantics: saving a different set drops the old rows.
+        store.save_round_reviews(m1, &[row(3, "quiet")]).unwrap();
+        let replaced = store.load_round_reviews(m1).unwrap();
+        assert_eq!(replaced, vec![row(3, "quiet")]);
+
+        // FK cascade: deleting the match drops its round_review rows too.
+        store.delete_match(m1).unwrap();
+        let count: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM round_review", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0, "delete_match must cascade into round_review");
     }
 }
