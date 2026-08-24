@@ -1249,7 +1249,7 @@ mod tests {
 
     #[test]
     fn won_it_guarantee_swaps_weakest() {
-        let cfg = RbrCfg::default(); // max_rounds = 6, attention_threshold_p = 0.18
+        let cfg = RbrCfg::default(); // max_rounds = 6, attention_threshold_p = 0.25
         let impacts = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3];
         let candidates: Vec<RoundCandidate> = impacts
             .iter()
