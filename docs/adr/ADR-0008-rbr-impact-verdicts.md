@@ -79,3 +79,35 @@ hand-verification pass, the same way H2's severities were.
   casing the engine — the engine has no test-only branches.
 - Round reviews are not part of `AnalysisOutput`/the golden-demo regression
   surface; they get their own contract (this ADR) and their own tests.
+
+## Calibration (2026-08-22)
+
+The V1.2 §12 hand-verification pass (task 10) evaluated round selection on
+all five `fixtures/own/` demos after a lazy-backfill recompute. At the
+original default `attention_threshold_p = 0.18`, the 6-round cap saturated
+on **all 5/5 matches** — candidate counts (rounds with `|impact| ≥ 0.18`)
+were 15, 11, 13, 12, and 11 against a cap of 6, so the cap was doing the
+selecting, not the threshold. Root cause: a single opening kill/death at the
+common 5v5→5v4 state swings win-prob by ≈0.19–0.23 (table-derived), which
+already clears 0.18 on its own — so almost any round with a single early
+engagement became a "candidate," flooding the selection.
+
+Raised `attention_threshold_p` to **0.25**. This sits in the second-largest
+gap in the real observed impact distribution (0.2427 → 0.2709, a 0.028 gap;
+the largest gap, 0.3372 → 0.3767, already sits just under
+`pivotal_threshold_p = 0.35`) — i.e. it separates "one common early duel"
+swings from swings that compound multiple events or land at a materially
+better/worse man-state. Re-run after the change: candidate counts dropped to
+7, 4, 4, 2, and 5; selected-round counts became 6, 4, 4, 2, and 5 — only one
+match (the closest, most back-and-forth 12-12 tie) still hits the cap, the
+other four sit under it. `pivotal_threshold_p`, `max_rounds`, and
+`max_moments` are left at their original defaults; only
+`attention_threshold_p` moved. Changed in `config.rs`'s
+`d_rbr_attention_p()` and its two tests
+(`defaults_match_spec_6_4`, `yaml_overrides_merge_over_defaults`); the
+`RbrCfg`-default-derived assertions in `round_review.rs`'s
+`selection_threshold_and_cap`/`won_it_guarantee_swaps_weakest` tests were
+checked by hand and remain valid unchanged (their synthetic impacts already
+clear 0.25). `commands.rs`'s `threshold_rows` reads the config live, so the
+Settings screen's "Coach rail attention threshold" row picks up the new
+value with no code change.

@@ -61,3 +61,90 @@ predicted exactly the 4 insights the app wrote ((CT,early) 6 rounds,
 Verified under the documented dev-only `CLUTCHFACTOR_CONFIG` gate override
 (min_demos_per_map 1); dev D6 rows were removed afterwards — the shipped
 gate (8) keeps D6 silent until the owner supplies a real corpus.
+
+## V1.2 hand-verification (2026-08-22)
+
+Round-by-round coaching (issue #9; ADR-0008). Stale `round_review` rows
+(computed before an engine fix) were deleted from the dev DB first; the
+lazy backfill on `get_round_review` recomputed all five `fixtures/own/`
+matches under the current engine.
+
+**§12 impact cross-check — two owner matches, three rounds each, hand
+recomputed from raw SQL (`kills`/`bomb_events`/`round_sides`) against
+`win_prob_v1.yaml` cell values, replaying the ADR-0008 8-point model by
+hand (state replay, per-event ΔP, the terminal defuse/explode latch, and
+the `ct_alive == 0` / `t_alive == 0 && !planted` rule-clamps in
+`winprob.rs::p_ct_win`, which are *not* raw table rows). All six matched
+the app's stored `round_review.impact` exactly:**
+
+| Match | Round | Hand-computed impact | App `impact` | Verdict | Note |
+|---|---|---|---|---|---|
+| inferno-loss (id 3) | 2 | 0.376732 → **0.3767** | 0.3767 | quiet | Positive impact, round lost anyway (won 2 duels post-plant, then a post-explosion "world" death — both players killed by the bomb itself after the terminal latch — correctly scored `delta_p: None`). |
+| inferno-loss (id 3) | 6 | −0.275453 → **−0.2755** | −0.2755 | not_on_you | Tracked death backed by a real `H2_BAITED_TRADE` flag (non-following teammate 1,575 u back) — verdict precedence confirmed: NotOnYou beats what would otherwise be CostYou at this impact. |
+| inferno-loss (id 3) | 12 | −0.270862 → **−0.2709** | −0.2709 | cost_you | Single unsupported death, no exculpatory flag. |
+| mirage-tie (id 8) | 8 | 0.315918 → **0.3159** | 0.3159 | won_it | Single entry kill, comfortably won. |
+| mirage-tie (id 8) | 19 | −0.399428 → **−0.3994** | −0.3994 | cost_you | Tracked **self-kill** (`attacker == victim`, weapon `world`) on real data — confirms the self-kill-counts-once-as-a-death path outside its unit test. |
+| mirage-tie (id 8) | 24 | 0.273721 + 0.115170 + 0.039448 = **0.4283** | 0.4283 | won_it | Kill, then plant, then the round-winning kill that drops CT to 0 alive — that last event only scores because `p_ct_win` rule-clamps `ct_alive == 0 → Some(0.0)` instead of falling through to an absent table row; live app screen showed the identical per-moment deltas (+27%, +12%, +4%) and the +43% summary. |
+
+Exact match on 6/6, spanning all four non-quiet-adjacent verdicts, the
+terminal latch, the `ct_alive == 0` rule-clamp, and a real self-kill.
+
+**Hard rules, verified on real data:**
+- `not_on_you` presence iff an `H2_BAITED_TRADE` flag exists: the flag
+  exists (inferno-loss R6, ×1 in the library) and `not_on_you` is surfaced
+  both there and (unselected, low-impact) at inferno-loss R9 and dust2-loss
+  R13 — rule is satisfiable and satisfied, not vacuously true.
+- No fault language in any `why_it_mattered`: read all 21 selected rounds'
+  narration across the library (18 dumped live via
+  `get_round_review`/devtools console, the remaining 3 already visible
+  on-screen from other checks). Every line is one of the fixed factual
+  templates in `cf-narrator::rail` ("You closed it out on X: +N% win
+  probability, and it held.", "You were the last event that mattered: the
+  round tipped N s after your death.", etc.) — no blame-toned text is
+  reachable from the code at all (`rail.rs` narration is fully
+  deterministic; grepped for fault/blame/econ/buy/`$` language — none).
+- `won_it` guarantee verified against the real candidate list, under both
+  thresholds: at the pre-calibration default (0.18) it fired for real on
+  this data — nuke-tie R12 (impact 0.2166) and inferno-win R11 (impact
+  0.2084) were each the single highest-impact **cut** `won_it` candidate in
+  their match and were swapped in for the weakest non-`won_it` selection,
+  exactly per the single-swap spec, while sibling cut `won_it` rounds
+  (inferno-win R5, R9, impact 0.2057 each) correctly stayed cut. At the
+  shipped 0.25 default, re-checked the full post-calibration candidate list
+  across all 5 matches: zero `won_it`-verdict rounds are currently cut by
+  the cap anywhere in the library (every `won_it` round that clears the
+  raised bar is small enough in count to fit inside the cap on its own), so
+  the guarantee is presently inactive on this data — not broken, just
+  unexercised; the mechanism's correctness on real (not just synthetic)
+  numbers is the 0.18-era evidence above, and `round_review.rs`'s
+  `won_it_guarantee_swaps_weakest` unit test still covers the swap path
+  directly.
+
+**14 acceptance criteria — walked live, fresh `pnpm tauri dev`, real
+matches (inferno-win id 4, inferno-loss id 3, mirage-tie id 8):**
+
+| # | Criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | Rail shows only algorithm-selected rounds' coaching | PASS | Unselected rounds render the one-line quiet summary only (e.g. inferno-loss R1: "Nothing here needed the coach — you won it, 0-0, 5v5"); selected rounds render header/moments/why/practise. |
+| 2 | Never exceeds `max_rounds` | PASS | SQL across all 5 matches post-tune: selected counts 6, 4, 4, 2, 5 — never above the cap of 6. |
+| 3 | ≥1 Won it when one qualifies | PASS | won_it surfaced and selected in 3 of 5 matches (nuke-tie R1/R15, inferno-win R15/R20, mirage-tie R8/R24); the two matches without one (inferno-loss, dust2-loss) have no round clearing the WonIt bar. |
+| 4 | Moment click jumps playback | PASS | Clicked "0:50 Kill kuangzhitian down" (inferno-win R15) — scrubber jumped to exactly 0:50, roster/kill-feed state updated to match. |
+| 5 | Playback highlights moments as it passes | PASS | Pressed Play from 0:50; on autoplay reaching 0:55 the third moment row's active-highlight advanced automatically, unprompted. |
+| 6 | Playback never auto-pauses | PASS | Started playback, then clicked a moment row mid-play (inferno-win R2) — the button stayed "Pause" (still playing) the whole time; switching rounds only resets state because each round is a fresh player instance, never an interrupt of the current one. |
+| 7 | Prev/next skips unflagged | PASS | From R15 (selected), nav showed "← R7 / R20 →", skipping unflagged 16-19; from inferno-loss R6, nav showed "← R2 / R12 →", skipping unflagged 3-5 and 7-11. |
+| 8 | Every moment carries numeric evidence | PASS | Every moment line seen carried a number: win-prob deltas (+28%, +43%...), distances ("1,575 u away"), or seconds ("62 s later"). |
+| 9 | Replay highlights only EvidenceRef/moment focus players | PASS | Live death moment (inferno-win R2) drew a dashed line + "118 u" tag to exactly the named teammate/killer pair; no other player annotated. |
+| 10 | Not on you only rule-established | PASS | Inferno-loss R6 shows "Not on you" backed by the real `H2_BAITED_TRADE` flag's own facts (teammate name, distance) rendered in the moment — never inferred from absent flags. |
+| 11 | No unsupported causal claims | PASS | All narration is numbers-first and factual (see the why-it-mattered dump above) — no line asserts an unevidenced cause. |
+| 12 | Quiet rounds summary-only | PASS | Inferno-loss R1: single sentence, no moments/why/practise sections rendered. |
+| 13 | Zero economy/buy text anywhere | PASS | Grepped `cf-narrator::rail` source (the entire narration surface) for econ/buy/$/price — no matches besides the doc-comment's own negative statement; visually confirmed on every screenshot. |
+| 14 | Attention dots use no color channel | PASS | Zoomed round-strip screenshot: dots render in chalk white/grey only (`--chalk-faint`/`--chalk-bright`), distinguished by size, never hue — the blue/orange winner underline is a separate, pre-existing element. |
+
+**14/14 PASS.**
+
+**Threshold calibration:** `attention_threshold_p` raised from 0.18 to 0.25
+(ADR-0008's Calibration section has the full before/after numbers and
+rationale) — 0.18 saturated the 6-round cap on all 5 owner matches
+(candidates 15/11/13/12/11); 0.25 leaves only the closest match (nuke-tie,
+a 12-12 tie) at the cap, with the other four now selecting fewer than 6
+rounds on the threshold alone.
