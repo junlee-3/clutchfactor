@@ -224,11 +224,17 @@ async fn analyze_and_persist(
             );
             run_positioning(&mut store, match_id)?;
         }
-        // Non-fatal (§7): a stale callout label is far less bad than
-        // failing the whole import over it.
-        if let Err(e) = refresh_map_callouts(&mut store, &map) {
-            eprintln!("map callouts for {map}: {e}");
-        }
+    }
+    // Runs whether or not analysis ran above: tick_samples exist as soon as
+    // the demo is parsed and saved, independent of a resolvable tracked
+    // player, so a match with no tracked player must not skip its
+    // contribution to the map's callout labels (V1.4 review round 1,
+    // finding #1). Still synchronous under this lock, never across an
+    // `.await`; non-fatal (§7) — a stale callout label is far less bad than
+    // failing the whole import over it.
+    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    if let Err(e) = refresh_map_callouts(&mut store, &map) {
+        eprintln!("map callouts for {map}: {e}");
     }
     Ok(())
 }
@@ -2635,6 +2641,23 @@ mod tests {
             ),
             ("BombsiteA", -380.0, -1890.0, 3)
         );
+    }
+
+    /// A `len / 2` regression would pick the UPPER middle (-350) here; the
+    /// documented behaviour is the lower middle (-380) — a real sample, not
+    /// an average of two.
+    #[test]
+    fn callout_medians_take_the_lower_middle_of_an_even_length_group() {
+        let pos: Vec<(String, f32, f32)> = vec![
+            ("Mid".into(), -300.0, 0.0),
+            ("Mid".into(), -400.0, 0.0),
+            ("Mid".into(), -350.0, 0.0),
+            ("Mid".into(), -380.0, 0.0),
+        ];
+        let rows = callout_medians(&pos, 4);
+        assert_eq!(rows.len(), 1);
+        // Sorted: -400, -380, -350, -300 -> lower middle is -380.
+        assert_eq!(rows[0].x, -380.0);
     }
 
     #[test]
