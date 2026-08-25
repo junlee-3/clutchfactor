@@ -94,12 +94,12 @@ Play definitions (thresholds in `DetectorConfig::ledger`, seconds/units):
 | kind | when | facts | quality (measure-backed only) |
 |---|---|---|---|
 | setup | `freeze_end + setup_s` (5.0) | place, nearest teammate (id, dist), teammates within `trade.isolation_u` | none — positioning judgement is the coach's |
-| flash | each tracked flashbang detonate | enemies blinded ≥ `flash.effective_s`, teammates blinded, self, converted within `flash.conversion_window_s` | Good: ≥1 enemy & 0 team; Bad: any team/self blind; Neutral: 0/0 |
+| flash | each tracked flashbang detonate (grenade event left-joined to the blind group at that tick; a flash that blinded nobody is a dud, not invisible) | enemies blinded ≥ `flash.effective_s`, teammates blinded, self, converted within `flash.conversion_window_s` | Good: ≥1 enemy & 0 team; Bad: any team/self blind; Neutral: 0/0 |
 | smoke | each tracked smoke detonate | place, phase, dead_time (H6 logic) | Bad if dead-time; else none |
 | he / molotov | each tracked detonate/inferno | enemy damage, team damage, victims | Bad if team damage; else none (damage stands alone) |
 | rush | tracked beyond `timing.min_spawn_distance_u` within `timing.early_aggression_s` with no teammate within `trade.distance_u` | distance, seconds, nearest teammate | Bad if died in that window (H11); else Neutral, labeled "no support" |
 | rotation | bomb planted | tracked at planted site? time-to-site if arrived | Bad if H11_SLOW_ROTATION fired; else none |
-| kill / death | each tracked kill / death | victim/killer, place, distance, headshot, traded, isolated, spot_delta when clean duel; merged flag details | death: Bad when an H2/H3/H4/H6/H11/H16 rule fired; Neutral when traded; none for fair duels |
+| kill / death | each tracked kill / death | victim/killer, place, distance, headshot, traded, isolated, man context before; merged flag details (no seen-first metric — the parser's `spotted` flag is per-player, not pairwise, so it stays silent) | death: Bad when an H2/H3/H4/H6/H11/H16 rule fired; Neutral when traded; none for fair duels |
 | assist | tracked assist | victim, teammate | none |
 | trade / missed_trade | a teammate died within `trade.distance_u` of tracked | teammate, killer, tracked committed within `trade.commit_window_s`? | Good (trade) / Bad (missed, H2_FAILED_TRADE) |
 | plant / defuse | tracked plants/defuses | delta_p | none |
@@ -116,11 +116,15 @@ timeline_json)` written by `save_analysis`; `get_round_review` gains `plays`
 and `timeline` per round. Template captions per kind (numbers first, the
 existing rail voice) are the offline/fallback narration.
 
-**Backfill.** Pre-V1.2b imports have no tick-level ledger. A `re_analyze_match`
-command re-parses the demo (from the stored file name resolved against the
-import directory recorded at import; if the file is gone, a §7-voice error
-tells the user to re-import) and re-runs the full pipeline; the Library row
-gets a "Re-analyze" action with progress. Owner fixtures cover the dev DB.
+**Backfill.** Pre-V1.2b imports have no tick-level ledger. The store records
+only `file_name` + `file_hash` today, so migration 0008 also adds
+`matches.source_path` (written at import). A `re_analyze_match(match_id,
+path?)` command re-parses the demo — from `source_path` when it still exists,
+else from a file the user picks, whose hash must equal the stored `file_hash` —
+and replaces the match's rows in place (`replace_match_data`, same match id,
+so URLs and reviews survive), then re-runs analysis, review, and ledger. The
+Library row gets a "Re-analyze" action with progress; a missing file gets a
+§7-voice error naming the file. Owner fixtures cover the dev DB.
 
 ## 3. The coach (V1.3) — facts grounded, judgment free
 
