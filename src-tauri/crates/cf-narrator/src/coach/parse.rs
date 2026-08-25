@@ -24,13 +24,18 @@ impl fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
-fn excerpt(s: &str) -> String {
-    let t: String = s.chars().take(80).collect();
+/// At most 80 chars of model text, one line, no control characters — the
+/// only form of the model's output that may ever reach an error message.
+fn bounded(s: &str) -> String {
+    let mut out: String = s
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .take(80)
+        .collect();
     if s.chars().count() > 80 {
-        format!("{t}…")
-    } else {
-        t
+        out.push('…');
     }
+    out
 }
 
 pub fn strip_code_fence(text: &str) -> &str {
@@ -48,20 +53,20 @@ struct Batch {
     rounds: Vec<RoundCommentary>,
 }
 
-pub fn parse_round_batch(text: &str) -> Result<Vec<RoundCommentary>, ParseError> {
+fn parse_json<T: serde::de::DeserializeOwned>(text: &str) -> Result<T, ParseError> {
     let body = strip_code_fence(text);
     let value: serde_json::Value = serde_json::from_str(body)
-        .map_err(|e| ParseError::NotJson(format!("{e}; text starts {:?}", excerpt(body))))?;
-    let batch: Batch =
-        serde_json::from_value(value).map_err(|e| ParseError::Shape(e.to_string()))?;
+        .map_err(|e| ParseError::NotJson(bounded(&format!("{e}; text starts: {body}"))))?;
+    serde_json::from_value(value).map_err(|e| ParseError::Shape(bounded(&e.to_string())))
+}
+
+pub fn parse_round_batch(text: &str) -> Result<Vec<RoundCommentary>, ParseError> {
+    let batch: Batch = parse_json(text)?;
     Ok(batch.rounds)
 }
 
 pub fn parse_synthesis(text: &str) -> Result<MatchSynthesis, ParseError> {
-    let body = strip_code_fence(text);
-    let value: serde_json::Value = serde_json::from_str(body)
-        .map_err(|e| ParseError::NotJson(format!("{e}; text starts {:?}", excerpt(body))))?;
-    serde_json::from_value(value).map_err(|e| ParseError::Shape(e.to_string()))
+    parse_json(text)
 }
 
 #[cfg(test)]
@@ -92,5 +97,25 @@ mod tests {
         let s = parse_synthesis("{\"opening\":\"o\",\"work_on\":[\"a\",\"b\"]}").unwrap();
         assert_eq!(s.work_on.len(), 2);
         assert!(parse_synthesis("{\"work_on\":[]}").is_err());
+    }
+
+    #[test]
+    fn shape_errors_never_echo_the_models_text() {
+        let huge_round = "A".repeat(2000);
+        let text =
+            format!("{{\"rounds\":[{{\"round\":\"{huge_round}\",\"read\":\"x\",\"plays\":[]}}]}}");
+        let e = parse_round_batch(&text).unwrap_err();
+        assert!(matches!(e, ParseError::Shape(_)));
+        assert!(e.to_string().chars().count() < 160);
+    }
+
+    #[test]
+    fn not_json_errors_are_bounded_even_for_quote_heavy_text() {
+        let text = "\"".repeat(200);
+        let e = parse_round_batch(&text).unwrap_err();
+        assert!(matches!(e, ParseError::NotJson(_)));
+        let s = e.to_string();
+        assert!(s.chars().count() < 160);
+        assert!(!s.contains("\\\""));
     }
 }
