@@ -31,9 +31,11 @@ function verdictChipClass(verdict: string): string {
 // play ledger — every round narrated (spec §2), setup through outcome, not
 // just the flagged ones. `selected` still gates the why/practise prose and
 // the timeline dots; it no longer gates whether the round gets a list at
-// all. A match imported before the ledger existed falls back to its review
-// moments with a re-analyze hint. The active row carries a solid 2px tone
-// edge (loss/win/neutral — spec §1), not a dashed stripe; dashed stays
+// all. A match imported before the ledger existed (no plays at all — the
+// ledger always writes setup + outcome for a round the player was in) falls
+// back to its review moments with a re-analyze hint, hint included when
+// there are no moments to show either. The active row carries a solid 2px
+// tone edge (loss/win/neutral — spec §1), not a dashed stripe; dashed stays
 // reserved for evidence.
 export function CoachRail({
   reviews,
@@ -47,10 +49,12 @@ export function CoachRail({
   const review = reviews.find((r) => r.round === round) ?? null;
   const moments = review?.moments ?? [];
   // Every round narrated (spec §2): the ledger's plays are the list. A match
-  // imported before V1.2b has no ledger yet — fall back to its review
-  // moments (rbr-v2 builds them for every round) and say how to get the rest.
+  // imported before V1.2b has no ledger yet — no plays at all is that case,
+  // since the ledger always writes setup + outcome — so fall back to its
+  // review moments (rbr-v2 builds them for every round) and say how to get
+  // the rest, whether or not there are moments to show.
   const plays: PlayDto[] = review?.plays ?? [];
-  const usingMoments = plays.length === 0 && moments.length > 0;
+  const preLedger = plays.length === 0;
   type RailRow = {
     tick: number;
     headline: string;
@@ -59,7 +63,7 @@ export function CoachRail({
     rule_id: string | null;
     quality?: string | null;
   };
-  const rows: RailRow[] = usingMoments ? moments : plays;
+  const rows: RailRow[] = preLedger ? moments : plays;
   const activeIdx = activeMomentIndex(rows, displayTick);
   const prev = prevFlagged(reviews, round);
   const next = nextFlagged(reviews, round);
@@ -114,7 +118,7 @@ export function CoachRail({
           )}
         </div>
 
-        {usingMoments && (
+        {preLedger && (
           <p className="type-data rpl-rail-hint">
             Showing the key moments only — Re-analyze this match from the Library for the full play-by-play.
           </p>
