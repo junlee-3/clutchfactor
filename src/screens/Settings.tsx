@@ -57,7 +57,16 @@ export function Settings() {
     try {
       await setKey.mutateAsync(keyDraft.trim());
       setKeyDraft("");
-      toast.push("status", "Gemini key saved — the coach is on. Open any match to see its read.");
+      // `enabled` is (not paused) && (key present): read it back after the
+      // save so a key saved while the coach is paused says so instead of
+      // promising a read that won't come until Resume coach.
+      const fresh = await coach.refetch();
+      toast.push(
+        "status",
+        (fresh.data?.enabled ?? true)
+          ? "Gemini key saved — the coach is on. Open any match to see its read."
+          : "Gemini key saved — the coach is paused; press Resume coach to use it.",
+      );
     } catch (e) { toast.push("error", String(e)); }
   }
   async function removeKey() {

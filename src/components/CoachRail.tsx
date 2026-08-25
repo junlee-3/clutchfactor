@@ -127,7 +127,25 @@ export function CoachRail({
             {coach.focus && <p className="type-ui rpl-coach-focus">{coach.focus}</p>}
           </div>
         )}
-        {!coach && !coachLoading && coachError && (
+        {/* No read for this round (a fallback, a transport error, or a
+            round the coach hasn't been asked about yet) while the coach is
+            on: say why, if we know, and offer to ask. With the coach off
+            (`onRegenerate` null) nothing renders — the no-key path stays
+            byte-identical to template mode. */}
+        {!coach && !coachLoading && onRegenerate && (
+          <div className="rpl-coach-ask">
+            {coachError && <p className="type-data rpl-rail-hint">{coachError}</p>}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onRegenerate}
+              title="Generate the coach's read for this round (uses your Gemini key)"
+            >
+              Ask the coach
+            </Button>
+          </div>
+        )}
+        {!coach && !coachLoading && !onRegenerate && coachError && (
           <p className="type-data rpl-rail-hint">{coachError}</p>
         )}
 
