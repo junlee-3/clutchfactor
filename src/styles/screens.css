@@ -454,6 +454,23 @@
   color: var(--ink);
 }
 
+.report-coach-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+}
+
+.report-coach-work {
+  margin: var(--s3) 0 0;
+  padding-left: var(--s5);
+}
+
+.report-coach-work li + li {
+  margin-top: var(--s1);
+}
+
 /* Round strip — a compact mono grid (frontend-design pass). rpt- prefixed
    for the same reason as the containers above: the deleted legacy
    styles.css had a `.report-round-strip` rule this would otherwise have

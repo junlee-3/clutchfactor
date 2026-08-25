@@ -3,10 +3,19 @@ import { ClassBreakdown } from "../components/ClassBreakdown";
 import { HabitCard } from "../components/HabitCard";
 import { InsightCard } from "../components/InsightCard";
 import { RoundStripReport } from "../components/RoundStripReport";
+import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { MatchHeader } from "../components/ui/MatchHeader";
 import { Skeleton } from "../components/ui/Skeleton";
-import { useHabits, useMatches, useMatchReport } from "../lib/queries";
+import { useToast } from "../components/ui/Toast";
+import {
+  useCoachStatus,
+  useCoachSynthesis,
+  useHabits,
+  useMatches,
+  useMatchReport,
+  useRegenerateCoachSynthesis,
+} from "../lib/queries";
 import { CATEGORY_TITLES, groupInsights } from "../lib/report";
 
 const TICKRATE = 64;
@@ -23,6 +32,12 @@ export function Report() {
   // command's payload for a header-only need.
   const matches = useMatches();
   const summary = matches.data?.find((m) => m.id === matchId);
+  const coachStatus = useCoachStatus();
+  const coachOn = coachStatus.data?.enabled ?? false;
+  const synthesis = useCoachSynthesis(matchId, coachOn);
+  const regen = useRegenerateCoachSynthesis();
+  const toast = useToast();
+  const coachLoading = coachOn && (synthesis.isLoading || regen.isPending);
 
   if (report.isLoading) {
     // Skeletons at (approximately) final layout size, per §10 — no bare
@@ -79,6 +94,41 @@ export function Report() {
 
       <div className="rpt-main">
         <div className="rpt-feed">
+          {coachLoading && (
+            <div className="report-coach" aria-busy="true">
+              <p className="type-micro">Coach's read</p>
+              <Skeleton kind="block" count={1} />
+            </div>
+          )}
+          {!coachLoading && synthesis.data?.synthesis && (
+            <blockquote className="report-lead report-coach">
+              <div className="report-coach-head">
+                <p className="type-micro">Coach's read · {synthesis.data.synthesis.model}</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={regen.isPending}
+                  onClick={() =>
+                    void regen.mutateAsync(matchId).catch((e) => toast.push("error", String(e)))
+                  }
+                >
+                  {regen.isPending ? "Thinking…" : "Regenerate"}
+                </Button>
+              </div>
+              <p className="report-lead-body">{synthesis.data.synthesis.opening}</p>
+              {synthesis.data.synthesis.work_on.length > 0 && (
+                <ul className="report-coach-work">
+                  {synthesis.data.synthesis.work_on.map((w, i) => (
+                    <li key={i} className="type-body">{w}</li>
+                  ))}
+                </ul>
+              )}
+            </blockquote>
+          )}
+          {!coachLoading && !synthesis.data?.synthesis && synthesis.data?.error && (
+            <p className="type-data rpl-rail-hint">{synthesis.data.error}</p>
+          )}
+
           {r.summary && (
             // The editorial lead (design-system.md §9): the coach's write-up
             // in its own voice, the one place the display-sans font speaks
