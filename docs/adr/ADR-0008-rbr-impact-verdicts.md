@@ -148,3 +148,14 @@ Two rulings from the V1.2 final-review fix wave amend this ADR's contract:
    tunables, `round_review::cfg_fingerprint`); `get_round_review` recomputes
    via `run_round_review` whenever the stored fingerprint doesn't match the
    current one, the same lazy-backfill path already used for empty rows.
+3. **The ledger grades an exculpated death Neutral, whichever rule wins
+   `rule_id`** (V1.2b final-review fix wave, #1, CONTROLLER RULING). A
+   death carrying `H2_BAITED_TRADE` (0.35) and `H2_ISOLATED_DEATH` (0.8) on
+   one tick got verdict `NotOnYou` here but `quality: bad` in the play
+   ledger, which read only the winning `rule_id`. `merge_flags` now leaves
+   an additive `facts.exculpatory = true` marker whenever any
+   `rbr.exculpatory_rules` flag merges into a play, and
+   `finalize_death_quality` honours it (live: inferno-loss R6 and R9). Same
+   wave, #5: `tracked_death.round_end_delta_s` is clamped at 0 and carries
+   `dead_time` for a death after the round was decided — engine version
+   `rbr-v3`, so stored rows with negative seconds recompute.

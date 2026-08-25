@@ -10,7 +10,7 @@
 //! Facts keys are a contract read by cf-narrator and V1.3's validator —
 //! steamids as strings, callouts RAW, distances whole units, seconds 1 dp.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use cf_parser::model::{Kill, Round, RoundEndReason, Side};
 use serde::{Deserialize, Serialize};
@@ -343,7 +343,11 @@ fn death_play(
             "nearest_teammate": nearest.map(|(id, _)| id.to_string()),
             "nearest_teammate_dist": nearest.map(|(_, d)| d.round()),
             "man_context": man_context(ctx, round, side, k.tick - 1),
-            "round_end_delta_s": secs_1dp(round.end_tick - k.tick, ctx.data().tickrate),
+            // Clamped at 0: a death in the post-decision tail (after
+            // `end_tick`, inside `officially_ended_tick`) is never negative
+            // seconds — `dead_time` marks it, as the smoke play does.
+            "round_end_delta_s": secs_1dp((round.end_tick - k.tick).max(0), ctx.data().tickrate),
+            "dead_time": k.tick > round.end_tick,
             "thru_smoke": k.thru_smoke,
             "wallbang": k.penetrated > 0,
         }),
@@ -813,12 +817,22 @@ fn rotation_play(
 
 // ---- flags + finalization -------------------------------------------------
 
+/// Marker `merge_flags` leaves on any play an exculpatory rule merged into,
+/// whichever rule ends up winning `rule_id`. Additive facts key (never set
+/// to `false` — absent means no exculpatory flag touched the play).
+const EXCULPATORY_KEY: &str = "exculpatory";
+
 /// Layer the tracked player's flags for this round onto the plays: a flag on
 /// a play's tick merges its `details` into `facts` (existing keys win) and
 /// the highest-severity rule becomes `rule_id`; a flag on a bare tick
 /// becomes a `flag` play (Bad, or Neutral when exculpatory) — the `outcome`
-/// play (round end tick) never absorbs flags. A rule already
-/// carried by some play in the round (Task 8's rotation) is not re-added.
+/// play (round end tick) never absorbs flags. A rule some play carried
+/// BEFORE this pass (Task 8's rotation absorbing H11_SLOW_ROTATION) is not
+/// re-added; that set is fixed up front, so a rule firing twice in one round
+/// (two failed trades) merges both times. Any exculpatory rule merged into a
+/// play leaves `facts["exculpatory"] = true` behind, whichever rule wins
+/// `rule_id` — `finalize_death_quality` reads it (ADR-0008: a death carrying
+/// an exculpatory flag is never the player's fault).
 fn merge_flags(
     ctx: &AnalysisContext,
     cfg: &DetectorConfig,
@@ -827,15 +841,13 @@ fn merge_flags(
     plays: &mut Vec<Play>,
     flags: &[RuleFlag],
 ) {
+    let carried: HashSet<String> = plays.iter().filter_map(|p| p.rule_id.clone()).collect();
     let mut best: HashMap<i32, f32> = HashMap::new();
     for f in flags
         .iter()
         .filter(|f| f.round == round.number && f.steamid == tracked)
     {
-        if plays
-            .iter()
-            .any(|p| p.rule_id.as_deref() == Some(f.rule_id))
-        {
+        if carried.contains(f.rule_id) {
             continue;
         }
         let exculpatory = cfg.rbr.exculpatory_rules.iter().any(|e| e == f.rule_id);
@@ -846,6 +858,11 @@ fn merge_flags(
             if let (Some(obj), Some(fobj)) = (p.facts.as_object_mut(), f.details.as_object()) {
                 for (k, v) in fobj {
                     obj.entry(k.clone()).or_insert_with(|| v.clone());
+                }
+            }
+            if exculpatory {
+                if let Some(obj) = p.facts.as_object_mut() {
+                    obj.insert(EXCULPATORY_KEY.to_string(), Value::Bool(true));
                 }
             }
             let b = best.entry(f.tick).or_insert(f32::MIN);
@@ -861,11 +878,17 @@ fn merge_flags(
                 }
             }
         } else {
+            let mut facts = f.details.clone();
+            if exculpatory {
+                if let Some(obj) = facts.as_object_mut() {
+                    obj.insert(EXCULPATORY_KEY.to_string(), Value::Bool(true));
+                }
+            }
             let mut p = play(
                 f.tick,
                 phase_of(ctx, cfg, round.number, f.tick),
                 "flag",
-                f.details.clone(),
+                facts,
                 Some(if exculpatory {
                     Quality::Neutral
                 } else {
@@ -880,7 +903,10 @@ fn merge_flags(
 }
 
 /// Spec §2: a death is Bad when a (non-exculpatory) rule fired on it,
-/// Neutral when exculpatory or traded, ungraded for a fair duel.
+/// Neutral when exculpatory or traded, ungraded for a fair duel. ANY
+/// exculpatory flag merged into the death (`facts["exculpatory"]`, left by
+/// `merge_flags`) makes it Neutral even when a higher-severity rule won
+/// `rule_id` — the round verdict says "Not on you", so the ledger must too.
 fn finalize_death_quality(plays: &mut [Play], exculpatory: &[String]) {
     for p in plays.iter_mut().filter(|p| p.kind == "death") {
         let traded = p
@@ -888,8 +914,16 @@ fn finalize_death_quality(plays: &mut [Play], exculpatory: &[String]) {
             .get("traded")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        let exculpated = p
+            .facts
+            .get(EXCULPATORY_KEY)
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+            || p.rule_id
+                .as_ref()
+                .is_some_and(|r| exculpatory.iter().any(|e| e == r));
         p.quality = match &p.rule_id {
-            Some(r) if exculpatory.iter().any(|e| e == r) => Some(Quality::Neutral),
+            Some(_) if exculpated => Some(Quality::Neutral),
             Some(_) => Some(Quality::Bad),
             None if traded => Some(Quality::Neutral),
             None => None,
@@ -1119,12 +1153,161 @@ mod tests {
             ),
         ];
         let l = ledger_for(&data, &flags);
-        assert_eq!(find_play(&l, "death").quality, Some(Quality::Neutral));
+        let d = find_play(&l, "death");
+        assert_eq!(d.quality, Some(Quality::Neutral));
+        assert_eq!(d.facts["exculpatory"], true);
         let f = find_play(&l, "flag");
         assert_eq!(f.tick, 5000);
         assert_eq!(f.rule_id.as_deref(), Some("H6_UNUSED_UTIL_AT_ROUND_END"));
         assert_eq!(f.quality, Some(Quality::Bad));
         assert_eq!(f.facts["held"][0], "Flashbang");
+        assert!(
+            f.facts.get("exculpatory").is_none(),
+            "the marker is only left by an exculpatory rule"
+        );
+    }
+
+    /// V1.2b final-review fix wave, #1: the exculpatory flag decides the
+    /// death's quality even when a higher-severity rule wins `rule_id` —
+    /// the round verdict is "Not on you" (ADR-0008), so the ledger can't
+    /// grade the same death Bad. Both flag orders, since `merge_flags`
+    /// walks flags in input order.
+    #[test]
+    fn exculpatory_flag_keeps_the_death_neutral_when_a_worse_rule_wins_rule_id() {
+        let data = base().kill(ENEMY, ME, 1, 3000, "weapon_ak47").build();
+        let baited = flag(
+            "H2_BAITED_TRADE",
+            3000,
+            0.35,
+            serde_json::json!({"non_following_teammate": "2", "their_distance": 1575.0}),
+        );
+        let isolated = flag(
+            "H2_ISOLATED_DEATH",
+            3000,
+            0.8,
+            serde_json::json!({"distance": 1575.0}),
+        );
+        for flags in [
+            vec![baited.clone(), isolated.clone()],
+            vec![isolated.clone(), baited.clone()],
+        ] {
+            let l = ledger_for(&data, &flags);
+            let d = find_play(&l, "death");
+            assert_eq!(
+                d.rule_id.as_deref(),
+                Some("H2_ISOLATED_DEATH"),
+                "highest severity still names the rule"
+            );
+            assert_eq!(d.facts["exculpatory"], true);
+            assert_eq!(d.facts["their_distance"], 1575.0, "both details merge");
+            assert_eq!(d.facts["distance"], 1575.0);
+            assert_eq!(
+                d.quality,
+                Some(Quality::Neutral),
+                "any exculpatory flag on the death makes it Neutral"
+            );
+        }
+        // Without the exculpatory flag: no marker, Bad as before.
+        let l = ledger_for(&data, &[isolated]);
+        let d = find_play(&l, "death");
+        assert!(d.facts.get("exculpatory").is_none());
+        assert_eq!(d.quality, Some(Quality::Bad));
+    }
+
+    /// V1.2b final-review fix wave, #2: a rule that fires twice in one round
+    /// (two teammates die in trade range, neither traded) merges into BOTH
+    /// plays — only rules pre-absorbed by `rotation_play` are skipped, not
+    /// every repeat of a rule.
+    #[test]
+    fn a_rule_firing_twice_in_one_round_merges_into_both_plays() {
+        const MATE2: u64 = 3;
+        let data = Scenario::new("de_mirage")
+            .players_ct(&[ME, MATE, MATE2])
+            .players_t(&[ENEMY])
+            .round(1, 1000, 5000)
+            .hold(ME, 1000, 5000, 0.0, 0.0, 0.0)
+            .hold(MATE, 1000, 5000, 500.0, 0.0, 0.0)
+            .hold(MATE2, 1000, 5000, 0.0, 500.0, 0.0)
+            .hold(ENEMY, 1000, 5000, 4000.0, 0.0, 0.0)
+            .kill(ENEMY, MATE, 1, 3000, "weapon_ak47")
+            .kill(ENEMY, MATE2, 1, 4000, "weapon_ak47")
+            .build();
+        let flags = vec![
+            flag(
+                "H2_FAILED_TRADE",
+                3000,
+                0.6,
+                serde_json::json!({"teammate": "2", "killer": "9"}),
+            ),
+            flag(
+                "H2_FAILED_TRADE",
+                4000,
+                0.6,
+                serde_json::json!({"teammate": "3", "killer": "9"}),
+            ),
+        ];
+        let l = ledger_for(&data, &flags);
+        let missed: Vec<&Play> = l
+            .plays
+            .iter()
+            .filter(|p| p.kind == "missed_trade")
+            .collect();
+        assert_eq!(missed.len(), 2, "{:?}", l.plays);
+        assert_eq!(missed[0].tick, 3000);
+        assert_eq!(missed[1].tick, 4000);
+        for m in &missed {
+            assert_eq!(m.rule_id.as_deref(), Some("H2_FAILED_TRADE"), "{m:?}");
+            assert_eq!(m.quality, Some(Quality::Bad));
+        }
+        assert_eq!(
+            l.plays.iter().filter(|p| p.kind == "flag").count(),
+            0,
+            "merged into the plays, not re-added as bare flags"
+        );
+
+        // Same rule on two bare ticks: two `flag` plays, not one.
+        let flags = vec![
+            flag(
+                "H6_DEAD_TIME_SMOKE",
+                2000,
+                0.3,
+                serde_json::json!({"round": 1}),
+            ),
+            flag(
+                "H6_DEAD_TIME_SMOKE",
+                2500,
+                0.3,
+                serde_json::json!({"round": 1}),
+            ),
+        ];
+        let l = ledger_for(&base().build(), &flags);
+        let bare: Vec<i32> = l
+            .plays
+            .iter()
+            .filter(|p| p.kind == "flag")
+            .map(|p| p.tick)
+            .collect();
+        assert_eq!(bare, vec![2000, 2500]);
+    }
+
+    /// V1.2b final-review fix wave, #5: a death in the post-decision tail
+    /// (after `end_tick`, inside `officially_ended_tick`) is 0 s from the
+    /// round end and marked `dead_time` — never negative seconds.
+    #[test]
+    fn death_after_the_round_ended_clamps_the_delta_at_zero() {
+        // end_tick 5000, officially_ended 5128 (Scenario::round).
+        let data = base().kill(ENEMY, ME, 1, 5064, "weapon_ak47").build();
+        let l = ledger_for(&data, &[]);
+        let d = find_play(&l, "death");
+        assert_eq!(d.tick, 5064);
+        assert_eq!(d.facts["round_end_delta_s"], 0.0);
+        assert_eq!(d.facts["dead_time"], true);
+
+        let data = base().kill(ENEMY, ME, 1, 3000, "weapon_ak47").build();
+        let d = ledger_for(&data, &[]);
+        let d = find_play(&d, "death");
+        assert_eq!(d.facts["round_end_delta_s"], 31.3);
+        assert_eq!(d.facts["dead_time"], false);
     }
 
     #[test]

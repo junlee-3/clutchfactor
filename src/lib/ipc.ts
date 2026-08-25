@@ -19,6 +19,7 @@
 //   TrendMatchRow  <- src-tauri/crates/cf-store/src/store.rs
 //   TrendsDto (+ RuleSeries) <- src-tauri/src/commands.rs
 //   AppSettings (+ ThresholdRow) <- src-tauri/src/commands.rs
+//   ReAnalyzeResult <- src-tauri/src/commands.rs
 // Conventions: steamids are strings (steamid64 overflows JS number);
 // command names are snake_case; Rust arg names arrive camelCased.
 
@@ -414,6 +415,22 @@ export function getAppSettings(): Promise<AppSettings> {
 
 export function setTrackedOverride(steamid: string | null): Promise<void> {
   return invoke<void>("set_tracked_override", { steamid });
+}
+
+export interface ReAnalyzeResult {
+  needs_file: boolean;
+  file_name: string;
+  map: string;
+}
+
+export function reAnalyzeMatch(
+  matchId: number,
+  path: string | null,
+  onProgress: (e: ProgressEvent) => void,
+): Promise<ReAnalyzeResult> {
+  const channel = new Channel<ProgressEvent>();
+  channel.onmessage = onProgress;
+  return invoke<ReAnalyzeResult>("re_analyze_match", { matchId, path, onProgress: channel });
 }
 
 export function deleteMatch(matchId: number): Promise<void> {

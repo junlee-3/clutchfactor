@@ -38,7 +38,8 @@ pub fn run() {
             commands::analyze_positioning,
             commands::get_app_settings,
             commands::set_tracked_override,
-            commands::delete_match
+            commands::delete_match,
+            commands::re_analyze_match
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

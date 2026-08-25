@@ -10,7 +10,7 @@ import {
   startFile,
   type QueueFile,
 } from "../lib/importQueue";
-import { useDeleteMatch, useImportDemo, useMatches } from "../lib/queries";
+import { useDeleteMatch, useImportDemo, useMatches, useReAnalyzeMatch } from "../lib/queries";
 import { formatMatchRow } from "../lib/score";
 import { mapInitials, mapName } from "../lib/mapName";
 import { radarImageUrl } from "../replay/coords";
@@ -67,6 +67,32 @@ export function Library() {
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const importDemo = useImportDemo(setProgress);
   const deleteMatch = useDeleteMatch();
+  const [reanalyzing, setReanalyzing] = useState<number | null>(null);
+  const [reProgress, setReProgress] = useState<ProgressEvent | null>(null);
+  const reAnalyze = useReAnalyzeMatch(setReProgress);
+
+  async function reAnalyzeRow(id: number, map: string) {
+    setReanalyzing(id);
+    setReProgress(null);
+    try {
+      let result = await reAnalyze.mutateAsync({ matchId: id, path: null });
+      if (result.needs_file) {
+        const picked = await open({
+          multiple: false,
+          title: `Locate ${result.file_name}`,
+          filters: [{ name: "CS2 demo", extensions: ["dem"] }],
+        });
+        if (typeof picked !== "string") return; // cancelled: nothing changed
+        result = await reAnalyze.mutateAsync({ matchId: id, path: picked });
+      }
+      toast.push("status", `Re-analyzed ${mapName(map)} — play-by-play is ready for every round.`);
+    } catch (e) {
+      toast.push("error", String(e));
+    } finally {
+      setReanalyzing(null);
+      setReProgress(null);
+    }
+  }
 
   async function reallyDelete(id: number) {
     try {
@@ -183,6 +209,21 @@ export function Library() {
                     <span className="type-data library-row-meta">{m.imported_at}</span>
                   </button>
                   <div className="library-row-actions">
+                    {reanalyzing === m.id ? (
+                      <span className="type-data library-row-progress" role="status">
+                        {reProgress ? `${reProgress.detail} ${Math.round(reProgress.pct * 100)}%` : "Starting…"}
+                      </span>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void reAnalyzeRow(m.id, m.map)}
+                        disabled={reanalyzing !== null || importing}
+                        title="Re-parse this demo to build the play-by-play (needs the original .dem file)"
+                      >
+                        Re-analyze
+                      </Button>
+                    )}
                     {confirmDelete === m.id ? (
                       <>
                         <Button

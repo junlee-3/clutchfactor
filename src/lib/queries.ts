@@ -14,6 +14,7 @@ import {
   importCorpusDemo,
   importDemo,
   listMatches,
+  reAnalyzeMatch,
   setTrackedOverride,
   trackedPlayer,
 } from "./ipc";
@@ -130,6 +131,24 @@ export function useSetTrackedOverride() {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["app_settings"] });
       void client.invalidateQueries({ queryKey: ["tracked_player"] });
+    },
+  });
+}
+
+export function useReAnalyzeMatch(onProgress: (e: ProgressEvent) => void) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ matchId, path }: { matchId: number; path: string | null }) =>
+      reAnalyzeMatch(matchId, path, onProgress),
+    onSuccess: (result, { matchId }) => {
+      if (result.needs_file) return; // nothing changed yet
+      void client.invalidateQueries({ queryKey: ["matches"] });
+      void client.invalidateQueries({ queryKey: ["match", matchId] });
+      void client.invalidateQueries({ queryKey: ["report", matchId] });
+      void client.invalidateQueries({ queryKey: ["round_review", matchId] });
+      void client.invalidateQueries({ queryKey: ["ticks", matchId] });
+      void client.invalidateQueries({ queryKey: ["habits"] });
+      void client.invalidateQueries({ queryKey: ["trends"] });
     },
   });
 }
