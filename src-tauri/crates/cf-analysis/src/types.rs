@@ -94,6 +94,15 @@ pub struct AnalysisOutput {
     /// V1.2b play ledger, one entry per round the tracked player played.
     /// Not part of `AnalysisGolden` (goldens stay byte-identical).
     pub ledger: Vec<crate::play_ledger::RoundLedger>,
+    /// V1.4 tracked-player match totals (docs/spec/stats-and-understanding.md
+    /// §1). `None` when the tracked player didn't play a round (spectator or
+    /// missing from the demo). Not part of `AnalysisGolden` (goldens stay
+    /// byte-identical).
+    pub stats: Option<crate::stats::MatchStats>,
+    /// V1.4 per-player per-round scoreboard rows — computed for everyone on
+    /// the roster, not just the tracked player. Not part of `AnalysisGolden`
+    /// (goldens stay byte-identical).
+    pub round_players: Vec<crate::stats::RoundPlayerStats>,
 }
 
 /// Compact snapshot for golden tests (PROMPT.md §10.2): per-rule flag counts,

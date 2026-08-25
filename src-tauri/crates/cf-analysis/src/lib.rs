@@ -62,10 +62,15 @@ pub fn analyze(data: &MatchData, tracked: u64, cfg: &DetectorConfig) -> Analysis
     }
     let death_classes = classify::classify_deaths(&ctx, cfg, &flags);
     let ledger = play_ledger::build_ledger(&ctx, cfg, &flags);
+    let mut round_players = stats::round_player_rows(&ctx, cfg);
+    let stats = (stats::rounds_played(&ctx) > 0)
+        .then(|| stats::match_stats(&ctx, cfg, &mut round_players, &ledger));
     AnalysisOutput {
         flags,
         insights,
         death_classes,
         ledger,
+        stats,
+        round_players,
     }
 }

@@ -238,6 +238,51 @@ pub struct CoachCacheRow {
     pub violations_json: String,
 }
 
+/// The tracked player's match totals (V1.4, docs/spec/stats-and-understanding.md §1).
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+pub struct MatchStatsRow {
+    pub rounds_played: u32,
+    pub kills: u32,
+    pub deaths: u32,
+    pub assists: u32,
+    pub damage: u32,
+    pub headshots: u32,
+    pub kast_rounds: u32,
+    pub entry_attempts: u32,
+    pub entry_wins: u32,
+    pub traded_deaths: u32,
+    pub trade_kills: u32,
+    pub trade_opportunities: u32,
+    pub clutch_attempts: u32,
+    pub clutch_wins: u32,
+}
+
+/// One roster player's stat line for one round (the scoreboard row).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct RoundPlayerStatsRow {
+    pub round: u32,
+    pub steamid: String,
+    pub side: String,
+    pub kills: u32,
+    pub deaths: u32,
+    pub assists: u32,
+    pub damage: u32,
+    pub headshots: u32,
+    pub survived: bool,
+    pub traded: bool,
+    pub entry: Option<String>,
+}
+
+/// One callout label's resolved world position on a map (median over every
+/// imported match's `last_place` samples).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct MapCalloutRow {
+    pub place: String,
+    pub x: f32,
+    pub y: f32,
+    pub samples: u32,
+}
+
 /// One own match's trend point (Trends screen chart, PROMPT.md M6).
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct TrendMatchRow {
@@ -511,6 +556,11 @@ impl Store {
         tx.execute("DELETE FROM insights WHERE match_id = ?1", [match_id])?;
         tx.execute("DELETE FROM death_class WHERE match_id = ?1", [match_id])?;
         tx.execute("DELETE FROM round_plays WHERE match_id = ?1", [match_id])?;
+        tx.execute("DELETE FROM match_stats WHERE match_id = ?1", [match_id])?;
+        tx.execute(
+            "DELETE FROM round_player_stats WHERE match_id = ?1",
+            [match_id],
+        )?;
         {
             let mut st = tx.prepare(
                 "INSERT INTO rule_flags (match_id, rule_id, round, tick, steamid, confidence,
@@ -576,6 +626,35 @@ impl Store {
                     r.round,
                     serde_json::to_string(&r.plays).expect("plays json"),
                     serde_json::to_string(&r.timeline).expect("timeline json"),
+                ])?;
+            }
+            if let Some(s) = &out.stats {
+                tx.execute(
+                    "INSERT INTO match_stats (match_id, rounds_played, kills, deaths, assists, damage, headshots, kast_rounds,
+                       entry_attempts, entry_wins, traded_deaths, trade_kills, trade_opportunities, clutch_attempts, clutch_wins)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                    params![match_id, s.rounds_played, s.kills, s.deaths, s.assists, s.damage, s.headshots, s.kast_rounds,
+                            s.entry_attempts, s.entry_wins, s.traded_deaths, s.trade_kills, s.trade_opportunities, s.clutch_attempts, s.clutch_wins],
+                )?;
+            }
+            let mut st = tx.prepare(
+                "INSERT INTO round_player_stats (match_id, round, steamid, side, kills, deaths, assists, damage, headshots, survived, traded, entry)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            )?;
+            for r in &out.round_players {
+                st.execute(params![
+                    match_id,
+                    r.round,
+                    r.steamid.to_string(),
+                    r.side,
+                    r.kills,
+                    r.deaths,
+                    r.assists,
+                    r.damage,
+                    r.headshots,
+                    r.survived,
+                    r.traded,
+                    r.entry
                 ])?;
             }
         }
@@ -770,6 +849,115 @@ impl Store {
                 .execute("DELETE FROM coach_cache WHERE match_id = ?1", [match_id])?,
         };
         Ok(())
+    }
+
+    pub fn load_match_stats(&self, match_id: i64) -> Result<Option<MatchStatsRow>, StoreError> {
+        let row = self.conn.query_row(
+            "SELECT rounds_played, kills, deaths, assists, damage, headshots, kast_rounds, entry_attempts, entry_wins,
+                    traded_deaths, trade_kills, trade_opportunities, clutch_attempts, clutch_wins
+             FROM match_stats WHERE match_id = ?1",
+            [match_id],
+            |r| Ok(MatchStatsRow { rounds_played: r.get(0)?, kills: r.get(1)?, deaths: r.get(2)?, assists: r.get(3)?, damage: r.get(4)?, headshots: r.get(5)?, kast_rounds: r.get(6)?, entry_attempts: r.get(7)?, entry_wins: r.get(8)?, traded_deaths: r.get(9)?, trade_kills: r.get(10)?, trade_opportunities: r.get(11)?, clutch_attempts: r.get(12)?, clutch_wins: r.get(13)? }),
+        ).optional()?;
+        Ok(row)
+    }
+
+    /// Only the matches (of `ids`) that have a stats row (Trends screen —
+    /// silently skips matches analyzed before V1.4 or without the tracked
+    /// player).
+    pub fn match_stats_for_matches(
+        &self,
+        ids: &[i64],
+    ) -> Result<Vec<(i64, MatchStatsRow)>, StoreError> {
+        let mut out = vec![];
+        for id in ids {
+            if let Some(row) = self.load_match_stats(*id)? {
+                out.push((*id, row));
+            }
+        }
+        Ok(out)
+    }
+
+    /// The scoreboard for one match, optionally narrowed to a single round.
+    pub fn load_round_player_stats(
+        &self,
+        match_id: i64,
+        round: Option<u32>,
+    ) -> Result<Vec<RoundPlayerStatsRow>, StoreError> {
+        let sql = "SELECT round, steamid, side, kills, deaths, assists, damage, headshots, survived, traded, entry
+                   FROM round_player_stats WHERE match_id = ?1 AND (?2 IS NULL OR round = ?2) ORDER BY round, side, steamid";
+        let mut st = self.conn.prepare(sql)?;
+        let rows = st
+            .query_map(params![match_id, round], |r| {
+                Ok(RoundPlayerStatsRow {
+                    round: r.get(0)?,
+                    steamid: r.get(1)?,
+                    side: r.get(2)?,
+                    kills: r.get(3)?,
+                    deaths: r.get(4)?,
+                    assists: r.get(5)?,
+                    damage: r.get(6)?,
+                    headshots: r.get(7)?,
+                    survived: r.get(8)?,
+                    traded: r.get(9)?,
+                    entry: r.get(10)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Raw (place, x, y) at 1 Hz over every match on the map — the input for
+    /// callout medians. Bounded by the `tick % 64` sample so a corpus map
+    /// stays in the low hundreds of thousands of rows.
+    pub fn place_positions(&self, map: &str) -> Result<Vec<(String, f32, f32)>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT t.last_place, t.x, t.y FROM tick_samples t
+             JOIN matches m ON m.id = t.match_id
+             WHERE m.map = ?1 AND t.last_place IS NOT NULL AND t.last_place != '' AND t.tick % 64 = 0",
+        )?;
+        let rows = st
+            .query_map([map], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Replaces every callout row for `map` (recomputed after an import or
+    /// re-analyze of a match on that map).
+    pub fn save_map_callouts(
+        &mut self,
+        map: &str,
+        rows: &[MapCalloutRow],
+    ) -> Result<(), StoreError> {
+        let tx = self.conn.transaction()?;
+        tx.execute("DELETE FROM map_callouts WHERE map = ?1", [map])?;
+        {
+            let mut st = tx.prepare(
+                "INSERT INTO map_callouts (map, place, x, y, samples) VALUES (?1, ?2, ?3, ?4, ?5)",
+            )?;
+            for r in rows {
+                st.execute(params![map, r.place, r.x, r.y, r.samples])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn load_map_callouts(&self, map: &str) -> Result<Vec<MapCalloutRow>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT place, x, y, samples FROM map_callouts WHERE map = ?1 ORDER BY place",
+        )?;
+        let rows = st
+            .query_map([map], |r| {
+                Ok(MapCalloutRow {
+                    place: r.get(0)?,
+                    x: r.get(1)?,
+                    y: r.get(2)?,
+                    samples: r.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     /// Records where a demo was imported from (V1.2b re-analyze input).
@@ -1785,6 +1973,8 @@ const MATCH_ANALYSIS_TABLES: &[&str] = &[
     "round_review",
     "round_plays",
     "coach_cache",
+    "match_stats",
+    "round_player_stats",
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1997,11 +2187,11 @@ mod tests {
         let path = dir.path().join("test.db");
         {
             let store = Store::open(&path).unwrap();
-            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 9);
+            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 10);
         }
         // Reopen: migrations must not re-apply / error.
         let store = Store::open(&path).unwrap();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 9);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 10);
     }
 
     #[test]
@@ -2158,6 +2348,35 @@ mod tests {
                 plays: vec![],
                 timeline: vec![],
             }],
+            stats: Some(cf_analysis::stats::MatchStats {
+                rounds_played: 1,
+                kills: 1,
+                deaths: 1,
+                assists: 0,
+                damage: 100,
+                headshots: 1,
+                kast_rounds: 1,
+                entry_attempts: 0,
+                entry_wins: 0,
+                traded_deaths: 0,
+                trade_kills: 0,
+                trade_opportunities: 0,
+                clutch_attempts: 0,
+                clutch_wins: 0,
+            }),
+            round_players: vec![cf_analysis::stats::RoundPlayerStats {
+                round: 1,
+                steamid: 1,
+                side: "CT".into(),
+                kills: 1,
+                deaths: 0,
+                assists: 0,
+                damage: 100,
+                headshots: 1,
+                survived: true,
+                traded: false,
+                entry: None,
+            }],
         };
         store.save_analysis(match_id, &analysis).unwrap();
         store
@@ -2199,6 +2418,11 @@ mod tests {
             .get_coach_cache(match_id, "round", 1)
             .unwrap()
             .is_some());
+        assert!(store.load_match_stats(match_id).unwrap().is_some());
+        assert_eq!(
+            store.load_round_player_stats(match_id, None).unwrap().len(),
+            1
+        );
 
         // A re-parse of the "same" demo with one extra kill.
         data.kills.push(cf_parser::model::Kill {
@@ -2244,6 +2468,17 @@ mod tests {
                 .unwrap()
                 .is_none(),
             "the old coach cache must not survive the re-parse"
+        );
+        assert!(
+            store.load_match_stats(match_id).unwrap().is_none(),
+            "the old match stats must not survive the re-parse"
+        );
+        assert!(
+            store
+                .load_round_player_stats(match_id, None)
+                .unwrap()
+                .is_empty(),
+            "the old round player stats must not survive the re-parse"
         );
     }
 
@@ -2313,6 +2548,8 @@ mod tests {
                 confidence: 0.75,
             }],
             ledger: vec![],
+            stats: None,
+            round_players: vec![],
         };
         store.save_analysis(id, &out).unwrap();
         let insights = store.insights_for_match(id).unwrap();
@@ -2332,7 +2569,7 @@ mod tests {
     fn cross_demo_queries_aggregate_flags_positions_and_rounds() {
         use cf_analysis::{AnalysisOutput, EvidenceRef, RuleFlag};
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 9);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 10);
         store.set_setting("tracked_steamid", "1").unwrap();
         let flag = |round: u32, tick: i32| RuleFlag {
             rule_id: "H2_ISOLATED_DEATH",
@@ -2541,6 +2778,8 @@ mod tests {
             insights: vec![],
             death_classes: vec![],
             ledger: vec![],
+            stats: None,
+            round_players: vec![],
         };
         store.save_analysis(id, &out).unwrap();
 
@@ -2556,7 +2795,7 @@ mod tests {
     #[test]
     fn migration_2_analysis_tables_and_rule_inputs_persist() {
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 9);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 10);
         let id = store
             .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
             .unwrap();
@@ -3260,6 +3499,85 @@ mod tests {
     }
 
     #[test]
+    fn save_analysis_persists_stats_and_round_player_rows_and_callouts_round_trip() {
+        let (_dir, mut store, match_id, _data) = one_match();
+        let out = cf_analysis::AnalysisOutput {
+            stats: Some(cf_analysis::stats::MatchStats {
+                rounds_played: 2,
+                kills: 3,
+                deaths: 1,
+                assists: 1,
+                damage: 210,
+                headshots: 2,
+                kast_rounds: 2,
+                entry_attempts: 1,
+                entry_wins: 1,
+                traded_deaths: 0,
+                trade_kills: 1,
+                trade_opportunities: 2,
+                clutch_attempts: 1,
+                clutch_wins: 0,
+            }),
+            round_players: vec![cf_analysis::stats::RoundPlayerStats {
+                round: 1,
+                steamid: 1,
+                side: "CT".into(),
+                kills: 2,
+                deaths: 0,
+                assists: 1,
+                damage: 150,
+                headshots: 1,
+                survived: true,
+                traded: false,
+                entry: Some("win".into()),
+            }],
+            ..Default::default()
+        };
+        store.save_analysis(match_id, &out).unwrap();
+        let s = store.load_match_stats(match_id).unwrap().unwrap();
+        assert_eq!((s.kills, s.damage, s.clutch_attempts), (3, 210, 1));
+        let rows = store.load_round_player_stats(match_id, Some(1)).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].entry.as_deref(), Some("win"));
+        assert_eq!(rows[0].steamid, "1");
+        assert!(store
+            .load_round_player_stats(match_id, Some(2))
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            store
+                .match_stats_for_matches(&[match_id, 999])
+                .unwrap()
+                .len(),
+            1
+        );
+        store
+            .save_analysis(match_id, &cf_analysis::AnalysisOutput::default())
+            .unwrap();
+        assert!(store.load_match_stats(match_id).unwrap().is_none());
+
+        store
+            .save_map_callouts(
+                "de_mirage",
+                &[MapCalloutRow {
+                    place: "BombsiteA".into(),
+                    x: -377.0,
+                    y: -1887.0,
+                    samples: 52841,
+                }],
+            )
+            .unwrap();
+        let c = store.load_map_callouts("de_mirage").unwrap();
+        assert_eq!(
+            (c.len(), c[0].place.as_str(), c[0].samples),
+            (1, "BombsiteA", 52841)
+        );
+        store.save_map_callouts("de_mirage", &[]).unwrap();
+        assert!(store.load_map_callouts("de_mirage").unwrap().is_empty());
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 10);
+    }
+
+    #[test]
     fn distinct_places_lists_every_visited_callout_once_and_skips_blanks() {
         let (_dir, store, match_id, _) = one_match();
         // sample_match() stands everyone in BombsiteA; add a second place,
@@ -3353,6 +3671,6 @@ mod tests {
             .get_coach_cache(match_id, "synthesis", 0)
             .unwrap()
             .is_none());
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 9);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 10);
     }
 }
