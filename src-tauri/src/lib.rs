@@ -41,7 +41,16 @@ pub fn run() {
             commands::get_app_settings,
             commands::set_tracked_override,
             commands::delete_match,
-            commands::re_analyze_match
+            commands::re_analyze_match,
+            commands::coach_status,
+            commands::set_gemini_key,
+            commands::set_coach_models,
+            commands::set_coach_enabled,
+            commands::test_gemini_key,
+            commands::get_coach_rounds,
+            commands::regenerate_coach_round,
+            commands::get_coach_synthesis,
+            commands::regenerate_coach_synthesis
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
