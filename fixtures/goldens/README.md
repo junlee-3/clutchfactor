@@ -192,3 +192,144 @@ Screenshots (plus the Library and pre-fix Match Report/Replay-launch shots)
 live in
 `/private/tmp/claude-501/-Users-junlee-Documents-programming-clutchfactor/ed626285-4a44-4fc2-9c1f-bff2273fbf21/scratchpad/`,
 prefixed `t-finalfix-`.
+
+## V1.2b hand-verification (2026-08-25)
+
+Play ledger + re-analyze (spec `docs/spec/play-ledger-and-coach.md` §2, §4
+DoD). Run from the `docs/v1.2b-verification` worktree against the owner's
+real dev DB (`~/Library/Application Support/com.clutchfactor.app/clutchfactor.db`,
+backed up first with `sqlite3 .backup`; 5 `fixtures/own/` matches imported
+before the ledger existed + 1 corpus demo). Tracked `76561199228328773`
+(misosoupy3). All distances below are the engine's metric — nearest sample at
+or before the tick, `sqrt(dx² + dy² + (2·dz)²)` (z-weight 2.0), rounded to
+whole units; seconds are ticks/64 to 1 dp; "window" = 128 ticks (2 s).
+
+### A. Backfill through the real picker flow
+
+Before launch the DB was at migration 0007: no `matches.source_path`, no
+`round_plays`. First launch applied 0008 (column added, table created, all
+six `source_path` NULL, 0 ledger rows). Every own match was then re-analyzed
+from the Library's **Re-analyze** button: the first call returned
+`needs_file` (no `source_path`) and opened the native panel titled
+"Locate <file_name>", which was driven with AppleScript (⌘⇧G → the absolute
+fixture path → Return → Return). Parse + analysis + ledger per match:
+mirage-tie < 30 s, inferno-loss 14 s, dust2-loss 14 s, inferno-win 18 s,
+nuke-tie 20 s (debug build).
+
+```sql
+SELECT match_id, COUNT(*) FROM round_plays GROUP BY match_id;
+-- 2|24  3|16  4|20  7|17  8|24
+SELECT match_id, COUNT(*) FROM rounds GROUP BY match_id;
+-- 2|24  3|16  4|20  6|23  7|17  8|24        (6 = the corpus demo: no tracked player, no ledger, not in the Library)
+SELECT id, source_path FROM matches WHERE kind='own';
+-- every row now carries its absolute fixtures/own/<file>.dem path
+```
+
+Play kinds written (per match, from `plays_json`): nuke-tie 24 setup / 24
+outcome / 19 death / 13 kill / 10 assist / 23 missed_trade / 4 he / 3 molotov
+/ 4 smoke / 2 rotation / 2 plant / 1 defuse; inferno-loss 16/16, 15 death, 6
+kill, 7 missed_trade, 1 trade, 1 rush, 1 rotation, 1 flash, 4 he, 3 smoke, 2
+plant, 2 bare `flag`; inferno-win 20/20, 14 death, 16 kill, 4 trade, 6
+missed_trade, 4 flash, 7 molotov, 5 `flag`; dust2-loss 17/17, 17 death, 6 kill,
+13 missed_trade, 5 flash, 2 rotation; mirage-tie 24/24, 19 death, 7 kill, 10
+missed_trade, 1 trade, 4 smoke, 1 plant. Quality tags only where a measure
+backs them (death Bad/Neutral, flash Good/Bad/Neutral, he/molotov Bad on team
+damage, trade Good, missed_trade Bad/Neutral, rush Neutral, kill Bad on a
+teamkill).
+
+### B. Three rounds recomputed by hand from raw SQL
+
+Each row: the raw query → the hand number → the stored ledger fact → the rail
+line the app rendered (read back from the Replay screen's accessibility tree,
+verbatim). **Every fact and every line matched; no fix commit was needed.**
+
+**inferno-loss (id 3) R6 — CT, lost (`ct_killed`); `start 25475 · freeze_end
+26435 · end 32226 · officially_ended 32674`.** Flags on the tracked death tick
+28287: `H2_ISOLATED_DEATH` (sev 0.8) + `H2_BAITED_TRADE` (sev 0.35, the
+exculpatory rule).
+
+| Check | SQL (match_id=3) | Hand | Ledger fact | Rail line |
+|---|---|---|---|---|
+| Setup checkpoint 26435+320 = **26755** | `tick_samples` latest ≤ 26755 for tracked + the 4 CT teammates (all sampled at 26752) | me (1677.5, 2769.7, 124.0) CTSpawn → SirEggsAlot **159.50** (f32 159.4955 → 159), Mashed Potato 323.9, Crunchy Potato 1527.8, Roland 1813.3 → nearest SirEggsAlot 159; within 900 u: 2 of 4 | `nearest_teammate` SirEggsAlot, `nearest_teammate_dist` 159, `teammates_within_isolation` 2, `teammates_alive` 4, place CTSpawn | "0:05 Setup at CT spawn · Nearest teammate SirEggsAlot, 159 u · 2 of 4 teammates within 900 u" |
+| Flashes | `blinds WHERE attacker=tracked AND tick BETWEEN 25475 AND 32674`; `grenades WHERE thrower=tracked …` | 0 rows / 0 rows — the tracked player threw nothing in R6 | no flash/smoke/he/molotov play (silence) | (none) |
+| Missed trade @ **28215** (SirEggsAlot ← MyUnit) | samples at 28212; `shots`/`hurts` by tracked in [28215, 28343]; `kills WHERE victim=MyUnit AND tick ≤ 28343` | me↔SirEggsAlot **304.53** ≤ 700; 5 shots (28258–28284) + 30 dmg on MyUnit at 28284 ⇒ committed; MyUnit not killed in the window ⇒ not traded by team | `missed_trade` distance 305, `committed` true, `traded_by_me` false, `traded_by_team` false, quality neutral, no rule (H2_FAILED_TRADE correctly did not fire) | "0:27 Trade on SirEggsAlot missed · You fired, but MyUnit lived 2 s" |
+| Death @ **28287** by MyUnit (galilar, HS) | samples at 28284 for tracked, MyUnit, living CT; `kills WHERE victim=MyUnit AND tick BETWEEN 28287 AND 28415` | me↔MyUnit **666.61** → 667; nearest living teammate Mashed Potato **1575.18** → 1575 (Crunchy 1666.4, Roland 1966.6, SirEggsAlot dead); MyUnit not killed in the window ⇒ not traded; (32226−28287)/64 = **61.55** → 61.5; before the kill CT 4 (SirEggsAlot dead) v T 4 (Ismoothy dead) | `killer_distance` 667, `nearest_teammate` Mashed Potato 1575, `traded` false, `round_end_delta_s` 61.5, `dead_time` false, `man_context` 4v4, `rule_id` H2_ISOLATED_DEATH, **`exculpatory` true, `quality` neutral**, merged `their_distance` 1575.18 / `non_following_teammate` Mashed Potato / `dead_teammate` SirEggsAlot | chip **"Not on you"**; "0:28 Died to MyUnit · 667 u, galilar, headshot · Nearest: Mashed Potato · 1,575 u away at Banana · Mashed Potato 1,575 u back when SirEggsAlot went down — never in trade range · Not traded — round ended 62 s later · 4v4 before" |
+| Outcome @ 32226 | roster minus `kills` at or before 32674; `hurts` by tracked on T in the span | CT 5 − 5 = 0; T 5 − 5 = 0 (MyUnit died to the bomb at 32530, after the round ended) → 0v0; kills 0; damage 30 (m4a1 on MyUnit) | `won` false, `my_alive` 0, `their_alive` 0, `kills` 0, `damage` 30, `reason` ct_killed | "1:30 Round lost — ct killed · 0v0 at the end · 0 kills, 30 damage" |
+
+The only tracked flash in this demo is R15 @ **89265** (grenade event tick =
+blind tick), checked in its place: 7 `blinds` rows — enemies ≥ 1.1 s: MyUnit
+5.10, Ismoothy 4.81 (CT, tracked is T after the swap) → **2**; teammates ≥ 1.1 s:
+Roland 4.84, Mashed Potato 4.58, SirEggsAlot 5.16, Crunchy Potato 3.56 → **4**;
+self 1.01 s < 1.1 → not self-blind; no kill in [89265, 89393] → not converted.
+Ledger: `enemies_blinded` 2, `teammates_blinded` 4, `self_blind` false,
+`converted` false, quality **bad** ✓. All four tracked HEs also match their
+`hurts` (`weapon='hegrenade'`, 0.5 s window): R10 @56438 17 + 8 = **25** on Konky
++ MyUnit → `enemy_damage` 25 / `victims` both ✓; R11 @67372 **22** on Ismoothy ✓;
+R15 @88846 no hurt rows → **0** ✓; R16 @94017 **25** on MyUnit ✓; team/self damage
+0 everywhere ✓.
+
+**inferno-loss (id 3) R2 — CT, lost (`bomb_exploded`); `start 3379 ·
+freeze_end 4339 · end 8952 · officially_ended 9400`.** No tracked flags.
+
+| Check | SQL (match_id=3) | Hand | Ledger fact | Rail line |
+|---|---|---|---|---|
+| Setup @ **4659** | samples at 4656 | me (2153.7, 2543.1, 124.0) CTSpawn → Roland **431.56** → 432, Mashed Potato 575.2, SirEggsAlot 677.7, Crunchy Potato 1393.1 → 3 of 4 within 900 | nearest Roland 432, within 3, alive 4 | "0:05 Setup at CT spawn · Nearest teammate Roland Pryzbylewski, 432 u · 3 of 4 teammates within 900 u" |
+| Rotation (plant @ **6328** by Chet at BombsiteA) | samples for Chet at 6328, tracked at 6328 / 6968 / 7032; `rotate_radius_u` 800 | me at Banana **2320.13** → 2320 from the plant; 10 s later 997.7 (> 800), 11 s later **793.2** (≤ 800) → arrived at 11 s | `distance_at_plant` 2320, `at_site` false, `arrived_s` 11.0, `died_before_arrival` false | "0:31 Rotated to the plant in 11 s · 2,320 u from the plant when it went down" |
+| Kill @ **7887** Konky (mp9) | samples at 7884; `kills` before 7887 | **1436.27** → 1436; before: CT 3 (Crunchy 6010, SirEggsAlot 6838 dead) v T 5 | `killer_distance` 1436, `man_context` 3v5 | "0:55 Killed Konky · 1,436 u, mp9 · Konky down · +2% win probability · 3v5 before" |
+| Kill @ **8249** MyUnit (mp9) | samples at 8248 | **775.34** → 775; before: T 2 (Konky, Chet 7904, Logical 8192 dead) | `killer_distance` 775, `man_context` 3v2 | "1:01 Killed MyUnit · 775 u, mp9 · MyUnit down · +35% win probability · 3v2 before" |
+| **Tail death @ 8971** (`planted_c4`, no attacker — 19 ticks after `end_tick`) | `kills` row 8971; samples at 8968 | (8952 − 8971) = −19 ticks → clamped **0.0**, `dead_time`; no killer ⇒ not traded; nearest Roland **375.69** → 376 (Mashed Potato 1145.5); before: CT 3 v T 0 | `round_end_delta_s` **0.0**, `dead_time` **true**, `traded` false, `killer` null, `nearest_teammate` Roland 376, `man_context` 3v0, place Apartments, no quality | "1:12 Death · Nearest: Roland Pryzbylewski · At Apartments · **Not traded — after the round was decided** · 3v0 before" |
+| Outcome @ 8952 | roster minus kills ≤ 9400; `hurts` by tracked on T | CT 5 − 4 (Crunchy, SirEggsAlot, misosoupy3 @8971, Roland @8975) = **1**; T 5 − 5 = **0**; kills 2; damage 21+17+21+21+15+26 = **121** | `my_alive` 1, `their_alive` 0, `kills` 2, `damage` 121, `survived` false | "1:12 Round lost — bomb exploded · 1v0 at the end · 2 kills, 121 damage" |
+
+**mirage-tie (id 8) R13 — T, won (`ct_killed`); `start 76557 · freeze_end
+77933 · end 80183 · officially_ended 80631`.** Flags: `H2_FAILED_TRADE` @78958
+(distance 466.40), `H2_FAILED_TRADE` @79424 (427.21), `H4_KILLED_WITHOUT_CONTACT`
+@79440 (`no_contact`, p250).
+
+| Check | SQL (match_id=8) | Hand | Ledger fact | Rail line |
+|---|---|---|---|---|
+| Setup @ **78253** | samples at 78252 | me (1128.3, −1017.7, −259.7) TSpawn → xnopyt **221.7** → 222, Bebita 302.5, Roland 389.3, lyra 449.9 → 4 of 4 | nearest xnopyt 222, within 4, alive 4 | "0:05 Setup at T spawn · Nearest teammate xnopyt, 222 u · 4 of 4 teammates within 900 u" |
+| Missed trade @ **78958** (Bebita ← tttttssssss) | samples at 78956; `shots WHERE player=tracked AND tick BETWEEN 78958 AND 79086` → 0; `hurts` by tracked in that window → 0 (the tracked glock shots are at 78626–78694 and 79131–79179); tttttssssss died at 79150 (192 ticks > 128) | me↔Bebita **466.4** → 466 ≤ 700; no commit; not traded by team | `distance` 466, `committed` false, `traded_by_me` false, `traded_by_team` false, quality **bad**, `rule_id` **H2_FAILED_TRADE** | "0:16 Didn't trade Bebita · tttttssssss killed them 466 u from you; no shot from you in 2 s" |
+| Missed trade @ **79424** (Roland ← NCZ RG) | samples at 79424; shots/hurts in [79424, 79552] → 0; NCZ RG died at 79670 (246 > 128) | **427.2** → 427; no commit; not traded | `distance` 427, `committed` false, quality **bad**, `rule_id` **H2_FAILED_TRADE** (the second same-rule flag now merges — final-review fix #2) | "0:23 Didn't trade Roland Pryzbylewski · NCZ RG killed them 427 u from you; no shot from you in 2 s" |
+| Death @ **79440** by doctorwu2021 (p250) | samples at 79440; `kills WHERE victim=doctorwu2021 AND tick BETWEEN 79440 AND 79568` → 79542 | me↔doctorwu2021 **291.7** → 292; nearest lyra **371.7** → 372 (xnopyt 567.5); killer died 102 ticks later ⇒ traded; (80183−79440)/64 = **11.6**; before: T 3 v CT 4 | `killer_distance` 292, `nearest_teammate` lyra 372, `traded` true, `round_end_delta_s` 11.6, `dead_time` false, `man_context` 3v4, `rule_id` H4_KILLED_WITHOUT_CONTACT, quality bad | chip "Traded"; "0:23 Died to doctorwu2021 · 292 u, p250 · Nearest: lyra · At A site · Traded — round continued 12 s after · 3v4 before" |
+| Utility | `grenades`/`blinds` by tracked in the span; `hurts WHERE weapon IN ('hegrenade','inferno','molotov','incgrenade')` by anyone in the span | nothing thrown by the tracked player; no HE/fire damage by anyone in R13 | no utility play (silence) | (none) |
+| Outcome @ 80183 | roster minus kills ≤ 80631; `hurts` by tracked by weapon/victim side | T 5 − 3 = **2**; CT 5 − 5 = **0**; kills 0; damage glock **11** on CT | `won` true, `my_alive` 2, `their_alive` 0, `kills` 0, `damage` 11 | "0:35 Round won — ct killed · 2v0 at the end · 0 kills, 11 damage" |
+
+Observations (truthful per the spec's definitions, logged for the V1.3 coach
+rather than fixed here): the outcome's alive counts are taken at
+`officially_ended_tick`, so post-decision bomb deaths count (R6 reads "0v0 at
+the end"; R2 "1v0" while its tail death reads "3v0 before"); a death with no
+rule renders "Nearest: <name>" without the stored `nearest_teammate_dist`
+(R2: 376 u is in the facts, not in the caption); `H4_KILLED_WITHOUT_CONTACT`'s
+`variant` isn't narrated in the ledger caption; two same-clock rows in R2
+("1:12 Round lost" before "1:12 Death") are tick-ordered truth (8952 < 8971).
+
+### C. Re-analyze acceptance (Library → Re-analyze, dust2-loss id 7)
+
+| # | Case | What happened | Evidence |
+|---|---|---|---|
+| a | Pre-V1.2b import, `source_path` NULL → picker → correct file | Every one of the five matches in Part A: `needs_file` → "Locate <file>" panel → fixture → progress ("Checking the demo file 0%" → parsing → analysis) → toast "Re-analyzed <Map> — play-by-play is ready for every round." → ledger rows for every round, `source_path` recorded | `round_plays` counts above; toast text read from the AX tree |
+| b | Wrong file → hash error, ledger unchanged | `UPDATE matches SET source_path='…/nuke-tie-18-8-2026.dem' WHERE id=7` (a stale stored path) → Re-analyze → the picker opened (the stored-path hash mismatch is `needs_file`, not an error — final-review fix #4) → picked the nuke demo → error toast **"That file isn't dust2-loss-18-8-2026.dem — its contents don't match the imported demo. Pick the original file."** 4 s after the pick; `round_plays` for id 7 md5 `3a09d7b6…` before and after (unchanged), `source_path` unchanged | toast text from the AX tree; md5 over `round, plays_json, timeline_json` |
+| c | Cancelled picker → no change, no error | Re-analyze → picker → Escape → no toast, no progress, md5 unchanged, `source_path` unchanged | AX dump after cancel had no status/error text |
+| a′ | Then the correct file | picker → dust2 fixture → toast "Re-analyzed Dust2 — play-by-play is ready for every round.", `source_path` back to the dust2 path, 17 rows, ledger md5 identical to the earlier run (the ledger is deterministic) | SQL |
+
+Picker flow driven end to end through the real native panel (no SQL
+fallback needed); `commands.rs`'s `resolve_candidate…` / `hash_mismatch…`
+unit tests cover the same branches off-screen.
+
+### D. Walkthrough (`docs/design/walkthrough-v1.2b/`, window 1440×900)
+
+Captured from the running app at a true 1440×900 (the Dock was auto-hidden
+for the capture — macOS otherwise clamps the window to 1440×888 on the
+owner's display; restored afterwards). Graded against
+`docs/design/design-system.md` v2:
+
+| Screen | §2 color | §3 type | §4 space/radius/motion | §5 dashed grammar | Verdict |
+|---|---|---|---|---|---|
+| `library.png` | navy canvas/surfaces; win/loss row edges the only outcome hue; accent only on "Import demos" and focus; radar thumbnails at 80% on `--bg-tape` | sans map names (600), mono score/K-D/HS/rounds/dates | `--r-md` rows, `--s4` padding, 56×56 `--r-sm` thumbnails, 1px `--line` | no dashes (nothing here is evidence) | PASS |
+| `replay-rail.png` (inferno-loss R2, playhead 0:55) | radar well on `--bg-tape`; CT/T only on rosters, round chips, kill feed; active row's **solid 2px win-tone edge** (+2% play); verdict chip "Quiet" **outlined neutral** | rail header sans, context line + timestamps + facts mono; headlines sans | `--r-lg` radar well, `--r-md` cards, 4px-grid gaps | dashed only on evidence (the death annotation's teammate line appears only inside a death moment); the active row is a solid edge, never dashed | PASS |
+| `report.png` | coach-note lead + insight cards with `--loss` severity edges; class-13 bar in `--win` (good news), other bars ink; no ring/donut | display sans titles, mono percentages/evidence chips | Card/eyebrow/chip tokens | evidence chips dashed-underlined and clickable — the only dashes on screen | PASS |
+| `settings.png` | cards, one accent primary ("Track this player"), secondary "Clear override" | mono threshold table incl. the new `ledger.*` rows; eyebrows in micro caps | Table hairlines, Input `--r-sm` | none | PASS (copy nit fixed in this PR: the tracked-player note still told the user to delete and re-import a match — it now points at Re-analyze) |
+
+`docs/screenshots/{library,replay,report,corpus,trends}.png` recaptured at
+1440×900 (1×) from the same session; README copy unchanged (`grep -n
+"Fraunces\|serif" README.md` prints nothing).

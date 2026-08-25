@@ -1,6 +1,7 @@
 # ClutchFactor
 
 Desktop CS2 coaching app: parses match demo files (`.dem`) and produces coaching insights backed by a 2D replay viewer — not a stats tracker. **`PROMPT-V1.md` is the approved v1 engineering charter — read it first; it supersedes `PROMPT.md` where they conflict, and PROMPT.md remains binding everywhere else.** v1 pillars: round-by-round coaching (GitHub issue #9 IS that spec — read it fully), Gemini AI layer, premium design system, coaching depth + stats. `docs/spec/death-taxonomy.md` (PROMPT.md §5A) governs death/duel analysis: 15-class taxonomy, H1–H16 rule families, cross-demo habit tracking. This file is session context; keep it ≤120 lines and always correct (§11.1).
+`docs/spec/play-ledger-and-coach.md` governs V1.2b's play ledger (every round narrated) and V1.3's coach contract (facts validated, judgment free).
 
 Tracked player (owner): SteamID64 `76561199228328773`, in-game name `misosoupy3` — present in all five `fixtures/own/` demos.
 
