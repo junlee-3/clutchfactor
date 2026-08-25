@@ -687,6 +687,23 @@ impl Store {
         Ok(rows)
     }
 
+    /// Every distinct raw callout anyone stood in during the match (the
+    /// position samples' `last_place`), sorted. The coach's known-callout
+    /// set is this ∪ the ledger's places (V1.3 final-review fix #3): a place
+    /// the coach names that nobody visited is an invention the validator
+    /// can only catch if the place is in this set.
+    pub fn distinct_places(&self, match_id: i64) -> Result<Vec<String>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT DISTINCT last_place FROM tick_samples
+             WHERE match_id = ?1 AND last_place IS NOT NULL AND last_place != ''
+             ORDER BY last_place",
+        )?;
+        let rows = st
+            .query_map([match_id], |r| r.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     pub fn get_coach_cache(
         &self,
         match_id: i64,
@@ -3240,6 +3257,34 @@ mod tests {
             store.source_path(match_id).unwrap().as_deref(),
             Some("/demos/a.dem")
         );
+    }
+
+    #[test]
+    fn distinct_places_lists_every_visited_callout_once_and_skips_blanks() {
+        let (_dir, store, match_id, _) = one_match();
+        // sample_match() stands everyone in BombsiteA; add a second place,
+        // a NULL and an empty string, plus a row from another match id.
+        for (tick, steamid, place) in [
+            (3100, "1", Some("TopofMid")),
+            (3100, "3", Some("TopofMid")),
+            (3200, "1", None),
+            (3300, "1", Some("")),
+        ] {
+            store
+                .conn
+                .execute(
+                    "INSERT INTO tick_samples (match_id, steamid, tick, x, y, z, yaw, health,
+                       is_alive, team_num, active_weapon, spotted, last_place)
+                     VALUES (?1, ?2, ?3, 0, 0, 0, 0, 100, 1, 3, NULL, 0, ?4)",
+                    params![match_id, steamid, tick, place],
+                )
+                .unwrap();
+        }
+        assert_eq!(
+            store.distinct_places(match_id).unwrap(),
+            vec!["BombsiteA".to_string(), "TopofMid".to_string()]
+        );
+        assert!(store.distinct_places(match_id + 1).unwrap().is_empty());
     }
 
     #[test]

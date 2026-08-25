@@ -16,7 +16,9 @@ pub struct Grounding {
     pub callouts: Vec<String>,
     /// Every roster name, so absent ones can be flagged when cited.
     pub roster: Vec<String>,
-    /// Every known callout for the map, so absent ones can be flagged.
+    /// Every known callout — everywhere anyone stood this match (the
+    /// ledger's places ∪ the position samples) — so absent ones can be
+    /// flagged. A callout nobody visited is invisible to the validator.
     pub known_callouts: Vec<String>,
     pub ticks: HashSet<i32>,
     pub round: u32,
@@ -57,12 +59,12 @@ impl Grounding {
             numbers,
             names: roster
                 .iter()
-                .filter(|n| block_text.contains(n.as_str()))
+                .filter(|n| contains_term(block_text, n))
                 .cloned()
                 .collect(),
             callouts: known_callouts
                 .iter()
-                .filter(|c| block_text.contains(c.as_str()))
+                .filter(|c| contains_term(block_text, c))
                 .cloned()
                 .collect(),
             roster: roster.to_vec(),
@@ -77,12 +79,12 @@ impl Grounding {
             numbers: number_tokens(prompt_text).into_iter().collect(),
             names: roster
                 .iter()
-                .filter(|n| prompt_text.contains(n.as_str()))
+                .filter(|n| contains_term(prompt_text, n))
                 .cloned()
                 .collect(),
             callouts: known_callouts
                 .iter()
-                .filter(|c| prompt_text.contains(c.as_str()))
+                .filter(|c| contains_term(prompt_text, c))
                 .cloned()
                 .collect(),
             roster: roster.to_vec(),
@@ -145,6 +147,36 @@ pub fn number_tokens(text: &str) -> Vec<String> {
     out
 }
 
+/// `needle` occurs in `hay` as a whole term: the characters immediately
+/// before and after the match are not ASCII alphanumeric (start and end of
+/// string count as boundaries). Every occurrence is tried, not just the
+/// first, so "CT spawn … T spawn" still finds the standalone one. Plain
+/// `str::contains` let "CT spawn" ground "T spawn" and "Kitchen" ground a
+/// player called "Kit" — on both the grounding and the mention side.
+fn contains_term(hay: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    let mut from = 0;
+    while let Some(pos) = hay[from..].find(needle) {
+        let start = from + pos;
+        let end = start + needle.len();
+        let before_ok = hay[..start]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !c.is_ascii_alphanumeric());
+        let after_ok = hay[end..]
+            .chars()
+            .next()
+            .is_none_or(|c| !c.is_ascii_alphanumeric());
+        if before_ok && after_ok {
+            return true;
+        }
+        from = start + hay[start..].chars().next().map_or(1, char::len_utf8);
+    }
+    false
+}
+
 fn check_text(field: &str, text: &str, g: &Grounding, out: &mut Vec<Violation>) {
     for n in number_tokens(text) {
         if !g.numbers.contains(&n) {
@@ -156,7 +188,7 @@ fn check_text(field: &str, text: &str, g: &Grounding, out: &mut Vec<Violation>) 
         }
     }
     for name in &g.roster {
-        if text.contains(name.as_str()) && !g.names.contains(name) {
+        if contains_term(text, name) && !g.names.contains(name) {
             out.push(Violation {
                 field: field.to_string(),
                 kind: ViolationKind::Name,
@@ -165,7 +197,7 @@ fn check_text(field: &str, text: &str, g: &Grounding, out: &mut Vec<Violation>) 
         }
     }
     for c in &g.known_callouts {
-        if text.contains(c.as_str()) && !g.callouts.contains(c) {
+        if contains_term(text, c) && !g.callouts.contains(c) {
             out.push(Violation {
                 field: field.to_string(),
                 kind: ViolationKind::Callout,
@@ -237,11 +269,10 @@ pub fn validate_synthesis(s: &MatchSynthesis, g: &Grounding) -> Vec<Violation> {
     out
 }
 
-/// "Round 6: the number 1500 (in read) is not in the facts; the callout
-/// Apartments (in focus) is not in the facts."
-pub fn retry_note(round: u32, v: &[Violation]) -> String {
-    let items: Vec<String> = v
-        .iter()
+/// One "…is not in the facts" item per violation — shared wording for the
+/// round and synthesis retry notes.
+fn violation_items(round: u32, v: &[Violation]) -> Vec<String> {
+    v.iter()
         .map(|x| match x.kind {
             ViolationKind::Number => {
                 format!(
@@ -264,8 +295,19 @@ pub fn retry_note(round: u32, v: &[Violation]) -> String {
             ViolationKind::Empty => format!("{} must not be empty", x.field),
             ViolationKind::Round => format!("round must be {round}, not {}", x.token),
         })
-        .collect();
-    format!("Round {round}: {}.", items.join("; "))
+        .collect()
+}
+
+/// "Round 6: the number 1500 (in read) is not in the facts; the callout
+/// Apartments (in focus) is not in the facts."
+pub fn retry_note(round: u32, v: &[Violation]) -> String {
+    format!("Round {round}: {}.", violation_items(round, v).join("; "))
+}
+
+/// The synthesis has no round number: "The match read: the number 9 (in
+/// opening) is not in the facts." — same items as `retry_note`.
+pub fn synthesis_retry_note(v: &[Violation]) -> String {
+    format!("The match read: {}.", violation_items(0, v).join("; "))
 }
 
 #[cfg(test)]
@@ -468,6 +510,114 @@ mod tests {
     }
 
     #[test]
+    fn synthesis_retry_note_lists_the_offending_tokens_without_a_round() {
+        let v = vec![
+            Violation {
+                field: "opening".into(),
+                kind: ViolationKind::Number,
+                token: "9".into(),
+            },
+            Violation {
+                field: "work_on[0]".into(),
+                kind: ViolationKind::Callout,
+                token: "Apartments".into(),
+            },
+        ];
+        assert_eq!(
+            synthesis_retry_note(&v),
+            "The match read: the number 9 (in opening) is not in the facts; the callout Apartments (in work_on[0]) is not in the facts."
+        );
+    }
+
+    /// V1.3 final-review fix #1: the digest and the synthesis round list
+    /// render "Round 5", so the tokenizer grounds the bare "5" and a coach
+    /// that says "Round 5 went the same way" is not rejected.
+    #[test]
+    fn a_prior_round_cited_by_number_is_grounded() {
+        let mut r5 = r();
+        r5.prior_digest = vec!["Round 5 · Quiet · won".into()];
+        let block = render_round_block(&m(), &r5);
+        let g = Grounding::for_round(&block, &m().roster, &[], &[26752, 27100, 29000], 6);
+        let c = RoundCommentary {
+            round: 6,
+            read: "Round 5 went the same way.".into(),
+            plays: vec![],
+            why_it_mattered: None,
+            what_to_practise: None,
+            focus: None,
+        };
+        assert_eq!(validate_round(&c, &g), vec![]);
+        // …and a round that was never digested is still an invention ("8"
+        // appears nowhere in the fixture's facts).
+        let mut c = c;
+        c.read = "Round 8 went the same way.".into();
+        let v = validate_round(&c, &g);
+        assert!(v
+            .iter()
+            .any(|x| matches!(x.kind, ViolationKind::Number) && x.token == "8"));
+    }
+
+    /// V1.3 final-review fix #2: grounding and mentions match whole terms
+    /// only. On the owner's Mirage demo "CT spawn" in the facts let an
+    /// invented "T spawn" through; a roster name inside a longer word or
+    /// name grounded the same way.
+    #[test]
+    fn callouts_and_names_match_only_at_word_boundaries() {
+        let roster: Vec<String> = vec!["misosoupy3".into(), "Kit".into()];
+        let known: Vec<String> = vec!["CT spawn".into(), "T spawn".into()];
+        let block = "## Round 6 — CT side\n- [tick 1] +5 s · Setup at CT spawn — Nearest teammate Kitchen, 97 u\n";
+        let g = Grounding::for_round(block, &roster, &known, &[1], 6);
+        assert_eq!(g.callouts, vec!["CT spawn".to_string()]);
+        assert!(
+            g.names.is_empty(),
+            "Kitchen must not ground Kit: {:?}",
+            g.names
+        );
+
+        let say = |read: &str| RoundCommentary {
+            round: 6,
+            read: read.into(),
+            plays: vec![],
+            why_it_mattered: None,
+            what_to_practise: None,
+            focus: None,
+        };
+        // An invented "T spawn" is a callout violation…
+        let v = validate_round(&say("You died at T spawn."), &g);
+        assert_eq!(v.len(), 1, "{v:?}");
+        assert!(matches!(v[0].kind, ViolationKind::Callout) && v[0].token == "T spawn");
+        // …while the legitimate "CT spawn" passes (its inner "T spawn" is not a mention).
+        assert_eq!(validate_round(&say("You set up at CT spawn."), &g), vec![]);
+        // Mentioning Kitchen is not citing Kit.
+        assert_eq!(validate_round(&say("Hold Kitchen longer."), &g), vec![]);
+        // The possessive still counts as a mention (the apostrophe is a boundary).
+        let v = validate_round(&say("Kit's push was early."), &g);
+        assert!(
+            v.iter()
+                .any(|x| matches!(x.kind, ViolationKind::Name) && x.token == "Kit"),
+            "{v:?}"
+        );
+        // Once Kit is in the facts, the possessive is fine.
+        let block2 = format!("{block}- +38 s Kit planted the bomb\n");
+        let g2 = Grounding::for_round(&block2, &roster, &known, &[1], 6);
+        assert_eq!(g2.names, vec!["Kit".to_string()]);
+        assert_eq!(validate_round(&say("Kit's push was early."), &g2), vec![]);
+    }
+
+    #[test]
+    fn contains_term_boundaries_and_multiple_occurrences() {
+        assert!(contains_term("at T spawn", "T spawn"));
+        assert!(!contains_term("at CT spawn", "T spawn"));
+        assert!(contains_term("CT spawn then T spawn", "T spawn"));
+        assert!(contains_term("Kit's", "Kit"));
+        assert!(!contains_term("Kitchen", "Kit"));
+        assert!(!contains_term("aKit", "Kit"));
+        assert!(contains_term("nekoo鸭 killed", "nekoo鸭"));
+        assert!(contains_term("(Kit)", "Kit"));
+        assert!(!contains_term("anything", ""));
+    }
+
+    #[test]
     fn synthesis_is_grounded_against_its_own_prompt() {
         let si = SynthesisInput {
             match_input: m(),
@@ -484,7 +634,7 @@ mod tests {
         let g =
             Grounding::for_synthesis(&text, &m().roster, &["Banana".into(), "Apartments".into()]);
         let good = MatchSynthesis {
-            opening: "5 of 12 deaths were isolated, most at Banana; R6 was not on you.".into(),
+            opening: "5 of 12 deaths were isolated, most at Banana; Round 6 was not on you.".into(),
             work_on: vec!["Arrive at Banana with a teammate.".into()],
         };
         assert!(validate_synthesis(&good, &g).is_empty());

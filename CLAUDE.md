@@ -26,6 +26,8 @@ cargo run -p cf-parser --release --example print_match --manifest-path src-tauri
 cargo run -p cf-analysis --release --example print_insights --manifest-path src-tauri/Cargo.toml -- fixtures/own/<demo>.dem <steamid64>
 ```
 
+Coach (V1.3): key via Settings → Coach or `CLUTCHFACTOR_GEMINI_KEY`; debug builds read the gitignored repo-root `env.local` (`GEMINI_API_KEY=…`) — never commit it; CI's `secrets` job greps for key shapes.
+
 ## Architecture map
 
 ```

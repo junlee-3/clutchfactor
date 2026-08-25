@@ -8,6 +8,7 @@ pub mod key;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::sync::Arc;
 
 use cf_narrator::coach::parse::{parse_round_batch, parse_synthesis};
 use cf_narrator::coach::prompt::{
@@ -18,7 +19,7 @@ use cf_narrator::coach::types::{
     MatchInput, MatchSynthesis, PlayLine, RoundCommentary, RoundDigest, RoundInput, SynthesisInput,
 };
 use cf_narrator::coach::validate::{
-    retry_note, validate_round, validate_synthesis, Grounding, Violation,
+    retry_note, synthesis_retry_note, validate_round, validate_synthesis, Grounding, Violation,
 };
 use cf_store::store::{CoachCacheRow, RoundInfo};
 use cf_store::Store;
@@ -26,7 +27,7 @@ use sha2::{Digest, Sha256};
 use tauri::State;
 
 use crate::commands::{
-    assemble_round_reviews, habit_reports, insight_from_row, match_context, AppState,
+    assemble_round_reviews, habit_reports, insight_from_row, match_context, AppState, CoachLocks,
     CoachRoundsDto, CoachSynthesisDto, MatchSynthesisDto, PlayCommentDto, RoundCommentaryDto,
     RoundReviewDto,
 };
@@ -188,8 +189,10 @@ pub fn build_round_inputs(
                 .collect(),
             prior_digest: digest.clone(),
         });
+        // "Round 7", not "R7": only a digit standing alone is grounded, so
+        // this spelling is what lets the coach cite an earlier round.
         digest.push(format!(
-            "R{} · {} · {}",
+            "Round {} · {} · {}",
             rv.round,
             rv.verdict_label,
             if rv.won { "won" } else { "lost" }
@@ -198,12 +201,22 @@ pub fn build_round_inputs(
     out
 }
 
-/// Every callout the match's raw ledger mentions, prettified and deduped —
-/// the validator's "known callouts" set (a callout the coach names that the
-/// round's facts don't contain is an invention).
-pub fn known_callouts(plays_jsons: &[String]) -> Vec<String> {
+/// The validator's "known callouts" set: every callout anyone stood in
+/// during the match — the raw ledger's places ∪ the position samples'
+/// distinct `last_place` (`Store::distinct_places`) — prettified and
+/// deduped, ledger-derived first. A callout the coach names that the
+/// round's facts don't contain is an invention; before the position
+/// samples were unioned in (V1.3 final-review fix #3) "hold Jungle" passed
+/// on Mirage whenever the ledger happened not to mention Jungle.
+pub fn known_callouts(plays_jsons: &[String], raw_places: &[String]) -> Vec<String> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut out = vec![];
+    let mut push = |raw: &str| {
+        let pretty = cf_narrator::callouts::callout_name(raw);
+        if !pretty.is_empty() && seen.insert(pretty.clone()) {
+            out.push(pretty);
+        }
+    };
     for json in plays_jsons {
         let Ok(plays) = serde_json::from_str::<Vec<serde_json::Value>>(json) else {
             continue;
@@ -211,13 +224,13 @@ pub fn known_callouts(plays_jsons: &[String]) -> Vec<String> {
         for p in plays {
             for key in ["place", "victim_place", "killer_place", "place_at_plant"] {
                 if let Some(raw) = p["facts"][key].as_str() {
-                    let pretty = cf_narrator::callouts::callout_name(raw);
-                    if seen.insert(pretty.clone()) {
-                        out.push(pretty);
-                    }
+                    push(raw);
                 }
             }
         }
+    }
+    for raw in raw_places {
+        push(raw);
     }
     out
 }
@@ -340,7 +353,8 @@ fn open_round_session(store: &mut Store, match_id: i64) -> Result<Option<RoundSe
         .into_iter()
         .map(|r| r.plays_json)
         .collect();
-    let known = known_callouts(&plays_jsons);
+    let places = store.distinct_places(match_id).map_err(|e| e.to_string())?;
+    let known = known_callouts(&plays_jsons, &places);
     let mut cached = vec![];
     for (round, _, _) in &blocks {
         if let Some(row) = store
@@ -361,6 +375,34 @@ fn open_round_session(store: &mut Store, match_id: i64) -> Result<Option<RoundSe
     }))
 }
 
+/// The match's generation lock, created on first use. The same `Arc` comes
+/// back for the same id, so two callers for one match serialize; different
+/// matches never wait on each other. The map's std lock is held only for
+/// this lookup — never across an await.
+pub fn match_lock(locks: &CoachLocks, match_id: i64) -> Arc<tokio::sync::Mutex<()>> {
+    let mut map = locks.lock().unwrap_or_else(|p| p.into_inner());
+    map.entry(match_id).or_default().clone()
+}
+
+/// Re-lock the store and write one settled chunk's rows. Called between
+/// awaits, never across one.
+fn write_cache_rows(
+    state: &State<'_, AppState>,
+    match_id: i64,
+    rows: &[CoachCacheRow],
+) -> Result<(), String> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    for row in rows {
+        store
+            .put_coach_cache(match_id, row)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Per-round commentary for a match: cache hits render immediately; misses
 /// are generated in batches of `ROUNDS_PER_CALL`, validated, retried once
 /// with the violations listed, then cached (`ok` or `fallback`). A transport
@@ -368,22 +410,36 @@ fn open_round_session(store: &mut Store, match_id: i64) -> Result<Option<RoundSe
 /// un-generated rounds are not cached, so the next open retries them.
 ///
 /// Lock discipline: the store is read once into a `RoundSession`, every
-/// `.await` runs with no guard live, and the store is re-locked only to
-/// write the new cache rows.
+/// `.await` runs with no store guard live, and the store is re-locked only
+/// to write each chunk's cache rows as soon as that chunk settles. The whole
+/// body (after the cheap off/no-key return) runs under the match's async
+/// generation lock (`match_lock`), so a concurrent caller — the synthesis
+/// query racing the rounds query on a first open — waits and then reads
+/// cache hits instead of generating everything a second time.
 pub async fn round_commentary(
     state: &State<'_, AppState>,
     match_id: i64,
     force: &[u32],
 ) -> Result<CoachRoundsDto, String> {
+    let quiet = || CoachRoundsDto {
+        rounds: vec![],
+        error: None,
+    };
+    {
+        let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        if !coach_enabled(&store)? || resolve_key(&store)?.is_none() {
+            return Ok(quiet());
+        }
+    }
+    let lock = match_lock(&state.coach_locks, match_id);
+    let _generation = lock.lock().await;
+
     let session = {
         let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
         open_round_session(&mut store, match_id)?
     };
     let Some(s) = session else {
-        return Ok(CoachRoundsDto {
-            rounds: vec![],
-            error: None,
-        });
+        return Ok(quiet());
     };
 
     let hashes: Vec<(u32, String)> = s.blocks.iter().map(|(r, _, h)| (*r, h.clone())).collect();
@@ -406,14 +462,15 @@ pub async fn round_commentary(
     }
 
     let mut error: Option<String> = None;
-    let mut new_rows: Vec<CoachCacheRow> = vec![];
     let by_round: HashMap<u32, &RoundInput> = s.inputs.iter().map(|r| (r.round, r)).collect();
     let block_of: HashMap<u32, &(u32, String, String)> =
         s.blocks.iter().map(|b| (b.0, b)).collect();
 
-    'chunks: for chunk in chunk_rounds(&misses) {
+    for chunk in chunk_rounds(&misses) {
         let mut pending: Vec<u32> = chunk.clone();
         let mut notes: Vec<String> = vec![];
+        let mut chunk_rows: Vec<CoachCacheRow> = vec![];
+        let mut transport_error: Option<String> = None;
         for attempt in 0..2 {
             if pending.is_empty() {
                 break;
@@ -430,8 +487,8 @@ pub async fn round_commentary(
             {
                 Ok(g) => g,
                 Err(e) => {
-                    error = Some(e.to_string());
-                    break 'chunks;
+                    transport_error = Some(e.to_string());
+                    break;
                 }
             };
             let parsed = match parse_round_batch(&generated.text) {
@@ -472,7 +529,7 @@ pub async fn round_commentary(
                         let v = validate_round(c, &g);
                         if v.is_empty() {
                             out.push(commentary_dto(c, &s.model));
-                            new_rows.push(CoachCacheRow {
+                            chunk_rows.push(CoachCacheRow {
                                 kind: KIND_ROUND.into(),
                                 round: *round,
                                 facts_hash: hash.clone(),
@@ -484,7 +541,7 @@ pub async fn round_commentary(
                         } else {
                             notes.push(retry_note(*round, &v));
                             if attempt == 1 {
-                                new_rows.push(fallback_row(violations_json(&v)));
+                                chunk_rows.push(fallback_row(violations_json(&v)));
                             } else {
                                 still.push(*round);
                             }
@@ -493,7 +550,7 @@ pub async fn round_commentary(
                     None => {
                         notes.push(format!("Round {round}: missing from the answer."));
                         if attempt == 1 {
-                            new_rows.push(fallback_row("[\"missing\"]".into()));
+                            chunk_rows.push(fallback_row("[\"missing\"]".into()));
                         } else {
                             still.push(*round);
                         }
@@ -502,16 +559,15 @@ pub async fn round_commentary(
             }
             pending = still;
         }
-    }
-
-    if !new_rows.is_empty() {
-        let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
-        for row in &new_rows {
-            store
-                .put_coach_cache(match_id, row)
-                .map_err(|e| e.to_string())?;
+        // This chunk has settled: persist it now, so a waiting caller finds
+        // the rows and a later chunk's transport error can't lose them.
+        write_cache_rows(state, match_id, &chunk_rows)?;
+        if let Some(e) = transport_error {
+            error = Some(e);
+            break;
         }
     }
+
     out.sort_by_key(|r| r.round);
     Ok(CoachRoundsDto { rounds: out, error })
 }
@@ -527,17 +583,24 @@ fn synthesis_dto(m: MatchSynthesis, model: &str) -> MatchSynthesisDto {
 /// Match synthesis from the validated round reads + template insights +
 /// habits. Cached as (match, "synthesis", 0); `force` busts it. Only a
 /// definitive outcome is cached — a transport error must not pin a
-/// fallback.
+/// fallback. If the rounds themselves failed (rate limit, offline, bad
+/// key…) Gemini is not called again for the synthesis: a still-valid
+/// cached read is returned beside the error, otherwise the error alone.
 pub async fn synthesis(
     state: &State<'_, AppState>,
     match_id: i64,
     force: bool,
 ) -> Result<CoachSynthesisDto, String> {
+    // Takes and releases the match's generation lock itself.
     let rounds = round_commentary(state, match_id, &[]).await?;
     let quiet = CoachSynthesisDto {
         synthesis: None,
         error: None,
     };
+    // Then hold it again for the synthesis, so a concurrent open waits and
+    // reads the cached row instead of generating a second one.
+    let lock = match_lock(&state.coach_locks, match_id);
+    let _generation = lock.lock().await;
     let prep = {
         let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
         if !coach_enabled(&store)? {
@@ -599,6 +662,7 @@ pub async fn synthesis(
             .into_iter()
             .map(|r| r.plays_json)
             .collect();
+        let places = store.distinct_places(match_id).map_err(|e| e.to_string())?;
         (
             GeminiClient::new(key).map_err(|e| e.to_string())?,
             model,
@@ -606,28 +670,35 @@ pub async fn synthesis(
             prompt,
             hash,
             cached,
-            known_callouts(&plays_jsons),
+            known_callouts(&plays_jsons, &places),
         )
     };
     let (client, model, si, prompt, hash, cached, known) = prep;
-    if let Some(row) = &cached {
-        if row.facts_hash == hash && !force {
-            let synthesis = match row.status.as_str() {
-                "ok" => serde_json::from_str::<MatchSynthesis>(&row.response_json)
-                    .ok()
-                    .map(|m| synthesis_dto(m, &model)),
-                _ => None,
-            };
-            return Ok(CoachSynthesisDto {
-                synthesis,
-                error: rounds.error,
-            });
-        }
+    // The cached `ok` read for exactly these facts, if any (a cached
+    // fallback renders as None either way).
+    let cache_hit = cached.as_ref().is_some_and(|row| row.facts_hash == hash);
+    let cached_ok = cached
+        .as_ref()
+        .filter(|row| cache_hit && row.status == "ok")
+        .and_then(|row| serde_json::from_str::<MatchSynthesis>(&row.response_json).ok())
+        .map(|m| synthesis_dto(m, &model));
+    if rounds.error.is_some() {
+        // The rounds failed: a rate-limited key must not pay a second call.
+        return Ok(CoachSynthesisDto {
+            synthesis: cached_ok,
+            error: rounds.error,
+        });
+    }
+    if cache_hit && !force {
+        return Ok(CoachSynthesisDto {
+            synthesis: cached_ok,
+            error: None,
+        });
     }
     let g = Grounding::for_synthesis(&prompt, &si.match_input.roster, &known);
     let mut notes: Vec<String> = vec![];
     let mut result: Option<MatchSynthesis> = None;
-    let mut error = rounds.error;
+    let mut error: Option<String> = None;
     let mut violations = "[]".to_string();
     for _attempt in 0..2 {
         let user = if notes.is_empty() {
@@ -652,13 +723,16 @@ pub async fn synthesis(
                     error = Some(e.to_string());
                 }
                 Ok(ms) => {
+                    // This attempt parsed, so an earlier parse failure is
+                    // superseded: the outcome is definitive — `ok`, or a
+                    // validation fallback that gets cached below.
+                    error = None;
                     let v = validate_synthesis(&ms, &g);
                     if v.is_empty() {
                         result = Some(ms);
-                        error = None;
                         break;
                     }
-                    notes = vec![retry_note(0, &v)];
+                    notes = vec![synthesis_retry_note(&v)];
                     violations = violations_json(&v);
                 }
             },
@@ -785,7 +859,7 @@ mod tests {
         assert_eq!(r6.plays[0].clock, "+5 s"); // (26752-26432)/64 = 5.0
         assert_eq!(r6.timeline[0], "+40 s Kit killed misosoupy3 (awp)");
         assert_eq!(r6.timeline[1], "+48 s Kit planted the bomb");
-        assert_eq!(r6.prior_digest, vec!["R5 · Quiet · won".to_string()]);
+        assert_eq!(r6.prior_digest, vec!["Round 5 · Quiet · won".to_string()]);
         assert!(inputs[0].prior_digest.is_empty());
     }
 
@@ -801,7 +875,7 @@ mod tests {
     #[test]
     fn known_callouts_come_from_raw_place_keys_prettified_and_deduped() {
         let plays_json = r#"[{"kind":"death","facts":{"place":"BombsiteB","killer_place":"BombsiteB","weapon":"awp"}},{"kind":"rotation","facts":{"place_at_plant":"CTSpawn"}},{"kind":"kill","facts":{"victim_place":null}}]"#;
-        let c = known_callouts(&[plays_json.to_string()]);
+        let c = known_callouts(&[plays_json.to_string()], &[]);
         assert_eq!(
             c,
             vec![
@@ -809,6 +883,51 @@ mod tests {
                 cf_narrator::callouts::callout_name("CTSpawn")
             ]
         );
+    }
+
+    /// V1.3 final-review fix #3: the set is everywhere anyone stood this
+    /// match, not just the places the ledger happened to mention.
+    #[test]
+    fn known_callouts_union_the_visited_places_and_keep_the_ledger_ones() {
+        let plays_json =
+            r#"[{"kind":"death","facts":{"place":"BombsiteB","killer_place":"Jungle"}}]"#;
+        let visited: Vec<String> = vec![
+            "BombsiteB".into(), // already in the ledger — deduped
+            "TopofMid".into(),
+            "CTSpawn".into(),
+            String::new(), // a blank sample never becomes a callout
+        ];
+        let c = known_callouts(&[plays_json.to_string()], &visited);
+        assert_eq!(c, vec!["B site", "Jungle", "Top of Mid", "CT spawn"]);
+        // No ledger at all (pre-V1.2b import): the visited places alone.
+        assert_eq!(
+            known_callouts(&[], &["Connector".to_string()]),
+            vec!["Connector".to_string()]
+        );
+    }
+
+    /// V1.3 final-review fix #5: one generation lock per match.
+    #[test]
+    fn match_lock_is_shared_per_match_and_distinct_across_matches() {
+        let locks = CoachLocks::default();
+        let a1 = match_lock(&locks, 7);
+        let a2 = match_lock(&locks, 7);
+        let b = match_lock(&locks, 8);
+        assert!(Arc::ptr_eq(&a1, &a2));
+        assert!(!Arc::ptr_eq(&a1, &b));
+        assert_eq!(locks.lock().unwrap().len(), 2);
+        // The map hands out the lock without holding it: a caller can take
+        // the async mutex right away.
+        assert!(a1.try_lock().is_ok());
+    }
+
+    #[test]
+    fn model_ids_are_letters_digits_dots_and_dashes() {
+        assert!(crate::commands::is_model_id("gemini-3.7-flash"));
+        assert!(crate::commands::is_model_id("gemini-3.5-flash-lite"));
+        assert!(!crate::commands::is_model_id(""));
+        assert!(!crate::commands::is_model_id("gemini flash"));
+        assert!(!crate::commands::is_model_id("models/gemini"));
     }
 
     #[test]

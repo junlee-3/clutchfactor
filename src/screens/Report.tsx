@@ -125,8 +125,26 @@ export function Report() {
               )}
             </blockquote>
           )}
-          {!coachLoading && !synthesis.data?.synthesis && synthesis.data?.error && (
-            <p className="type-data rpl-rail-hint">{synthesis.data.error}</p>
+          {/* Coach on but no read (a fallback, a transport error, or not
+              asked yet): say why, if we know, and offer to ask. Coach off →
+              nothing, so the no-key page stays byte-identical. */}
+          {!coachLoading && !synthesis.data?.synthesis && coachOn && (
+            <div className="report-coach report-coach-ask">
+              {synthesis.data?.error && (
+                <p className="type-data rpl-rail-hint">{synthesis.data.error}</p>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={regen.isPending}
+                onClick={() =>
+                  void regen.mutateAsync(matchId).catch((e) => toast.push("error", String(e)))
+                }
+                title="Generate the coach's read for this match (uses your Gemini key)"
+              >
+                Ask the coach
+              </Button>
+            </div>
           )}
 
           {r.summary && (

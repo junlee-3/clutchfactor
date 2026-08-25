@@ -333,3 +333,304 @@ owner's display; restored afterwards). Graded against
 `docs/screenshots/{library,replay,report,corpus,trends}.png` recaptured at
 1440×900 (1×) from the same session; README copy unchanged (`grep -n
 "Fraunces\|serif" README.md` prints nothing).
+
+## V1.3 verification (2026-08-26)
+
+The coach (spec `docs/spec/play-ledger-and-coach.md` §3, ADR-0010). Run from
+the `docs/v1.3-verification` worktree against the owner's real dev DB
+(`~/Library/Application Support/com.clutchfactor.app/clutchfactor.db`, backed
+up first with `sqlite3 .backup`; 5 own matches, all with a V1.2b ledger).
+Tracked `76561199228328773` (misosoupy3). The app was driven through the
+accessibility tree (AppleScript), the window at a true 1440×900 (Dock
+auto-hidden for the captures, restored after). Timings are wall-clock from
+the button press to the row landing in `coach_cache` (polled every second)
+unless stated. The owner's key stayed in the gitignored repo-root `env.local`
+throughout; it was never printed, copied or put on a command line — to
+disable it the file was renamed, never deleted. Gotcha for the next person:
+the debug loader resolves `<crate>/../env.local` = the *worktree* root, so a
+worktree run needs `ln -s <main checkout>/env.local <worktree>/env.local`
+(gitignored, removed afterwards).
+
+**Style-version note (fix round 1, 2026-08-26):** every coach read quoted or
+counted below was generated and cached under `STYLE_VERSION = "coach-v2"` —
+the fix that shipped `coach-v3` (tick labels confined to the `plays` array,
+place names never a map slug; `docs/adr/ADR-0010-coach-architecture.md`)
+landed in a follow-up commit after this verification session. The `v2`→`v3`
+bump changes the cache key, so every row here will regenerate fresh on the
+next open; the validator/grounding evidence below stands (it is about what
+the validator catches, not the prose style), but the exact wording quoted in
+§C — including the `[tick N]` labels and raw map ids called out as voice
+notes — will read differently once `coach-v3` rows replace them. See
+"Deviations" below for the R8/R10 vs. brief round swap.
+
+### A. Byte-identical without a key (DoD)
+
+`mv env.local env.local.off`; `CLUTCHFACTOR_GEMINI_KEY` unset in the launching
+shell (`env | grep -c CLUTCHFACTOR_GEMINI_KEY` → 0); `DELETE FROM settings
+WHERE key='gemini_api_key'` → `changes()` = 0 (no row had ever existed). First
+launch of this build applied migration 0009 (`coach_cache` created, 0 rows).
+The startup log had no `coach: dev key loaded` line.
+
+| Screen | What rendered | Coach strings in the AX tree | `lsof -i -P -n \| grep -i clutchfactor` |
+|---|---|---|---|
+| Settings → Coach card | "STATUS off — no key", empty key field + "Save key", "Test connection" disabled, model fields at `gemini-3.7-flash` | — | none |
+| Report, mirage-tie (id 8) | the V1.2b surface exactly: template lead "Mirage, 12-12 draw", round strip, insight cards, sidebar — no "Coach's read", no "Ask the coach" (compared against `docs/design/walkthrough-v1.2b/report.png`) | 0 | none |
+| Replay id 8 R8 (Won it) and R10 (Cost you) | the V1.2b rail exactly: header, verdict chip, the play list, template "Why it mattered" — no "Coach's read", no "Regenerate", no "Ask the coach" (compared against `walkthrough-v1.2b/replay-rail.png`) | 0 | none |
+
+`SELECT COUNT(*) FROM coach_cache` → 0 before and after browsing. Capture:
+`docs/design/walkthrough-v1.3/settings-nokey.png`. Then `mv env.local.off
+env.local`, kill + relaunch (the env var is read at startup).
+
+### B. With the key
+
+**Settings.** Status "on · key …1Y4A from the environment" (4 characters,
+never more); the key field disabled with "The key comes from the
+CLUTCHFACTOR_GEMINI_KEY environment variable and can't be edited here."
+
+**Test connection, default model `gemini-3.7-flash`: FAILED — Google side.**
+Three presses, each ending 45 s later (the reqwest timeout) in the toast
+**"Couldn't reach Gemini (error sending request for url
+(https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent)).
+The template captions are shown meanwhile."** Diagnosis, so the owner does
+not chase the key: `lsof` on the app showed the TCP connection to
+172.217.119.4:443 go SYN_SENT → ESTABLISHED within 1 s and stay established
+for the full 45 s; `nettop` showed ~2.4 KB out / ~5.7 KB in in the first
+second (TLS handshake + request sent) and nothing after — the app was
+waiting for Google. A throwaway out-of-process replica of the exact request
+(same reqwest features, same body, key read from `env.local` by the probe
+itself, nothing key-derived printed) got: `gemini-3.7-flash` + schema →
+timeout at 60 s; `gemini-3.7-flash` without schema → **HTTP 503 after 30.9 s,
+"This model is currently experiencing high demand. Spikes in demand are
+usually temporary. Please try again later."**; `gemini-3.5-flash-lite` +
+schema → **200 in 909 ms, `{"ok": true}`**. Re-run ~15 minutes later:
+3.7-flash timed out at 60 s with and without the schema, flash-lite 200 in
+1.03 s. The key and the transport are fine; the default model was overloaded
+for the whole session. Two debts logged
+in PROGRESS: the Offline toast drops the cause (reqwest's outer message
+only; "operation timed out" is in the source chain), and there is no
+per-request model fallback.
+
+**Switched both models to `gemini-3.5-flash-lite` through the Settings UI**
+(the ADR-0010 documented alternative): typed into "Per-round model" and
+"Match synthesis model", "Save models" → `settings` rows
+`coach_round_model` / `coach_synthesis_model` = `gemini-3.5-flash-lite`.
+**Test connection → "Connected — gemini-3.5-flash-lite answered in 1009 ms."**
+(1009 ms is the app's own self-reported request latency, printed verbatim in
+the toast text — not this section's polling stopwatch; the toast itself
+appeared on screen ~1.2 s after the press, timed by that stopwatch). Capture:
+`walkthrough-v1.3/settings-coach.png` (the card + that toast). The dev DB is
+left on `gemini-3.5-flash-lite` so the owner sees exactly the reads checked
+below; switch back in Settings when 3.7-flash is healthy.
+
+**Report, mirage-tie (id 8), first open.** `coach_cache` rows for match 8
+(all `t+` figures are this section's polling stopwatch — wall-clock from the
+Report's open to the row landing, `coach_cache` polled every second):
+6 at t+5.2 s, 12 at t+10.3 s, 18 at t+20.5 s, 24 at t+27.7 s, synthesis at
+**t+29.8 s** — 4 round batches of 6 + 1 synthesis = **5 requests** for a
+24-round match, exactly ⌈24/6⌉ + 1. The Report's "Coach's read ·
+gemini-3.5-flash-lite" lead rendered with the opening + 3 work-on items
+(text in C). Capture: `walkthrough-v1.3/report-coach.png`.
+
+**Replay id 8.** R8 (Won it): "Coach's read" + focus line, a comment under
+the kill play, coach "Why it mattered" replacing the template line;
+**Regenerate on R8: the request took 2.6 s**, timed the same way as every
+other figure in this section — wall-clock from the button press to the new
+row landing in `coach_cache` (polled every second) — one request, a
+different read. Separately, the row's `created_at` moved from 15:53:04 to
+15:54:27 UTC, an 83 s gap; that gap is *not* the request latency and is not
+offered as one — R8's row at 15:53:04 was written during the match's initial
+5-request open (the "6 at t+5.2 s" batch above), well before Regenerate was
+pressed, so the 83 s mostly covers the idle time between that first open and
+whenever Regenerate was actually clicked, plus the 2.6 s request at the end
+of it. R10 (Cost you): read + a comment under the death play; `why_it_mattered` /
+`what_to_practise` / `focus` came back null so the template "Why it
+mattered" stayed. Capture: `walkthrough-v1.3/rail-coach.png` (R10).
+
+**Report, inferno-loss (id 3).** Rows (same stopwatch as mirage-tie above —
+wall-clock from this Report's open, `coach_cache` polled every second): 6 at
+t+25.8 s (this batch carried the one rejected round, so it was one call + one
+retry), 12 at t+41.3 s, 16 at t+45.4 s, synthesis at **t+47.5 s** — 3 batches
+(6/6/4) + 1 retry + 1 synthesis = 5 requests for 16 rounds. Opening + 2
+work-on items rendered.
+
+**Cache / request accounting** (`SELECT match_id, kind, round, status, model,
+substr(violations_json,1,120) FROM coach_cache ORDER BY match_id, kind,
+round`):
+
+| match | kind | rows | ok | fallback | model |
+|---|---|---|---|---|---|
+| 3 inferno-loss | round | 16 (= rounds) | 15 | 1 | gemini-3.5-flash-lite |
+| 3 | synthesis | 1 | 1 | 0 | gemini-3.5-flash-lite |
+| 8 mirage-tie | round | 24 (= rounds) | 24 | 0 | gemini-3.5-flash-lite |
+| 8 | synthesis | 1 | 1 | 0 | gemini-3.5-flash-lite |
+
+Every `ok` row has `violations_json = []`. The one fallback row, verbatim:
+`3|round|3|fallback|["why_it_mattered:Number:13"]` — the coach's
+`why_it_mattered` for inferno-loss R3 cited "13", which is not in that
+round's block (R3 facts: setup Ruins 185 u / 2 of 4, missed trade 331 u, kill
+739 u mp9 4v5, death 840 u ak47 HS at B site nearest 503 u 28 s before the
+end 4v4, outcome 0v3 / 1 kill / 72 damage; impact −7%), retried once with the
+violation listed, rejected again, cached as `fallback` so R3 is not
+re-billed. **This is the validator doing its job**, not a defect: the only
+"13" the model ever saw is the match's final score 3-13 in the *batch*
+header, and the per-round grounding set is deliberately the round block
+alone. Two things to improve, logged as debt: the rejected text is not kept
+(`response_json` is null on a fallback row), so the exact sentence cannot be
+shown here; and a read citing the match score is a plausible legitimate cite
+the header-blind grounding rejects.
+
+### C. Grounding in the wild — every token, by hand
+
+Method: the coach's text is copied verbatim from `coach_cache.response_json`;
+every number, roster name and callout in it is looked up in that round's
+`round_plays` facts (`plays_json` / `timeline_json`) as the rail narrates
+them, or in the synthesis prompt's sources. Steamids resolved via `players`
+(76561199011427752 = xnopyt, 76561198826400404 = NCZ RG, 76561199210928680 =
+Bebita, 76561198988858765 = tttttssssss). Clocks: the coach block prints
+`+N s` rounded from `(tick − freeze_end)/64`; the rail floors to `m:ss`
+(R8 kill: 27.7 s → block "+28 s", rail "0:27" — same tick).
+
+**mirage-tie R8 (CT, won, Won it, +32%; `freeze_end 44277`) — the read now in
+the DB (after Regenerate):**
+
+> "At +5 s, you setup at Shop near xnopyt. Following the early trades, you secured a critical kill on NCZ RG at +28 s with the m4a1_silencer, shifting the odds in a 2v3 situation. xnopyt closed out the round at +82 s by eliminating tttttssssss."
+
+| Token | Kind | Where it is in R8's facts |
+|---|---|---|
+| +5 s | clock | setup play tick 44597 → (44597−44277)/64 = 5.0; rail "0:05 Setup at Shop" |
+| Shop | callout | setup `place: Shop`; rail "Setup at Shop" |
+| xnopyt | name | setup `nearest_teammate` 76561199011427752; rail "Nearest teammate xnopyt, 458 u" |
+| NCZ RG | name | kill `victim` 76561198826400404; rail "Killed NCZ RG" |
+| +28 s | clock | kill tick 46048 → 27.7; rail "0:27" |
+| m4a1_silencer | fact | kill `weapon`; rail "1,246 u, m4a1_silencer" |
+| 2v3 | number | kill `man_context: 2v3`; rail "2v3 before" |
+| +82 s | clock | outcome tick 49538 → 82.2; rail "1:22 Round won" |
+| tttttssssss | name | `timeline_json` tick 49538: actor xnopyt killed 76561198988858765 (ak47) — the block's "+82 s xnopyt killed tttttssssss (ak47)" |
+| "early trades", "critical", "shifting the odds", "near" | judgment | not facts — free |
+
+Per-play comments: tick **44597** (a real play) "At +5 s, you set up at Shop
+with xnopyt nearby." — all tokens above. Tick **46048** "At +28 s, you
+eliminated NCZ RG with the m4a1_silencer from 1,246 u, converting a 2v3 into
+a 2v2." — 1,246 u = kill `killer_distance` 1246; 2v2 = the header's "2v2 at
+the pivotal moment" (`round_review.header_json.man_context`; and true: after
+the kill CT misosoupy3 + xnopyt v T doctorwu2021 + tttttssssss). Why it
+mattered: "…swung the win probability by 32 percent…" — 32 = impact +32%.
+What to practise / focus: no facts. **Every token grounded; no violation
+missed.** The pre-Regenerate read ("At +5 s, you set up at Shop near xnopyt.
+At +28 s, you secured a crucial kill on NCZ RG with the m4a1_silencer, adding
++32% win probability in a 2v3 situation. The round ended in a win at +82 s."
++ comment "Clean elimination on NCZ RG at +28 s to swing the round in a 2v3."
++ why "Securing the entry at +28 s broke open the 2v3 disadvantage…") was
+grounded token for token too; "entry" is a judgment word, and a loose one —
+the +28 s kill was the round's sixth — a voice note for the owner, not a
+validator matter.
+
+**mirage-tie R10 (CT, won, Cost you, −27%; `freeze_end 58436`):**
+
+> "At +5 s, you spawned near Bebita at CT spawn. At +44 s, you were eliminated by NCZ RG with an ak47 at Connector in a 4v3 setup. The team recovered to secure the round win later."
+
+| Token | Kind | Where it is in R10's facts |
+|---|---|---|
+| +5 s | clock | setup tick 58756 → 5.0; rail "0:05 Setup at CT spawn" |
+| Bebita | name | setup `nearest_teammate` 76561199210928680; rail "Nearest teammate Bebita, 97 u" |
+| CT spawn | callout | setup `place: CTSpawn`; rail "Setup at CT spawn" |
+| +44 s | clock | death tick 61278 → 44.4; rail "0:44 Died to NCZ RG" |
+| NCZ RG | name | death `killer` 76561198826400404 |
+| ak47 | fact | death `weapon`; rail "112 u, ak47" |
+| Connector | callout | death `place: Connector`; rail "At Connector" |
+| 4v3 | number | death `man_context: 4v3`; rail "4v3 before" |
+| "round win" | fact | header `won: true`; rail "1:19 Round won — t killed" |
+| "recovered", "setup" | judgment | free |
+
+Per-play comment at tick **61278** (the death): "Died at Connector to NCZ RG
+at +44 s; hold safer crossfires rather than challenging individual duels
+alone." — Connector / NCZ RG / +44 s as above; "alone" is judgment (the
+facts carry nearest Bebita 500 u, which neither the rail caption nor the
+block prints for this death, so nothing shown contradicts it).
+`why_it_mattered` / `what_to_practise` / `focus`: null. **Every token
+grounded.**
+
+**mirage-tie synthesis opening** (grounded against the synthesis prompt:
+`# Match: de_mirage · final score 12-12`, the per-round digests "Round N ·
+verdict · won/lost: <read>", the template insights, the habits):
+
+> "We finished a tight match on de_mirage with a 12-12 scoreline where spacing and trade discipline decided our rounds. In rounds like round 24, you showed great impact by trading xnopyt and planting the bomb to secure the win. However, across the match, you suffered from dying isolated 7 times and leaving 8 trade opportunities on the table. Fixing your trade timing and staying connected with teammates will turn those close losses into round wins."
+
+| Token | Where it is |
+|---|---|
+| de_mirage | prompt header `# Match: de_mirage` (the raw map id — voice note below) |
+| 12-12 | `final score 12-12` |
+| round 24 | digest line "Round 24 · Won it · won: …" |
+| trading xnopyt | R24's validated read in the digest ("traded xnopyt by eliminating tttttssssss through smoke with a glock at [tick 146418] and [tick 146446]") ← R24 `trade` play: teammate 76561199011427752 = xnopyt, `traded_by_me: true`; kill 146446 on tttttssssss thru_smoke, glock |
+| planting the bomb | R24's read ("planted the bomb at [tick 148877]") ← R24 `plant` play 148877 at BombsiteA |
+| 7 times | insight "Died isolated 7 times: You died isolated 7 times…" |
+| 8 trade opportunities | insight "8 trades you were in range for: A teammate died inside trade range of you 8 times…" |
+
+Work-on items: "Re-peek within two seconds of a teammate's death…" (word
+numeral, not validated; it is the insight body's "The two seconds after his
+death"), the other two cite nothing. **Every token grounded.** inferno-loss
+spot-check: the opening's `de_inferno`, `3-13`, `round 2` are in its prompt;
+R6's read ("At tick 26755, you set up at CT spawn with SirEggsAlot 159 u
+away. At tick 28215, you missed your trade on SirEggsAlot against MyUnit. At
+tick 28287, you died to MyUnit with a galilar headshot.") cites only the
+V1.2b-hand-verified R6 facts (159 u, ticks 26755/28215/28287, galilar,
+headshot, SirEggsAlot, MyUnit).
+
+**No violation the validator let through was found; no `fix(narrator)`
+commit was needed.** Voice notes for the owner (judgment, not grounding):
+the coach sometimes speaks as a teammate ("We finished…our rounds"); it
+echoes raw ids the prompt shows it ("de_mirage", "de_inferno") and the
+`[tick N]` play labels leak into prose in some reads (id 8 R24, id 3 R6:
+"At tick 26755, …"); "setup" as a verb; "entry" for a mid-round kill.
+
+**Two deliberate probes** through the pure harness (scratchpad
+`coach-check`, `cargo run --release --offline`, real mirage-tie ledger →
+`render_round_block` → `Grounding::for_round` → `validate_round`, no
+network; known-callout set = ledger places ∪ 23 visited places, 23 names):
+
+| Probe | Response text | Result |
+|---|---|---|
+| R8 — prior-round cite | "Round 7 went the same way: you won it 2v0." | **0 violations** (the block's "Earlier this match: … Round 7 · Quiet · won" grounds the bare 7; 2v0 is in R8's outcome) |
+| R10 — substring callout | "You died at T spawn to NCZ RG from 112 u." (R10's block says "CT spawn", never "T spawn"; both are known callouts) | **rejected — `read:Callout:T spawn`** (word-boundary match) |
+
+The same run's adversarial rows still catch an invented distance (1500 /
+250), a known-but-absent callout (Connector in R8, Jungle in both), a
+non-play tick (46000 / 61000) and an exclamation mark.
+
+### D. CI + branch protection
+
+`gh run list --workflow ci --limit 6` + `gh run view <id> --json jobs`: the
+`secrets` job (grep for `AIza[0-9A-Za-z_-]{30,}|AQ\.[A-Za-z0-9_-]{30,}` over
+tracked files) ran **green on PR #32** (run 32853229797, 6 s) **and PR #33**
+(run 32858959424, 5 s), and on both main pushes. Branch protection was not
+changed here — `secrets` still has to be added to the required checks
+(ADR-0005), which the controller does after the docs PR lands. Before every
+commit in this session: `git status --porcelain | grep -c env.local` → 0 and
+the key-shape grep over the worktree → empty.
+
+### E. Walkthrough (`docs/design/walkthrough-v1.3/`, window 1440×900)
+
+Graded against `docs/design/design-system.md` v2:
+
+| Screen | §2 color | §3 type | §4 space/radius/motion | §5 dashed grammar | Verdict |
+|---|---|---|---|---|---|
+| `settings-nokey.png` | cards on navy; one accent primary per card ("Save key" disabled-looking only because it is disabled); status text ink | status line + model fields mono; eyebrows micro caps; hint body | `--r-md` cards, `--r-sm` inputs, 4px-grid gaps | none (nothing is evidence) | PASS |
+| `settings-coach.png` | same; the toast floats (`--shadow-float`, `--r-lg`) in ink on `--bg1` — no new hue for "connected" | "on · key …1Y4A from the environment" mono; toast body sans | as above | none | PASS |
+| `report-coach.png` | "Coach's read · gemini-3.5-flash-lite" eyebrow ink-dim; the read as the editorial lead with a solid left edge (furniture), template lead below it; severity edges unchanged | eyebrow micro caps mono, read italic body, work-on list body, "Regenerate" ghost button `--text-ui` | lead + list on the 4px grid | evidence chips remain the only dashes; the coach block has none (it is not evidence) | PASS |
+| `rail-coach.png` (R10) | "Coach's read" block with a solid 2px ink edge, per-play comment in body ink under the mono facts, verdict chip outlined `--loss`; no new hues | read body sans, comment body sans, facts mono, "Regenerate" ghost | block padding `--s3`/`--s4`, `--r-md` card | active row solid edge (playhead at 0:00 → none); nothing dashed but evidence | PASS |
+
+Model label note: the Report eyebrow prints the model id in the micro-caps
+style ("GEMINI-3.5-FLASH-LITE") — consistent with the one label style, kept.
+
+### F. Deviations
+
+**Round swap, undisclosed at the time.** The dispatch (Task 11) named
+mirage-tie R6 (quiet) and R13 as the pair to hand-check in Replay; §B–§C
+above hand-check **R8 (Won it) and R10 (Cost you)** instead. The original
+task-11 report did not record why the swap was made. The reason is supplied
+here, in fix round 1, not carried over from that report: R8 (Won it) and R10
+(Cost you) give verdict diversity — a won round and a cost-you round — where
+the brief's R6/R13 pair (quiet and flagged) would not have. Mirage-tie R6
+and R13 were not hand-checked under the coach in this session; if the owner
+specifically wants those two, they can be regenerated and grounded the same
+way §C does for R8/R10.

@@ -471,6 +471,27 @@
   margin-top: var(--s1);
 }
 
+/* The coach's loading placeholder and the ask-the-coach prompt sit on the
+   same ink edge and margins as the lead they stand in for, so nothing
+   shifts when the read lands. (`.report-lead.report-coach` restates the
+   same values.) */
+.report-coach {
+  margin: 0 0 var(--s6);
+  padding-left: var(--s4);
+  border-left: 2px solid var(--ink);
+}
+
+.report-coach-ask {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+
+.report-coach-ask .rpl-rail-hint {
+  margin: 0;
+}
+
 /* Round strip — a compact mono grid (frontend-design pass). rpt- prefixed
    for the same reason as the containers above: the deleted legacy
    styles.css had a `.report-round-strip` rule this would otherwise have
@@ -1141,6 +1162,20 @@
   justify-content: space-between;
   gap: var(--s2);
   margin-bottom: var(--s1);
+}
+
+/* No read yet (fallback / error / not asked): the hint, then the ask
+   button, on the read's margin — no ink edge, since there's no quote. */
+.rpl-coach-ask {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
+  margin: var(--s3) 0 0;
+}
+
+.rpl-coach-ask .rpl-rail-hint {
+  margin: 0;
 }
 
 .rpl-coach-read-body {

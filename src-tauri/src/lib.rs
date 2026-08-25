@@ -20,6 +20,7 @@ pub fn run() {
                 .map_err(|e| format!("failed to open database: {e}"))?;
             app.manage(AppState {
                 store: Mutex::new(store),
+                coach_locks: Mutex::new(Default::default()),
             });
             Ok(())
         })

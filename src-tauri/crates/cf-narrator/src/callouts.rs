@@ -11,6 +11,7 @@ const OVERRIDES: &[(&str, &str)] = &[
     ("CTSpawn", "CT spawn"),
     ("TRamp", "T ramp"),
     ("TSpawn", "T spawn"),
+    ("TopofMid", "Top of Mid"), // Mirage; the splitter yields "Topof Mid"
 ];
 
 /// Prettify a raw callout: curated override, else split CamelCase runs
@@ -47,6 +48,7 @@ mod tests {
         assert_eq!(callout_name("TSpawn"), "T spawn");
         assert_eq!(callout_name("CTSpawn"), "CT spawn");
         assert_eq!(callout_name("TRamp"), "T ramp");
+        assert_eq!(callout_name("TopofMid"), "Top of Mid");
     }
 
     #[test]

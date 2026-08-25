@@ -19,8 +19,16 @@ trait; the coach needs the network, batching and a cache.
 - **Grounding.** The validator builds its allowed sets from exactly the text
   the model was shown (`render_round_block`), so anything citable must be
   rendered and nothing rendered may be a guess. Numbers, roster names, known
-  callouts, round numbers, ticks; opinions are free. Reject → one retry with
-  the violations listed → template fallback for that round.
+  callouts, round numbers, ticks; opinions are free. The known-callout set
+  is every callout anyone stood in during the match — the ledger's places ∪
+  the position samples' `last_place` — not a per-map list. Names and
+  callouts match at word boundaries only ("CT spawn" never grounds "T
+  spawn"). Reject → one retry with the violations listed → template
+  fallback for that round. Tick labels stay confined to the `plays` array's
+  `tick` field — prose (`read`, `why_it_mattered`, `what_to_practise`,
+  `focus`) refers to moments by clock time, never `[tick N]`, and to places
+  exactly as the facts write them, never a map slug or internal id
+  (`coach-v3`).
 - **Key.** `CLUTCHFACTOR_GEMINI_KEY` env var overrides the Settings value
   (`gemini_api_key` in the SQLite settings table — the charter's choice; the
   DB lives in the user's app-data dir). Debug builds seed the env var from
@@ -45,5 +53,17 @@ trait; the coach needs the network, batching and a cache.
 - Word numerals and entities outside the roster/callout sets are not
   validated — the prompt forbids them; the validator catches every numeric,
   roster-name, callout and tick invention.
+- What the validator provably does not catch: mis-attribution of a real
+  name or number to the wrong event ("Kit awped you" when Sam did, with
+  both in the facts), word numerals ("three teammates"), and callouts
+  outside the match's visited set (nobody stood there, so it isn't in the
+  known set). The prompt forbids all three; the owner's voice review of
+  real output (the milestone hand-verification) is what covers them.
+  Earlier rounds are citable by number because the "Earlier this match"
+  digest spells them "Round N" — that grounds every earlier round number
+  as a bare integer (so "7" passes in any field of a round-8 read, whatever
+  it actually refers to); the per-round grounding set is the round block
+  only, so the batch header's map, score and roster line do not ground a
+  round read (a cite of the final score is rejected).
 - A future `ClaudeNarrator` reuses the pure half unchanged; only
   `gemini.rs` is provider-specific.

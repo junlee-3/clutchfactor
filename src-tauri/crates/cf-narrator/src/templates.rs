@@ -5,6 +5,9 @@
 //! - second sentence = what to do differently, phrased the way a coach says it;
 //! - bodies are 1–3 sentences, titles ≤ 60 chars, no exclamation marks;
 //! - a missing fact drops its clause — never render `null`, `{}` or a bare 0;
+//! - every body names a concrete action the player can rehearse — the verb
+//!   list in `every_insight_template_carries_a_concrete_action` is the
+//!   contract (docs/design/template-audit-v1.3.md);
 //! - `H2_BAITED_TRADE` never blames the player (death-taxonomy §2 H2): the
 //!   player did the right thing, so the caption says team spacing, not fault.
 //!
@@ -203,8 +206,10 @@ fn baited_trade(f: &Facts, ctx: &MatchContext) -> Narration {
         }
         _ => unreachable!("capped at 2 above"),
     };
-    let mut body =
-        format!("{opener} {who}; that is a team spacing problem, not a reason to stop trading.");
+    let mut body = format!(
+        "{opener} {who}; that is a team spacing problem, not a reason to stop trading: keep \
+         re-peeking and call the swing so the second man leaves with you."
+    );
     if f.flag("team_pattern") {
         body.push(' ');
         body.push_str(
@@ -260,8 +265,8 @@ fn vulnerable_deaths(f: &Facts, round: u32) -> Narration {
             },
             body: format!(
                 "You were mid-animation — throwing, reloading, swapping — for {}{share}. The \
-                 nade and the reload each cost you a second: spend it where nobody has a line \
-                 on you.",
+                 nade and the reload each cost you a second: step behind cover first and spend \
+                 it where nobody has a line on you.",
                 of_total.to_lowercase()
             ),
         },
@@ -562,7 +567,8 @@ fn dead_time_smoke(f: &Facts) -> Narration {
         },
         body: format!(
             "{} went out after the round had already ended. That is utility you paid for and \
-             never used — throw it while the round is still live, or keep the money for a rifle.",
+             never used — throw it while the round is still live, on the crossing or the retake \
+             you are about to make.",
             match n {
                 Some(n) => format!("{n} of your smokes"),
                 None => "Your smokes".to_string(),
@@ -795,7 +801,7 @@ pub fn narrate_habit(
             title: "Habit: missed trades".to_string(),
             body: format!(
                 "You left trades on the table {seen}. Standing near a teammate is not support; \
-                 re-peeking within two seconds of his death is."
+                 re-peeking within two seconds of his death is — move on the sound, not after it."
             ),
         },
         // Promotion only ever reaches here alongside H2_FAILED_TRADE (see
@@ -816,7 +822,7 @@ pub fn narrate_habit(
             title: "Habit: dying with unused utility".to_string(),
             body: format!(
                 "You died with grenades still unused in your inventory {seen}. Make it a rule: \
-                 nades leave your hand before the fight starts, not once you are in it."
+                 throw the nades before the fight starts, not once you are in it."
             ),
         },
         "H4_KILLED_WITHOUT_CONTACT" => Narration {

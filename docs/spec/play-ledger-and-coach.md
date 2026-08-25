@@ -139,7 +139,7 @@ K-D, man context), verdict + impact, match context (map, score, names), and a
 compact digest of the last N rounds' ledgers in this match (so it can say "the
 third time this half you pushed Connector without info").
 
-**Prompt.** System: the coach persona under PROMPT.md §8 voice rules (numbers
+**Prompt.** System: the coach persona under PROMPT-V1.md's voice rules (the §8 seam in PROMPT.md; the rules text is in PROMPT-V1.md) (numbers
 first, then the fix; no exclamation marks; never scold; "unusual, not wrong"
 for corpus positioning; specific — name the callout, the teammate, the
 timestamp). It may judge, prioritize, and advise from its own CS2 knowledge.
@@ -180,6 +180,14 @@ batched per match into as few calls as the schema allows, and a stronger tier
 for synthesis; both configurable in Settings. Cache by (facts hash, model,
 style version); regenerate busts the row. No key / offline / rate-limited /
 invalid → templates, seamlessly.
+
+*Shipped as (V1.3, ADR-0010):* one tier for both — `gemini-3.7-flash` per
+round and for synthesis (`gemini-3.5-flash-lite` the alternative), not a
+stronger synthesis tier; the callout set is the match's visited places
+(ledger ∪ position samples), not a per-map list; names and callouts match at
+word boundaries; the style version is `coach-v3` (tick labels confined to
+the `plays` array, place names never a map slug); the per-round grounding is
+the round block alone (the batch header does not ground a round read).
 
 ## 4. Milestones
 
