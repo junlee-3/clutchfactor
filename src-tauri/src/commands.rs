@@ -1281,14 +1281,9 @@ pub fn get_round_review(
             })
             .collect();
 
-        // Narration only for selected rounds: an unselected round's
-        // `moments` is already empty, but `why_it_mattered`'s `WonIt` arm
-        // doesn't strictly require a moment to produce a line (its "no
-        // named victim" fallback fires even with zero moments) — without
-        // this gate, an unselected `WonIt` round cut by the selection cap
-        // could still render rail prose despite carrying no dot and no
-        // moments (V1.2 final-review fix wave: "no dot without rail
-        // content" extended to the narration, not just the moment list).
+        // Narration prose only for selected rounds: moments now exist for
+        // every round (rbr-v2), so this gate is the only thing keeping an
+        // unselected round's rail free of why/practise claims.
         let (why_it_mattered, what_to_practise) = if row.selected {
             (
                 rail::why_it_mattered(&review, &ctx),
