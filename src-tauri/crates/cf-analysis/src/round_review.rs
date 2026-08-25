@@ -781,8 +781,12 @@ fn build_moments(
                     Some(td) => (td.killer, td.traded),
                     None => (*attacker, false),
                 };
+                // Clamped at 0: a death in the post-decision tail (after
+                // `end_tick`, inside the officially-ended span) is never
+                // negative seconds — `dead_time` marks it instead, the same
+                // key the ledger's death/smoke plays use.
                 let round_end_delta_s =
-                    ((round_end_tick - ev.tick) as f32 / tickrate * 10.0).round() / 10.0;
+                    ((round_end_tick - ev.tick).max(0) as f32 / tickrate * 10.0).round() / 10.0;
                 moments.push(Moment {
                     tick: ev.tick,
                     kind: "tracked_death".to_string(),
@@ -800,6 +804,7 @@ fn build_moments(
                         "killer": killer.map(|k| k.to_string()),
                         "traded": traded,
                         "round_end_delta_s": round_end_delta_s,
+                        "dead_time": ev.tick > round_end_tick,
                     }),
                 });
             }
@@ -966,8 +971,10 @@ pub fn review_rounds(input: &RoundReviewInput, cfg: &DetectorConfig) -> Vec<Roun
 /// change to the moments schema, a scoring-model fix like this file's own
 /// V1.2 final-review fix wave) — independent of `RbrCfg`'s tunable
 /// thresholds, which `cfg_fingerprint` below covers separately.
-/// `rbr-v2` (V1.2b): moments for every round.
-pub const ENGINE_VERSION: &str = "rbr-v2";
+/// `rbr-v2` (V1.2b): moments for every round. `rbr-v3` (V1.2b final-review
+/// fix wave, #5): `tracked_death.round_end_delta_s` clamped at 0 plus the
+/// `dead_time` fact — rows stored with negative seconds get recomputed.
+pub const ENGINE_VERSION: &str = "rbr-v3";
 
 /// A stable fingerprint of the engine version plus every `RbrCfg` field that
 /// participates in `review_rounds`' output. Stored alongside each
@@ -1144,6 +1151,46 @@ mod tests {
         );
         assert_eq!(m.rule_id.as_deref(), Some("H2_ISOLATED_DEATH"));
         assert!(m.delta_p.unwrap() < 0.0);
+    }
+
+    /// V1.2b final-review fix wave, #5: a tracked death in the officially-
+    /// ended tail (after `end_tick`) still surfaces as a moment, but reads
+    /// 0 s from the round end and `dead_time` — never negative seconds.
+    #[test]
+    fn tracked_death_after_end_tick_clamps_round_end_delta_at_zero() {
+        let round = rr(1, 0, 5000, Side::T, &[1, 2, 3, 4, 5], &[6, 7, 8, 9, 10]);
+        // 5064: past end_tick (5000), inside officially_ended_tick (5128).
+        let inp = input(vec![round], vec![kill(1, 5064, 6, 1)], vec![], vec![]);
+        let mut cfg = DetectorConfig::default();
+        cfg.rbr.attention_threshold_p = 0.0;
+
+        let reviews = review_rounds(&inp, &cfg);
+        let r1 = reviews.iter().find(|r| r.round == 1).unwrap();
+        let m = r1
+            .moments
+            .iter()
+            .find(|m| m.kind == "tracked_death")
+            .expect("the tail death still surfaces as a moment");
+        assert_eq!(m.facts["round_end_delta_s"], json!(0.0));
+        assert_eq!(m.facts["dead_time"], json!(true));
+
+        let inp = input(
+            vec![rr(1, 0, 5000, Side::T, &[1, 2, 3, 4, 5], &[6, 7, 8, 9, 10])],
+            vec![kill(1, 3000, 6, 1)],
+            vec![],
+            vec![],
+        );
+        let reviews = review_rounds(&inp, &cfg);
+        let m = reviews[0]
+            .moments
+            .iter()
+            .find(|m| m.kind == "tracked_death")
+            .unwrap();
+        // f32 arithmetic here (unlike the ledger's f64): compare with a
+        // tolerance, not byte-identical JSON.
+        let secs = m.facts["round_end_delta_s"].as_f64().unwrap();
+        assert!((secs - 31.3).abs() < 1e-3, "{secs}");
+        assert_eq!(m.facts["dead_time"], json!(false));
     }
 
     #[test]
