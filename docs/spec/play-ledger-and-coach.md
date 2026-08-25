@@ -181,6 +181,13 @@ for synthesis; both configurable in Settings. Cache by (facts hash, model,
 style version); regenerate busts the row. No key / offline / rate-limited /
 invalid → templates, seamlessly.
 
+*Shipped as (V1.3, ADR-0010):* one tier for both — `gemini-3.7-flash` per
+round and for synthesis (`gemini-3.5-flash-lite` the alternative), not a
+stronger synthesis tier; the callout set is the match's visited places
+(ledger ∪ position samples), not a per-map list; names and callouts match at
+word boundaries; the style version is `coach-v2`; the per-round grounding is
+the round block alone (the batch header does not ground a round read).
+
 ## 4. Milestones
 
 - **V1.2b** — A (UI revert + thumbnails + cleanup), then B (play ledger on

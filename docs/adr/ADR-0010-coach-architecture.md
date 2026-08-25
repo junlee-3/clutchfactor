@@ -55,5 +55,11 @@ trait; the coach needs the network, batching and a cache.
   outside the match's visited set (nobody stood there, so it isn't in the
   known set). The prompt forbids all three; the owner's voice review of
   real output (the milestone hand-verification) is what covers them.
+  Earlier rounds are citable by number because the "Earlier this match"
+  digest spells them "Round N" — that grounds every earlier round number
+  as a bare integer (so "7" passes in any field of a round-8 read, whatever
+  it actually refers to); the per-round grounding set is the round block
+  only, so the batch header's map, score and roster line do not ground a
+  round read (a cite of the final score is rejected).
 - A future `ClaudeNarrator` reuses the pure half unchanged; only
   `gemini.rs` is provider-specific.
