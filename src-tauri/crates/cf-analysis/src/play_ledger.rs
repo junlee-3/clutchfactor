@@ -19,7 +19,7 @@ use serde_json::{json, Value};
 use crate::config::DetectorConfig;
 use crate::context::{AnalysisContext, RoundPhase};
 use crate::families::flash_util::{flash_groups, FlashGroup};
-use crate::families::h2::killed_in;
+use crate::families::h2::{committed, killed_in};
 use crate::types::RuleFlag;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -79,6 +79,9 @@ pub fn build_ledger(
             plays.extend(setup_play(ctx, cfg, round, side));
             plays.extend(engagement_plays(ctx, cfg, round, side));
             plays.extend(utility_plays(ctx, cfg, round, side));
+            plays.extend(trade_plays(ctx, cfg, round, side));
+            plays.extend(rush_play(ctx, cfg, round));
+            plays.extend(rotation_play(ctx, cfg, round, side, flags));
             plays.extend(bomb_plays(ctx, cfg, round));
             plays.extend(outcome_play(ctx, cfg, round, side));
             merge_flags(ctx, cfg, round, tracked, &mut plays, flags);
@@ -599,6 +602,215 @@ fn utility_plays(
     out
 }
 
+// ---- trades, rushes, rotations -------------------------------------------
+
+/// One play per teammate death within trade range of a living tracked
+/// player: `trade` when the tracked player killed the killer inside the
+/// commit window, else `missed_trade` — Bad only under H2_FAILED_TRADE's own
+/// conditions (no commit AND the killer lived), Neutral otherwise.
+fn trade_plays(
+    ctx: &AnalysisContext,
+    cfg: &DetectorConfig,
+    round: &Round,
+    side: Side,
+) -> Vec<Play> {
+    let tracked = ctx.tracked();
+    let z = cfg.general.z_weight;
+    let commit_w = ctx.seconds(cfg.trade.commit_window_s);
+    let my_death = ctx.kill_of(tracked, round.number).map(|k| k.tick);
+    let mut out = vec![];
+    for k in ctx
+        .data()
+        .kills
+        .iter()
+        .filter(|k| k.round == round.number && k.victim != tracked)
+    {
+        if ctx.side_of(k.victim, round.number) != Some(side) {
+            continue; // an enemy died, not a teammate
+        }
+        let Some(killer) = k.attacker else { continue };
+        if killer == tracked {
+            continue;
+        }
+        match ctx.side_of(killer, round.number) {
+            Some(s) if s != side => {}
+            _ => continue, // teamkill / unknown side: not trade spacing (class 14)
+        }
+        if my_death.is_some_and(|d| d <= k.tick) {
+            continue; // already dead
+        }
+        let (Some(me), Some(mate)) = (
+            ctx.state_at(tracked, k.tick),
+            ctx.state_at(k.victim, k.tick),
+        ) else {
+            continue;
+        };
+        if !me.is_alive {
+            continue;
+        }
+        let distance = AnalysisContext::dist(&me, &mate, z);
+        if distance > cfg.trade.distance_u {
+            continue;
+        }
+        let t1 = k.tick + commit_w;
+        let traded_by_me = ctx.data().kills.iter().any(|t| {
+            t.attacker == Some(tracked) && t.victim == killer && t.tick > k.tick && t.tick <= t1
+        });
+        let traded_by_team = killed_in(ctx, killer, k.tick, t1);
+        let did_commit = committed(ctx, tracked, killer, k.tick, t1);
+        let (kind, quality) = if traded_by_me {
+            ("trade", Quality::Good)
+        } else if did_commit || traded_by_team {
+            ("missed_trade", Quality::Neutral)
+        } else {
+            ("missed_trade", Quality::Bad)
+        };
+        out.push(play(
+            k.tick,
+            phase_of(ctx, cfg, round.number, k.tick),
+            kind,
+            json!({
+                "teammate": k.victim.to_string(),
+                "killer": killer.to_string(),
+                "distance": distance.round(),
+                "committed": did_commit,
+                "traded_by_me": traded_by_me,
+                "traded_by_team": traded_by_team,
+                "window_s": cfg.trade.commit_window_s,
+            }),
+            Some(quality),
+        ));
+    }
+    out
+}
+
+/// First 1 s checkpoint inside the early-aggression window at which the
+/// tracked player is ≥ `min_spawn_distance_u` (XY, as H11) from their
+/// freeze-end position with no teammate within `trade.distance_u`. Moving
+/// with the team is not a rush; a rush that died in the window is Bad.
+fn rush_play(ctx: &AnalysisContext, cfg: &DetectorConfig, round: &Round) -> Option<Play> {
+    let tracked = ctx.tracked();
+    let freeze_end = round.freeze_end_tick?;
+    let spawn = ctx.state_at(tracked, freeze_end)?;
+    if spawn.tick < round.start_tick {
+        return None;
+    }
+    let step = ctx.seconds(cfg.ledger.sample_step_s).max(1);
+    let window_end = (freeze_end + ctx.seconds(cfg.timing.early_aggression_s)).min(round.end_tick);
+    let mut t = freeze_end + step;
+    while t <= window_end {
+        let st = ctx.state_at(tracked, t)?;
+        if !st.is_alive {
+            return None;
+        }
+        let dx = st.x - spawn.x;
+        let dy = st.y - spawn.y;
+        let distance = (dx * dx + dy * dy).sqrt();
+        if distance >= cfg.timing.min_spawn_distance_u {
+            let nearest = ctx.nearest_teammate(tracked, round.number, t, cfg.general.z_weight);
+            if nearest.is_some_and(|(_, d)| d <= cfg.trade.distance_u) {
+                return None;
+            }
+            let died_in_window = ctx
+                .kill_of(tracked, round.number)
+                .is_some_and(|k| k.tick <= window_end);
+            return Some(play(
+                t,
+                phase_of(ctx, cfg, round.number, t),
+                "rush",
+                json!({
+                    "seconds_in": secs_1dp(t - freeze_end, ctx.data().tickrate),
+                    "distance": distance.round(),
+                    "nearest_teammate": nearest.map(|(id, _)| id.to_string()),
+                    "nearest_teammate_dist": nearest.map(|(_, d)| d.round()),
+                    "died_in_window": died_in_window,
+                    "place": st.place,
+                }),
+                Some(if died_in_window {
+                    Quality::Bad
+                } else {
+                    Quality::Neutral
+                }),
+            ));
+        }
+        t += step;
+    }
+    None
+}
+
+/// CT only, when a plant happened and the tracked player was alive for it:
+/// where they were relative to the planter's position (H11's site proxy)
+/// and how long the rotation took, sampled at 1 s until the H11 deadline.
+/// Bad only when H11_SLOW_ROTATION fired (its flag is absorbed here).
+fn rotation_play(
+    ctx: &AnalysisContext,
+    cfg: &DetectorConfig,
+    round: &Round,
+    side: Side,
+    flags: &[RuleFlag],
+) -> Option<Play> {
+    if side != Side::Ct {
+        return None;
+    }
+    let tracked = ctx.tracked();
+    let z = cfg.general.z_weight;
+    let end = span_end(round);
+    let plant = ctx
+        .data()
+        .bomb_events
+        .iter()
+        .find(|b| b.kind == "planted" && b.tick >= round.start_tick && b.tick <= end)?;
+    let planter = plant.player?;
+    let plant_pos = ctx.state_at(planter, plant.tick)?;
+    let at_plant = ctx.state_at(tracked, plant.tick)?;
+    if !at_plant.is_alive {
+        return None;
+    }
+    let distance_at_plant = AnalysisContext::dist(&at_plant, &plant_pos, z);
+    let at_site = distance_at_plant <= cfg.timing.rotate_radius_u;
+    let step = ctx.seconds(cfg.ledger.sample_step_s).max(1);
+    let deadline = (plant.tick + ctx.seconds(cfg.timing.rotate_max_s)).min(end);
+    let mut arrived_s = at_site.then_some(0.0_f64);
+    let mut died_before_arrival = false;
+    if !at_site {
+        let mut t = plant.tick + step;
+        while t <= deadline {
+            let Some(st) = ctx.state_at(tracked, t) else {
+                break;
+            };
+            if !st.is_alive {
+                died_before_arrival = true;
+                break;
+            }
+            if AnalysisContext::dist(&st, &plant_pos, z) <= cfg.timing.rotate_radius_u {
+                arrived_s = Some(secs_1dp(t - plant.tick, ctx.data().tickrate));
+                break;
+            }
+            t += step;
+        }
+    }
+    let slow = flags.iter().find(|f| {
+        f.round == round.number && f.steamid == tracked && f.rule_id == "H11_SLOW_ROTATION"
+    });
+    let mut p = play(
+        plant.tick,
+        phase_of(ctx, cfg, round.number, plant.tick),
+        "rotation",
+        json!({
+            "distance_at_plant": distance_at_plant.round(),
+            "at_site": at_site,
+            "arrived_s": arrived_s,
+            "died_before_arrival": died_before_arrival,
+            "deadline_s": cfg.timing.rotate_max_s,
+            "planter": planter.to_string(),
+            "place_at_plant": at_plant.place,
+        }),
+        slow.map(|_| Quality::Bad),
+    );
+    p.rule_id = slow.map(|f| f.rule_id.to_string());
+    Some(p)
+}
+
 // ---- flags + finalization -------------------------------------------------
 
 /// Layer the tracked player's flags for this round onto the plays: a flag on
@@ -1043,5 +1255,126 @@ mod tests {
         assert_eq!(m.facts["team_damage"], 12);
         assert_eq!(m.facts["burn_s"], 6.0);
         assert_eq!(m.quality, Some(Quality::Bad));
+    }
+
+    #[test]
+    fn trading_a_teammate_is_good_not_committing_is_bad_committing_is_neutral() {
+        let good = base()
+            .kill(ENEMY, MATE, 1, 3000, "weapon_ak47")
+            .kill(ME, ENEMY, 1, 3060, "weapon_ak47")
+            .build();
+        let l = ledger_for(&good, &[]);
+        let t = find_play(&l, "trade");
+        assert_eq!(t.tick, 3000);
+        assert_eq!(t.facts["teammate"], "2");
+        assert_eq!(t.facts["killer"], "9");
+        assert_eq!(t.facts["distance"], 500.0);
+        assert_eq!(t.facts["traded_by_me"], true);
+        assert_eq!(t.quality, Some(Quality::Good));
+
+        let bad = base().kill(ENEMY, MATE, 1, 3000, "weapon_ak47").build();
+        let l = ledger_for(&bad, &[]);
+        let m = find_play(&l, "missed_trade");
+        assert_eq!(m.facts["committed"], false);
+        assert_eq!(m.quality, Some(Quality::Bad));
+
+        let neutral = base()
+            .kill(ENEMY, MATE, 1, 3000, "weapon_ak47")
+            .shot(ME, 3020, "weapon_ak47")
+            .build();
+        let l = ledger_for(&neutral, &[]);
+        let m = find_play(&l, "missed_trade");
+        assert_eq!(m.facts["committed"], true);
+        assert_eq!(m.quality, Some(Quality::Neutral));
+    }
+
+    #[test]
+    fn a_teammate_dying_out_of_range_or_after_my_death_is_not_a_trade_situation() {
+        let far = Scenario::new("de_mirage")
+            .players_ct(&[ME, MATE])
+            .players_t(&[ENEMY])
+            .round(1, 1000, 5000)
+            .hold(ME, 1000, 5000, 0.0, 0.0, 0.0)
+            .hold(MATE, 1000, 5000, 2500.0, 0.0, 0.0)
+            .hold(ENEMY, 1000, 5000, 4000.0, 0.0, 0.0)
+            .kill(ENEMY, MATE, 1, 3000, "weapon_ak47")
+            .build();
+        assert!(ledger_for(&far, &[])
+            .plays
+            .iter()
+            .all(|p| p.kind != "missed_trade"));
+        let dead_first = base()
+            .kill(ENEMY, ME, 1, 2000, "weapon_ak47")
+            .kill(ENEMY, MATE, 1, 3000, "weapon_ak47")
+            .build();
+        assert!(ledger_for(&dead_first, &[])
+            .plays
+            .iter()
+            .all(|p| p.kind != "missed_trade"));
+    }
+
+    #[test]
+    fn unsupported_early_push_is_a_rush_play() {
+        let data = Scenario::new("de_mirage")
+            .players_ct(&[MATE])
+            .players_t(&[ME, ENEMY])
+            .round(1, 1000, 5000)
+            .waypoint(ME, 1000, 0.0, 0.0, 0.0)
+            .waypoint(ME, 1320, 1200.0, 0.0, 0.0) // 1,200 u in 5 s
+            .waypoint(ME, 5000, 1200.0, 0.0, 0.0)
+            .hold(ENEMY, 1000, 5000, 5000.0, 5000.0, 0.0)
+            .hold(MATE, 1000, 5000, -5000.0, -5000.0, 0.0)
+            .build();
+        let l = ledger_for(&data, &[]);
+        let r = find_play(&l, "rush");
+        assert_eq!(r.tick, 1000 + 64 * 4); // first 1 s checkpoint past 750 u
+        assert_eq!(r.facts["seconds_in"], 4.0);
+        assert_eq!(r.facts["distance"], 960.0);
+        assert_eq!(r.facts["died_in_window"], false);
+        assert_eq!(r.quality, Some(Quality::Neutral));
+        let supported = base().build(); // holds still: no rush
+        assert!(ledger_for(&supported, &[])
+            .plays
+            .iter()
+            .all(|p| p.kind != "rush"));
+    }
+
+    #[test]
+    fn ct_rotation_after_the_plant_records_arrival_time() {
+        let data = Scenario::new("de_mirage")
+            .players_ct(&[ME, MATE])
+            .players_t(&[ENEMY])
+            .round(1, 1000, 5000)
+            .hold(ENEMY, 1000, 5000, 3000.0, 0.0, 0.0)
+            .hold(MATE, 1000, 5000, 3100.0, 0.0, 0.0)
+            .waypoint(ME, 1000, 0.0, 0.0, 0.0)
+            .waypoint(ME, 2000, 0.0, 0.0, 0.0)
+            .waypoint(ME, 2640, 2400.0, 0.0, 0.0) // within 800 u of the plant 10 s later
+            .waypoint(ME, 5000, 2400.0, 0.0, 0.0)
+            .bomb("planted", ENEMY, 2000)
+            .round_won_by(1, Side::T)
+            .build();
+        let l = ledger_for(&data, &[]);
+        let r = find_play(&l, "rotation");
+        assert_eq!(r.tick, 2000);
+        assert_eq!(r.facts["distance_at_plant"], 3000.0);
+        assert_eq!(r.facts["at_site"], false);
+        assert_eq!(r.facts["arrived_s"], 10.0);
+        assert!(r.quality.is_none());
+        let flags = vec![flag(
+            "H11_SLOW_ROTATION",
+            2000 + 64 * 25,
+            0.5,
+            serde_json::json!({"distance_at_plant": 3000.0}),
+        )];
+        let l = ledger_for(&data, &flags);
+        let r = find_play(&l, "rotation");
+        assert_eq!(r.quality, Some(Quality::Bad));
+        assert_eq!(r.rule_id.as_deref(), Some("H11_SLOW_ROTATION"));
+        assert_eq!(
+            l.plays.iter().filter(|p| p.kind == "flag").count(),
+            0,
+            "not re-added as a bare flag"
+        );
     }
 }
