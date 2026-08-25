@@ -109,7 +109,7 @@ async fn parse_demo(
     // text (e.g. `task N panicked with message "..."`) to the UI.
     .map_err(|_| {
         format!(
-            "Couldn't parse {file_name}: the import crashed on this file. If this \
+            "Couldn't parse {file_name}: the parser crashed on this file. If this \
              demo is from a different game or the download was cut short, \
              re-download it and try again."
         )
@@ -252,6 +252,12 @@ pub struct ReAnalyzeResult {
 /// spec §2 "Backfill"). Uses the recorded `source_path`, or `path` when
 /// given; the file's hash must equal the stored `file_hash` — a different
 /// file is refused rather than silently replacing the match.
+///
+/// Ordering guarantee: the parse completes (and is hash-verified) before any
+/// row changes; old analysis rows are cleared before `analyze_and_persist`
+/// runs, so a partial failure past that point leaves the match analysis-less
+/// (like a fresh import), never contradictory (new parsed rows next to old
+/// analysis rows).
 #[tauri::command]
 pub async fn re_analyze_match(
     state: State<'_, AppState>,
@@ -301,8 +307,25 @@ pub async fn re_analyze_match(
         store
             .set_source_path(match_id, &demo_path)
             .map_err(|e| e.to_string())?;
+        // Clear the old analysis before re-analyzing: otherwise a failure in
+        // `analyze_and_persist` below would leave the freshly parsed rows
+        // sitting beside a stale rule_flags/insights/death_class/round_review/
+        // round_plays run — a user-visible contradiction. An empty output/row
+        // list is the existing DELETE+INSERT replace path, so this just
+        // deletes.
+        store
+            .save_analysis(match_id, &cf_analysis::AnalysisOutput::default())
+            .map_err(|e| format!("failed to clear old analysis: {e}"))?;
+        store
+            .save_round_reviews(match_id, &[])
+            .map_err(|e| format!("failed to clear old reviews: {e}"))?;
     }
-    analyze_and_persist(&state, match_id, data, &on_progress).await?;
+    if let Err(e) = analyze_and_persist(&state, match_id, data, &on_progress).await {
+        return Err(format!(
+            "Re-parsed {}, but the analysis didn't finish: {e}. Run Re-analyze again.",
+            file.file_name
+        ));
+    }
     send(&on_progress, "done", 1.0, "Re-analyze complete");
     Ok(ReAnalyzeResult {
         needs_file: false,
