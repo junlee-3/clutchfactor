@@ -1110,6 +1110,36 @@
   color: var(--ink-faint);
 }
 
+/* The coach's read (spec §3): judgment on top of the numbers. A solid ink
+   edge like the Report lead — furniture around a quote, not evidence. */
+.rpl-coach-read {
+  margin: var(--s3) 0 0;
+  padding: var(--s3) 0 var(--s3) var(--s3);
+  border-left: 2px solid var(--ink);
+}
+
+.rpl-coach-read-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  margin-bottom: var(--s1);
+}
+
+.rpl-coach-read-body {
+  margin: 0;
+}
+
+.rpl-coach-focus {
+  margin: var(--s2) 0 0;
+  color: var(--ink-bright);
+}
+
+.rpl-coach-comment {
+  color: var(--ink);
+  margin-top: 2px;
+}
+
 .rpl-rail-footer {
   display: grid;
   grid-template-columns: 1fr 1fr;

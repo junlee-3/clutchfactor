@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   activeMomentIndex,
   annotationMomentIndex,
+  commentsByTick,
   nextFlagged,
   overlayWindow,
   prevFlagged,
@@ -164,5 +165,18 @@ describe("activeMomentIndex over ledger plays", () => {
     expect(activeMomentIndex(plays, 1320)).toBe(0);
     expect(activeMomentIndex(plays, 2000)).toBe(2);
     expect(activeMomentIndex(plays, 9999)).toBe(3);
+  });
+});
+
+describe("commentsByTick", () => {
+  it("groups comments by tick, preserving order", () => {
+    const m = commentsByTick([
+      { tick: 2000, comment: "a" },
+      { tick: 3000, comment: "b" },
+      { tick: 2000, comment: "c" },
+    ]);
+    expect(m.get(2000)).toEqual(["a", "c"]);
+    expect(m.get(3000)).toEqual(["b"]);
+    expect(m.get(4000)).toBeUndefined();
   });
 });

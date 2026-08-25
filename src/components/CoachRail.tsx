@@ -1,10 +1,11 @@
-import type { PlayDto, RoundReviewDto } from "../lib/ipc";
-import { activeMomentIndex, nextFlagged, prevFlagged, stripeTone } from "../replay/rail";
+import type { PlayDto, RoundCommentaryDto, RoundReviewDto } from "../lib/ipc";
+import { activeMomentIndex, commentsByTick, nextFlagged, prevFlagged, stripeTone } from "../replay/rail";
 import { fmtClock } from "../replay/timeline";
 import type { TimelineSpec } from "../replay/timeline";
 import { Button } from "./ui/Button";
 import { Card } from "./ui/Card";
 import { Chip } from "./ui/Chip";
+import { Skeleton } from "./ui/Skeleton";
 
 interface Props {
   reviews: RoundReviewDto[];
@@ -14,6 +15,10 @@ interface Props {
   displayTick: number;
   onJump: (tick: number) => void;
   onRound: (round: number) => void;
+  coach: RoundCommentaryDto | null;
+  coachLoading: boolean;
+  coachError: string | null;
+  onRegenerate: (() => void) | null;
 }
 
 /** Verdict -> Chip class. Outlined, never filled (spec §1): the two
@@ -45,8 +50,14 @@ export function CoachRail({
   displayTick,
   onJump,
   onRound,
+  coach,
+  coachLoading,
+  coachError,
+  onRegenerate,
 }: Props) {
   const review = reviews.find((r) => r.round === round) ?? null;
+  const comments = commentsByTick(coach?.plays ?? []);
+  const seenTick = new Set<number>();
   const moments = review?.moments ?? [];
   // Every round narrated (spec §2): the ledger's plays are the list. A match
   // imported before V1.2b has no ledger yet — no plays at all is that case,
@@ -90,29 +101,68 @@ export function CoachRail({
           </p>
         </div>
 
+        {coachLoading && (
+          <div className="rpl-coach-read" aria-busy="true">
+            <p className="type-micro rpl-rail-note-label">Coach's read</p>
+            <Skeleton kind="block" count={1} />
+          </div>
+        )}
+        {coach && (
+          <div className="rpl-coach-read">
+            <div className="rpl-coach-read-head">
+              <p className="type-micro rpl-rail-note-label">Coach's read</p>
+              {onRegenerate && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onRegenerate}
+                  title="Ask the coach again (uses your Gemini key)"
+                >
+                  Regenerate
+                </Button>
+              )}
+            </div>
+            <p className="type-body rpl-coach-read-body">{coach.read}</p>
+            {coach.focus && <p className="type-ui rpl-coach-focus">{coach.focus}</p>}
+          </div>
+        )}
+        {!coach && !coachLoading && coachError && (
+          <p className="type-data rpl-rail-hint">{coachError}</p>
+        )}
+
         <div className="rpl-rail-moments">
-          {rows.map((r, i) => (
-            <button
-              key={`${r.tick}-${i}`}
-              className={`rpl-rail-moment${
-                i === activeIdx ? ` rpl-rail-moment-active rpl-rail-tone-${stripeTone(r)}` : ""
-              }`}
-              title="Jump to this play"
-              onClick={() => onJump(r.tick)}
-            >
-              <span className="rpl-rail-moment-time type-data">
-                {fmtClock(spec, r.tick, tickrate)}
-              </span>
-              <span className="rpl-rail-moment-body">
-                <span className="rpl-rail-moment-headline type-ui">{r.headline}</span>
-                {r.facts.map((f, fi) => (
-                  <span key={fi} className="rpl-rail-moment-fact type-data">
-                    {f}
-                  </span>
-                ))}
-              </span>
-            </button>
-          ))}
+          {rows.map((r, i) => {
+            const isFirstAtTick = !seenTick.has(r.tick);
+            if (isFirstAtTick) seenTick.add(r.tick);
+            const commentLines = isFirstAtTick ? comments.get(r.tick) : undefined;
+            return (
+              <button
+                key={`${r.tick}-${i}`}
+                className={`rpl-rail-moment${
+                  i === activeIdx ? ` rpl-rail-moment-active rpl-rail-tone-${stripeTone(r)}` : ""
+                }`}
+                title="Jump to this play"
+                onClick={() => onJump(r.tick)}
+              >
+                <span className="rpl-rail-moment-time type-data">
+                  {fmtClock(spec, r.tick, tickrate)}
+                </span>
+                <span className="rpl-rail-moment-body">
+                  <span className="rpl-rail-moment-headline type-ui">{r.headline}</span>
+                  {r.facts.map((f, fi) => (
+                    <span key={fi} className="rpl-rail-moment-fact type-data">
+                      {f}
+                    </span>
+                  ))}
+                  {commentLines?.map((c, ci) => (
+                    <span key={`c${ci}`} className="rpl-coach-comment type-body">
+                      {c}
+                    </span>
+                  ))}
+                </span>
+              </button>
+            );
+          })}
           {rows.length === 0 && (
             <p className="type-body rpl-rail-quiet">Nothing recorded for you this round.</p>
           )}
@@ -124,17 +174,33 @@ export function CoachRail({
           </p>
         )}
 
-        {review.selected && review.why_it_mattered && (
+        {coach?.why_it_mattered ? (
           <div className="rpl-rail-note">
             <p className="type-micro rpl-rail-note-label">Why it mattered</p>
-            <p className="type-body">{review.why_it_mattered}</p>
+            <p className="type-body">{coach.why_it_mattered}</p>
           </div>
+        ) : (
+          review.selected &&
+          review.why_it_mattered && (
+            <div className="rpl-rail-note">
+              <p className="type-micro rpl-rail-note-label">Why it mattered</p>
+              <p className="type-body">{review.why_it_mattered}</p>
+            </div>
+          )
         )}
-        {review.selected && review.what_to_practise && (
+        {coach?.what_to_practise ? (
           <div className="rpl-rail-note">
             <p className="type-micro rpl-rail-note-label">What to practise</p>
-            <p className="type-body">{review.what_to_practise}</p>
+            <p className="type-body">{coach.what_to_practise}</p>
           </div>
+        ) : (
+          review.selected &&
+          review.what_to_practise && (
+            <div className="rpl-rail-note">
+              <p className="type-micro rpl-rail-note-label">What to practise</p>
+              <p className="type-body">{review.what_to_practise}</p>
+            </div>
+          )
         )}
       </Card>
 

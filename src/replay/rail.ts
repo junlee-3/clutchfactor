@@ -93,6 +93,20 @@ export function annotationMomentIndex(
   return bestIdx;
 }
 
+/** The coach's per-play comments keyed by play tick (a tick can carry more
+ *  than one line; the rail renders them under the first row at that tick). */
+export function commentsByTick(
+  plays: { tick: number; comment: string }[],
+): Map<number, string[]> {
+  const m = new Map<number, string[]>();
+  for (const p of plays) {
+    const list = m.get(p.tick);
+    if (list) list.push(p.comment);
+    else m.set(p.tick, [p.comment]);
+  }
+  return m;
+}
+
 export type StripeTone = "loss" | "win" | "neutral";
 
 /** Color of the rail's active-row edge (spec §1 "Rail per the mockup"): a

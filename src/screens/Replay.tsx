@@ -10,10 +10,19 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { MatchHeader } from "../components/ui/MatchHeader";
 import { Segmented } from "../components/ui/Segmented";
 import { Skeleton } from "../components/ui/Skeleton";
+import { useToast } from "../components/ui/Toast";
 import { parseEvidenceParams } from "../lib/evidence";
 import type { BombInfo, KillInfo, MatchDetail, RoundReviewDto } from "../lib/ipc";
 import { mapName } from "../lib/mapName";
-import { useMatchDetail, useMatches, useRoundReview, useRoundTicks } from "../lib/queries";
+import {
+  useCoachRounds,
+  useCoachStatus,
+  useMatchDetail,
+  useMatches,
+  useRegenerateCoachRound,
+  useRoundReview,
+  useRoundTicks,
+} from "../lib/queries";
 import { radarImageUrl } from "../replay/coords";
 import type { MapCalibration } from "../replay/coords";
 import { buildTracks, stateAt } from "../replay/interp";
@@ -202,6 +211,7 @@ export function Replay() {
         <RoundPlayer
           // Remount on round / evidence change: playback state resets cleanly.
           key={`${matchId}:${round}:${evidence.tick ?? "start"}`}
+          matchId={matchId}
           detail={d}
           round={round}
           mapCal={mapCal}
@@ -219,6 +229,7 @@ export function Replay() {
 }
 
 interface RoundPlayerProps {
+  matchId: number;
   detail: MatchDetail;
   round: number;
   mapCal: MapCalibration;
@@ -232,6 +243,7 @@ interface RoundPlayerProps {
 }
 
 function RoundPlayer({
+  matchId,
   detail: d,
   round,
   mapCal,
@@ -243,6 +255,19 @@ function RoundPlayer({
   reviewsError,
   onRound,
 }: RoundPlayerProps) {
+  const coachStatus = useCoachStatus();
+  const coachOn = coachStatus.data?.enabled ?? false;
+  const coach = useCoachRounds(matchId, coachOn);
+  const regenerate = useRegenerateCoachRound();
+  const toast = useToast();
+  const coachRound = coach.data?.rounds.find((r) => r.round === round) ?? null;
+  async function regenerateRound() {
+    try {
+      await regenerate.mutateAsync({ matchId, round });
+    } catch (e) {
+      toast.push("error", String(e));
+    }
+  }
   const roundInfo = d.rounds.find((r) => r.number === round) ?? null;
   const spec: TimelineSpec = useMemo(
     () =>
@@ -509,6 +534,10 @@ function RoundPlayer({
             displayTick={displayTick}
             onJump={seek}
             onRound={onRound}
+            coach={coachRound}
+            coachLoading={coachOn && (coach.isLoading || regenerate.isPending)}
+            coachError={coach.data?.error ?? null}
+            onRegenerate={coachOn ? () => void regenerateRound() : null}
           />
         )}
       </div>
