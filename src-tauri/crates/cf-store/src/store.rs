@@ -226,6 +226,18 @@ pub struct RoundPlaysRow {
     pub timeline_json: String,
 }
 
+/// One cached coach answer (ADR-0010).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CoachCacheRow {
+    pub kind: String,
+    pub round: u32,
+    pub facts_hash: String,
+    pub model: String,
+    pub status: String,
+    pub response_json: String,
+    pub violations_json: String,
+}
+
 /// One own match's trend point (Trends screen chart, PROMPT.md M6).
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct TrendMatchRow {
@@ -673,6 +685,74 @@ impl Store {
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    pub fn get_coach_cache(
+        &self,
+        match_id: i64,
+        kind: &str,
+        round: u32,
+    ) -> Result<Option<CoachCacheRow>, StoreError> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT kind, round, facts_hash, model, status, response_json, violations_json
+                 FROM coach_cache WHERE match_id = ?1 AND kind = ?2 AND round = ?3",
+                params![match_id, kind, round],
+                |r| {
+                    Ok(CoachCacheRow {
+                        kind: r.get(0)?,
+                        round: r.get(1)?,
+                        facts_hash: r.get(2)?,
+                        model: r.get(3)?,
+                        status: r.get(4)?,
+                        response_json: r.get(5)?,
+                        violations_json: r.get(6)?,
+                    })
+                },
+            )
+            .optional()?;
+        Ok(row)
+    }
+
+    pub fn put_coach_cache(
+        &mut self,
+        match_id: i64,
+        row: &CoachCacheRow,
+    ) -> Result<(), StoreError> {
+        self.conn.execute(
+            "INSERT INTO coach_cache (match_id, kind, round, facts_hash, model, status, response_json, violations_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(match_id, kind, round) DO UPDATE SET
+               facts_hash = excluded.facts_hash, model = excluded.model, status = excluded.status,
+               response_json = excluded.response_json, violations_json = excluded.violations_json,
+               created_at = datetime('now')",
+            params![match_id, row.kind, row.round, row.facts_hash, row.model, row.status, row.response_json, row.violations_json],
+        )?;
+        Ok(())
+    }
+
+    /// `kind`/`round` narrow the delete; both `None` clears the match.
+    pub fn delete_coach_cache(
+        &mut self,
+        match_id: i64,
+        kind: Option<&str>,
+        round: Option<u32>,
+    ) -> Result<(), StoreError> {
+        match (kind, round) {
+            (Some(k), Some(r)) => self.conn.execute(
+                "DELETE FROM coach_cache WHERE match_id = ?1 AND kind = ?2 AND round = ?3",
+                params![match_id, k, r],
+            )?,
+            (Some(k), None) => self.conn.execute(
+                "DELETE FROM coach_cache WHERE match_id = ?1 AND kind = ?2",
+                params![match_id, k],
+            )?,
+            _ => self
+                .conn
+                .execute("DELETE FROM coach_cache WHERE match_id = ?1", [match_id])?,
+        };
+        Ok(())
     }
 
     /// Records where a demo was imported from (V1.2b re-analyze input).
@@ -1687,6 +1767,7 @@ const MATCH_ANALYSIS_TABLES: &[&str] = &[
     "death_class",
     "round_review",
     "round_plays",
+    "coach_cache",
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1899,11 +1980,11 @@ mod tests {
         let path = dir.path().join("test.db");
         {
             let store = Store::open(&path).unwrap();
-            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 8);
+            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 9);
         }
         // Reopen: migrations must not re-apply / error.
         let store = Store::open(&path).unwrap();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 8);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 9);
     }
 
     #[test]
@@ -2080,9 +2161,27 @@ mod tests {
                 }],
             )
             .unwrap();
+        store
+            .put_coach_cache(
+                match_id,
+                &CoachCacheRow {
+                    kind: "round".to_string(),
+                    round: 1,
+                    facts_hash: "abc".to_string(),
+                    model: "gemini-3.7-flash".to_string(),
+                    status: "ok".to_string(),
+                    response_json: "{\"round\":1}".to_string(),
+                    violations_json: "[]".to_string(),
+                },
+            )
+            .unwrap();
         assert_eq!(store.load_round_plays(match_id).unwrap().len(), 1);
         assert_eq!(store.flags_for_match(match_id).unwrap().len(), 1);
         assert_eq!(store.load_round_reviews(match_id).unwrap().len(), 1);
+        assert!(store
+            .get_coach_cache(match_id, "round", 1)
+            .unwrap()
+            .is_some());
 
         // A re-parse of the "same" demo with one extra kill.
         data.kills.push(cf_parser::model::Kill {
@@ -2122,6 +2221,13 @@ mod tests {
         assert!(store.insights_for_match(match_id).unwrap().is_empty());
         assert!(store.death_classes_for_match(match_id).unwrap().is_empty());
         assert!(store.load_round_reviews(match_id).unwrap().is_empty());
+        assert!(
+            store
+                .get_coach_cache(match_id, "round", 1)
+                .unwrap()
+                .is_none(),
+            "the old coach cache must not survive the re-parse"
+        );
     }
 
     #[test]
@@ -2209,7 +2315,7 @@ mod tests {
     fn cross_demo_queries_aggregate_flags_positions_and_rounds() {
         use cf_analysis::{AnalysisOutput, EvidenceRef, RuleFlag};
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 8);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 9);
         store.set_setting("tracked_steamid", "1").unwrap();
         let flag = |round: u32, tick: i32| RuleFlag {
             rule_id: "H2_ISOLATED_DEATH",
@@ -2433,7 +2539,7 @@ mod tests {
     #[test]
     fn migration_2_analysis_tables_and_rule_inputs_persist() {
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 8);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 9);
         let id = store
             .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
             .unwrap();
@@ -3134,5 +3240,74 @@ mod tests {
             store.source_path(match_id).unwrap().as_deref(),
             Some("/demos/a.dem")
         );
+    }
+
+    #[test]
+    fn coach_cache_upserts_reads_and_deletes_by_kind_and_round() {
+        let (_dir, mut store, match_id, _data) = one_match();
+        let row = CoachCacheRow {
+            kind: "round".to_string(),
+            round: 6,
+            facts_hash: "abc".to_string(),
+            model: "gemini-3.7-flash".to_string(),
+            status: "ok".to_string(),
+            response_json: "{\"round\":6}".to_string(),
+            violations_json: "[]".to_string(),
+        };
+        store.put_coach_cache(match_id, &row).unwrap();
+        let got = store
+            .get_coach_cache(match_id, "round", 6)
+            .unwrap()
+            .unwrap();
+        assert_eq!(got.facts_hash, "abc");
+        assert_eq!(got.status, "ok");
+        // upsert replaces
+        let row2 = CoachCacheRow {
+            facts_hash: "def".to_string(),
+            status: "fallback".to_string(),
+            ..row.clone()
+        };
+        store.put_coach_cache(match_id, &row2).unwrap();
+        assert_eq!(
+            store
+                .get_coach_cache(match_id, "round", 6)
+                .unwrap()
+                .unwrap()
+                .facts_hash,
+            "def"
+        );
+        assert!(store
+            .get_coach_cache(match_id, "round", 7)
+            .unwrap()
+            .is_none());
+        store
+            .put_coach_cache(
+                match_id,
+                &CoachCacheRow {
+                    kind: "synthesis".to_string(),
+                    round: 0,
+                    ..row.clone()
+                },
+            )
+            .unwrap();
+        // delete one round
+        store
+            .delete_coach_cache(match_id, Some("round"), Some(6))
+            .unwrap();
+        assert!(store
+            .get_coach_cache(match_id, "round", 6)
+            .unwrap()
+            .is_none());
+        assert!(store
+            .get_coach_cache(match_id, "synthesis", 0)
+            .unwrap()
+            .is_some());
+        // delete everything for the match
+        store.delete_coach_cache(match_id, None, None).unwrap();
+        assert!(store
+            .get_coach_cache(match_id, "synthesis", 0)
+            .unwrap()
+            .is_none());
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 9);
     }
 }
