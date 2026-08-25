@@ -10,6 +10,10 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (4, include_str!("../migrations/0004_match_kind.sql")),
     (5, include_str!("../migrations/0005_corpus_grids.sql")),
     (6, include_str!("../migrations/0006_round_review.sql")),
+    (
+        7,
+        include_str!("../migrations/0007_round_review_fingerprint.sql"),
+    ),
 ];
 
 pub fn migrate(conn: &mut Connection) -> Result<(), rusqlite::Error> {

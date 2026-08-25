@@ -28,6 +28,11 @@ const BAITED_TRADE: &str = "H2_BAITED_TRADE";
 const UNSUPPORTED_ENTRY: &str = "H14_UNSUPPORTED_ENTRY";
 const PUSH_WITHOUT_INFO: &str = "H6_PUSH_WITHOUT_INFO";
 const EARLY_AGGRESSIVE: &str = "H11_EARLY_AGGRESSIVE_DEATH";
+const FLASH_SELF_OR_TEAM: &str = "H6_FLASH_SELF_OR_TEAM";
+const UNUSED_UTIL_AT_ROUND_END: &str = "H6_UNUSED_UTIL_AT_ROUND_END";
+const DEAD_TIME_SMOKE: &str = "H6_DEAD_TIME_SMOKE";
+const SLOW_ROTATION: &str = "H11_SLOW_ROTATION";
+const FIRE_LINGER: &str = "H16_FIRE_LINGER";
 const PRACTISE_RULES: &[&str] = &[
     ISOLATED,
     FAILED_TRADE,
@@ -50,7 +55,10 @@ pub struct MomentText {
 /// is only its label.
 pub fn narrate_moment(m: &Moment, ctx: &MatchContext) -> MomentText {
     let (headline, facts) = match m.kind.as_str() {
-        "tracked_kill" => (kill_headline(&m.rule_id), kill_facts(m, ctx)),
+        "tracked_kill" => (
+            kill_headline(&m.rule_id, is_team_kill(m)),
+            kill_facts(m, ctx),
+        ),
         "tracked_death" => (death_headline(&m.rule_id), death_facts(m, ctx)),
         "plant" => ("Bomb planted".to_string(), delta_only_facts(m)),
         "defuse" => ("Defused".to_string(), delta_only_facts(m)),
@@ -67,14 +75,31 @@ pub fn narrate_moment(m: &Moment, ctx: &MatchContext) -> MomentText {
 
 /// One line of round consequence, read from the review's own verdict and
 /// moments — never a fixed template. `None` when there's nothing to say.
+///
+/// `CostYou`'s "you were the last event that mattered" and `WonIt`'s "you
+/// closed it out" both assert a CAUSAL claim (this specific moment is what
+/// decided the round) — so both are gated on that moment actually being the
+/// round's `pivotal_tick`, not merely present. When it isn't, a neutral,
+/// still numbers-first line reports what happened without the unsupported
+/// claim (V1.2 final-review fix wave, finding #2). `Traded`'s claim is
+/// already gated by `assign_verdict`'s own `impact > -pivotal_threshold_p`
+/// condition, so it's unchanged here.
 pub fn why_it_mattered(review: &RoundReview, ctx: &MatchContext) -> Option<String> {
     match review.verdict {
         Verdict::CostYou => {
             let death = review.moments.iter().find(|m| m.kind == "tracked_death")?;
             let secs = num(&death.facts, "round_end_delta_s")?.round() as i64;
-            Some(format!(
-                "You were the last event that mattered: the round tipped {secs} s after your death."
-            ))
+            if death.tick == review.pivotal_tick {
+                Some(format!(
+                    "You were the last event that mattered: the round tipped {secs} s after \
+                     your death."
+                ))
+            } else {
+                let pct = fmt_delta_pct(death.delta_p?);
+                Some(format!(
+                    "Your death cost {pct} win probability; the round ended {secs} s later."
+                ))
+            }
         }
         Verdict::Traded => {
             let death = review.moments.iter().find(|m| m.kind == "tracked_death")?;
@@ -86,11 +111,14 @@ pub fn why_it_mattered(review: &RoundReview, ctx: &MatchContext) -> Option<Strin
         }
         Verdict::WonIt => {
             let pct = fmt_delta_pct(review.impact);
-            let victim = review
+            let last_kill = review
                 .moments
                 .iter()
                 .rev()
-                .find(|m| m.kind == "tracked_kill")
+                .find(|m| m.kind == "tracked_kill");
+            let closed_it_out = last_kill.is_some_and(|m| m.tick == review.pivotal_tick);
+            let victim = last_kill
+                .filter(|_| closed_it_out)
                 .and_then(|m| name_of(&m.facts, "victim", ctx));
             Some(match victim {
                 Some(name) => {
@@ -172,12 +200,26 @@ pub fn verdict_label(v: Verdict) -> &'static str {
 
 // ---- headline builders --------------------------------------------------
 
-fn kill_headline(rule_id: &Option<String>) -> String {
-    if rule_id.as_deref() == Some(UNSUPPORTED_ENTRY) {
+/// A teamkill always reads "Teamkill" regardless of any rule tag — labeling
+/// it as an "Opening pick"/"Kill" would misreport what actually happened
+/// (V1.2 final-review fix wave, minor #6).
+fn kill_headline(rule_id: &Option<String>, team_kill: bool) -> String {
+    if team_kill {
+        "Teamkill".to_string()
+    } else if rule_id.as_deref() == Some(UNSUPPORTED_ENTRY) {
         "Opening pick".to_string()
     } else {
         "Kill".to_string()
     }
+}
+
+/// Whether a moment's own facts mark it as a teamkill (`round_review`'s
+/// `build_moments` stamps `"team_kill"` on every `tracked_kill` moment).
+fn is_team_kill(m: &Moment) -> bool {
+    m.facts
+        .get("team_kill")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }
 
 fn death_headline(rule_id: &Option<String>) -> String {
@@ -230,8 +272,13 @@ fn humanize_rule(id: &str) -> String {
 
 fn kill_facts(m: &Moment, ctx: &MatchContext) -> Vec<String> {
     let mut out = vec![];
+    let team_kill = is_team_kill(m);
     if let Some(name) = name_of(&m.facts, "victim", ctx) {
-        out.push(format!("{name} down"));
+        out.push(if team_kill {
+            format!("{name} down — your side")
+        } else {
+            format!("{name} down")
+        });
     }
     if let Some(d) = m.delta_p {
         out.push(format!("{} win probability", fmt_delta_pct(d)));
@@ -289,7 +336,32 @@ fn death_facts(m: &Moment, ctx: &MatchContext) -> Vec<String> {
     out
 }
 
+/// Standalone flag moments each carry a rule-specific `details` schema
+/// (h2.rs/flash_util.rs/h11_timing.rs/h16.rs) — dispatch per rule so every
+/// reachable schema renders its own numbers, rather than falling through a
+/// generic teammate/distance shape that most of these rules don't have
+/// (V1.2 final-review fix wave, finding #4). Any arm that legitimately has
+/// nothing to say returns `vec![]`; `commands.rs` suppresses the whole
+/// moment when that happens rather than showing a bare label.
 fn flag_facts(m: &Moment, ctx: &MatchContext) -> Vec<String> {
+    match m.rule_id.as_deref() {
+        Some(FLASH_SELF_OR_TEAM) => flash_self_or_team_facts(m, ctx),
+        Some(UNUSED_UTIL_AT_ROUND_END) => unused_util_facts(m),
+        Some(FIRE_LINGER) => fire_linger_facts(m),
+        Some(SLOW_ROTATION) => slow_rotation_facts(m),
+        // H6_DEAD_TIME_SMOKE's schema (flash_util.rs's `dead_time_smokes`)
+        // carries only the round number, already implied by which round's
+        // rail this renders on — nothing left to narrate. Explicit empty
+        // arm (not the generic fallback) so the omission reads as a
+        // deliberate schema check, not an oversight.
+        Some(DEAD_TIME_SMOKE) => vec![],
+        _ => generic_flag_facts(m, ctx),
+    }
+}
+
+/// Fallback for standalone flags without a dedicated arm above — covers
+/// `H2_FAILED_TRADE`'s `{teammate, killer, distance}` shape.
+fn generic_flag_facts(m: &Moment, ctx: &MatchContext) -> Vec<String> {
     let mut out = vec![];
     if let Some(name) = name_of(&m.facts, "teammate", ctx) {
         out.push(format!("Teammate: {name}"));
@@ -298,6 +370,75 @@ fn flag_facts(m: &Moment, ctx: &MatchContext) -> Vec<String> {
         out.push(format!("{} away", fmt_units(d)));
     }
     out
+}
+
+/// `H6_FLASH_SELF_OR_TEAM`'s schema: `{teammates_blinded: count, victims:
+/// [steamid strings — teammates, plus tracked's own id when tracked also
+/// self-blinded]}` (`flash_util.rs::flash_self_or_team`).
+fn flash_self_or_team_facts(m: &Moment, ctx: &MatchContext) -> Vec<String> {
+    let victims: Vec<String> = m
+        .facts
+        .get("victims")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .map(|raw| match raw.parse::<u64>() {
+                    Ok(id) if id == ctx.tracked => "yourself".to_string(),
+                    Ok(id) => ctx.name(id),
+                    Err(_) => raw.to_string(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if victims.is_empty() {
+        return vec![];
+    }
+    vec![format!("{} blinded: {}", victims.len(), victims.join(", "))]
+}
+
+/// `H6_UNUSED_UTIL_AT_ROUND_END`'s schema: `{round, held: [item name
+/// strings]}` (`flash_util.rs::unused_util`).
+fn unused_util_facts(m: &Moment) -> Vec<String> {
+    let held: Vec<String> = m
+        .facts
+        .get("held")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    if held.is_empty() {
+        return vec![];
+    }
+    vec![format!("{} held: {}", held.len(), held.join(", "))]
+}
+
+/// `H16_FIRE_LINGER`'s schema: `{total_damage, duration_s, round}`
+/// (`h16.rs::detect_fire_linger`).
+fn fire_linger_facts(m: &Moment) -> Vec<String> {
+    match (num(&m.facts, "total_damage"), num(&m.facts, "duration_s")) {
+        (Some(dmg), Some(secs)) => {
+            vec![format!(
+                "{} dmg, {:.1} s in the fire",
+                dmg.round() as i64,
+                secs
+            )]
+        }
+        _ => vec![],
+    }
+}
+
+/// `H11_SLOW_ROTATION`'s schema: `{seconds_late_or_never: null — not
+/// computed today, distance_at_plant}` (`h11_timing.rs::detect_slow_rotation`)
+/// — only `distance_at_plant` is ever populated; do not invent the other.
+fn slow_rotation_facts(m: &Moment) -> Vec<String> {
+    match num(&m.facts, "distance_at_plant") {
+        Some(d) => vec![format!("{} from the site at the plant", fmt_units(d))],
+        None => vec![],
+    }
 }
 
 fn delta_only_facts(m: &Moment) -> Vec<String> {
@@ -611,6 +752,66 @@ mod tests {
         assert!(line.contains("+42%"), "{line}");
     }
 
+    /// V1.2 final-review fix wave, finding #2: `CostYou`'s "last event that
+    /// mattered" is a causal claim, so it must render only when the death
+    /// actually WAS the round's pivotal event (`review.pivotal_tick`); an
+    /// ungated death gets the neutral, still numbers-first line instead.
+    /// Exact strings for both branches, same facts, only `pivotal_tick`
+    /// differs — isolating exactly what the gate changed.
+    #[test]
+    fn why_it_mattered_cost_you_exact_both_branches() {
+        let death = Moment {
+            tick: 1000,
+            kind: "tracked_death".to_string(),
+            rule_id: None,
+            delta_p: Some(-0.22),
+            facts: json!({ "traded": false, "round_end_delta_s": 6.0 }),
+        };
+
+        // Branch 1: the death WAS the round's pivotal event.
+        let pivotal = review(Verdict::CostYou, -0.22, vec![death.clone()]);
+        assert_eq!(
+            pivotal.pivotal_tick, 1000,
+            "review() pins pivotal_tick to the only moment's tick"
+        );
+        assert_eq!(
+            why_it_mattered(&pivotal, &ctx()).unwrap(),
+            "You were the last event that mattered: the round tipped 6 s after your death."
+        );
+
+        // Branch 2: some OTHER event was the round's actual pivotal moment.
+        let mut not_pivotal = review(Verdict::CostYou, -0.22, vec![death]);
+        not_pivotal.pivotal_tick = 5000;
+        assert_eq!(
+            why_it_mattered(&not_pivotal, &ctx()).unwrap(),
+            "Your death cost -22% win probability; the round ended 6 s later."
+        );
+    }
+
+    /// Same gate, `WonIt` side: "closed it out on X" only when that kill was
+    /// the round's pivotal event; otherwise the existing neutral fallback.
+    #[test]
+    fn why_it_mattered_won_it_ungated_when_kill_not_pivotal() {
+        let kill = Moment {
+            tick: 2000,
+            kind: "tracked_kill".to_string(),
+            rule_id: None,
+            delta_p: Some(0.42),
+            facts: json!({ "victim": VICTIM8.to_string() }),
+        };
+        let mut r = review(Verdict::WonIt, 0.42, vec![kill]);
+        r.pivotal_tick = 500; // some earlier event actually decided the round
+        let line = why_it_mattered(&r, &ctx()).unwrap();
+        assert_eq!(
+            line,
+            "You swung this one: +42% win probability, and it held."
+        );
+        assert!(
+            !line.contains("UncleBubbles"),
+            "must not name a kill that wasn't the round's pivotal event: {line}"
+        );
+    }
+
     #[test]
     fn plant_and_defuse_and_flag_kinds_do_not_panic() {
         let c = ctx();
@@ -677,6 +878,108 @@ mod tests {
             vec![
                 "Takenouchi 1,850 u back when Kanae went down — never in trade range".to_string(),
                 "Not traded — round lost 9 s later".to_string(),
+            ]
+        );
+    }
+
+    /// V1.2 final-review fix wave, finding #4: `H16_FIRE_LINGER`'s real
+    /// schema (`h16.rs::detect_fire_linger`: `{total_damage, duration_s,
+    /// round}`) now gets a dedicated fact arm instead of falling through
+    /// the teammate/distance fallback (which would render nothing for it).
+    /// Exact string against the real per-episode numbers from the goldens
+    /// README's own hand-verified example (75 dmg / 2.8 s).
+    #[test]
+    fn fire_linger_flag_moment_exact_string() {
+        let m = Moment {
+            tick: 40_000,
+            kind: "flag".to_string(),
+            rule_id: Some(FIRE_LINGER.to_string()),
+            delta_p: None,
+            facts: json!({ "total_damage": 75, "duration_s": 2.8, "round": 9 }),
+        };
+        let t = narrate_moment(&m, &ctx());
+        assert_eq!(t.facts, vec!["75 dmg, 2.8 s in the fire".to_string()]);
+    }
+
+    /// The other three fact-arm schemas (finding #4), one exact assertion
+    /// each — `H6_DEAD_TIME_SMOKE` is checked separately below since its
+    /// arm is deliberately empty.
+    #[test]
+    fn other_flag_schemas_render_their_own_numbers() {
+        let c = ctx();
+
+        let flash = Moment {
+            tick: 1,
+            kind: "flag".to_string(),
+            rule_id: Some(FLASH_SELF_OR_TEAM.to_string()),
+            delta_p: None,
+            facts: json!({ "teammates_blinded": 1, "victims": [TAKENOUCHI.to_string()] }),
+        };
+        assert_eq!(
+            narrate_moment(&flash, &c).facts,
+            vec!["1 blinded: Takenouchi".to_string()]
+        );
+
+        let unused = Moment {
+            tick: 2,
+            kind: "flag".to_string(),
+            rule_id: Some(UNUSED_UTIL_AT_ROUND_END.to_string()),
+            delta_p: None,
+            facts: json!({ "round": 3, "held": ["Flashbang", "Smoke Grenade"] }),
+        };
+        assert_eq!(
+            narrate_moment(&unused, &c).facts,
+            vec!["2 held: Flashbang, Smoke Grenade".to_string()]
+        );
+
+        let rotation = Moment {
+            tick: 3,
+            kind: "flag".to_string(),
+            rule_id: Some(SLOW_ROTATION.to_string()),
+            delta_p: None,
+            facts: json!({ "seconds_late_or_never": null, "distance_at_plant": 1800.0 }),
+        };
+        assert_eq!(
+            narrate_moment(&rotation, &c).facts,
+            vec!["1,800 u from the site at the plant".to_string()]
+        );
+    }
+
+    /// `H6_DEAD_TIME_SMOKE`'s schema carries nothing beyond the (redundant)
+    /// round number — the arm is deliberately empty, which is exactly the
+    /// shape `commands.rs` uses to suppress a fact-less flag moment rather
+    /// than showing a bare label.
+    #[test]
+    fn dead_time_smoke_flag_moment_has_no_facts() {
+        let m = Moment {
+            tick: 4,
+            kind: "flag".to_string(),
+            rule_id: Some(DEAD_TIME_SMOKE.to_string()),
+            delta_p: None,
+            facts: json!({ "round": 7 }),
+        };
+        assert!(narrate_moment(&m, &ctx()).facts.is_empty());
+    }
+
+    /// V1.2 final-review fix wave, minor #6: a teamkill by the tracked
+    /// player must be labeled honestly, not reused from the enemy-kill
+    /// wording.
+    #[test]
+    fn team_kill_headline_and_fact_are_honest() {
+        let m = Moment {
+            tick: 5,
+            kind: "tracked_kill".to_string(),
+            rule_id: None,
+            delta_p: Some(-0.1),
+            facts: json!({ "victim": TAKENOUCHI.to_string(), "team_kill": true }),
+        };
+        let t = narrate_moment(&m, &ctx());
+        assert_eq!(t.headline, "Teamkill");
+        assert_eq!(
+            t.facts,
+            vec![
+                "Takenouchi down — your side".to_string(),
+                "-10% win probability".to_string(),
             ]
         );
     }

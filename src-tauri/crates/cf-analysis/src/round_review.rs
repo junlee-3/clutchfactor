@@ -35,7 +35,10 @@
 //! 4. **pivotal_tick** = tick of max `|delta_p|` over ALL scored events
 //!    (the round's turning point, not necessarily the player's).
 //! 5. **Selection:** candidates = rounds with `|impact| ≥
-//!    attention_threshold_p`, sorted by `|impact|` desc, take `max_rounds`.
+//!    attention_threshold_p` AND `verdict != Quiet` (a `Quiet` round is
+//!    never a candidate regardless of impact magnitude — verdict is
+//!    assigned before selection for exactly this reason; V1.2 final-review
+//!    fix wave finding #1), sorted by `|impact|` desc, take `max_rounds`.
 //!    **Won-it guarantee:** if a candidate with `verdict == WonIt` was cut
 //!    by the cap AND the selection contains a non-WonIt, replace the
 //!    lowest-|impact| non-WonIt with the highest-|impact| excluded WonIt.
@@ -257,6 +260,13 @@ struct ScoredEvent {
     tick: i32,
     delta_p: Option<f32>,
     detail: EventDetail,
+    /// True for a `Kill` whose victim is on the SAME side as `tracked`
+    /// (a teamkill from tracked's perspective when tracked is the
+    /// attacker — the only case `build_moments` turns into a moment).
+    /// Always `false` for bomb events. V1.2 final-review fix wave, minor
+    /// #6: labels a tracked-attributed teamkill honestly instead of
+    /// silently reusing the enemy-kill headline/fact wording.
+    team_kill: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -428,9 +438,14 @@ fn score_round(
                     tracked_perspective_p(table, side, ct_before, t_before, planted)
                 };
                 if on_ct {
-                    ct_alive -= 1;
+                    // Saturating: a malformed/duplicate kill row for an
+                    // already-cleared side must never panic the whole
+                    // review in a debug build or wrap in release — silence
+                    // (a clamped-at-zero alive count) over a crash or a
+                    // corrupt negative count.
+                    ct_alive = ct_alive.saturating_sub(1);
                 } else {
-                    t_alive -= 1;
+                    t_alive = t_alive.saturating_sub(1);
                 }
                 let p_after = if decided {
                     None
@@ -463,9 +478,16 @@ fn score_round(
                 if let Some(d) = delta {
                     record_pivotal(&mut pivotal, k.tick, d, ct_before, t_before);
                 }
+                // Victim on tracked's OWN side (not the enemy roster) — a
+                // teamkill when tracked is the attacker.
+                let team_kill = match side {
+                    Side::Ct => on_ct,
+                    Side::T => on_t,
+                };
                 scored.push(ScoredEvent {
                     tick: k.tick,
                     delta_p: delta,
+                    team_kill,
                     detail: EventDetail::Kill {
                         attacker: k.attacker,
                         victim: k.victim,
@@ -524,6 +546,7 @@ fn score_round(
                 scored.push(ScoredEvent {
                     tick: b.tick,
                     delta_p: delta,
+                    team_kill: false,
                     detail,
                 });
             }
@@ -628,9 +651,19 @@ fn assign_verdict(
 /// Threshold-with-cap selection + the won-it guarantee + attention level.
 /// Model points 5-6.
 fn select_rounds(candidates: &[RoundCandidate], cfg: &RbrCfg) -> Vec<RoundSelection> {
+    // `Verdict::Quiet` rounds are never candidates, regardless of |impact| —
+    // verdict is assigned before selection (see `review_rounds` below) for
+    // exactly this reason. Without this, a round with a large-magnitude
+    // POSITIVE impact but a LOST round and no exculpatory rule (verdict
+    // `Quiet` per `assign_verdict`'s precedence) would clear the threshold
+    // on magnitude alone and get selected — a bright dot and full moments on
+    // a round the verdict itself says is "nothing notable" (found live:
+    // inferno-loss R2, +0.3767 impact; V1.2 final-review fix wave finding
+    // #1). "Quiet: nothing notable; summary only" is a contract on
+    // selection, not just on the verdict label.
     let mut ranked: Vec<&RoundCandidate> = candidates
         .iter()
-        .filter(|c| c.impact.abs() >= cfg.attention_threshold_p)
+        .filter(|c| c.impact.abs() >= cfg.attention_threshold_p && c.verdict != Verdict::Quiet)
         .collect();
     ranked.sort_by(|a, b| {
         b.impact
@@ -729,12 +762,17 @@ fn build_moments(
             EventDetail::Kill { attacker, victim }
                 if *attacker == Some(tracked) && *victim != tracked =>
             {
+                // Kind stays "tracked_kill" either way (a teamkill is still
+                // tracked's own kill event) — only the facts distinguish it,
+                // so the narrator can label it honestly instead of reusing
+                // the enemy-kill wording (V1.2 final-review fix wave, minor
+                // #6).
                 moments.push(Moment {
                     tick: ev.tick,
                     kind: "tracked_kill".to_string(),
                     rule_id: None,
                     delta_p: ev.delta_p,
-                    facts: json!({ "victim": victim.to_string() }),
+                    facts: json!({ "victim": victim.to_string(), "team_kill": ev.team_kill }),
                 });
             }
             EventDetail::Kill { victim, attacker } if *victim == tracked => {
@@ -923,6 +961,30 @@ pub fn review_rounds(input: &RoundReviewInput, cfg: &DetectorConfig) -> Vec<Roun
         .collect()
 }
 
+/// Bumped whenever `review_rounds`'s output *shape* changes in a way that
+/// invalidates previously stored reviews (a new/removed verdict rule, a
+/// change to the moments schema, a scoring-model fix like this file's own
+/// V1.2 final-review fix wave) — independent of `RbrCfg`'s tunable
+/// thresholds, which `cfg_fingerprint` below covers separately.
+pub const ENGINE_VERSION: &str = "rbr-v1";
+
+/// A stable fingerprint of the engine version plus every `RbrCfg` field that
+/// participates in `review_rounds`' output. Stored alongside each
+/// `RoundReview` row (cf-store migration 0007) so a stale row — computed
+/// under an old engine version or a since-changed threshold — is detected
+/// and recomputed instead of served silently wrong (V1.2 final-review fix
+/// wave, finding #5).
+pub fn cfg_fingerprint(cfg: &RbrCfg) -> String {
+    format!(
+        "{ENGINE_VERSION}|attn={}|pivot={}|max_rounds={}|max_moments={}|exculpatory={}",
+        cfg.attention_threshold_p,
+        cfg.pivotal_threshold_p,
+        cfg.max_rounds,
+        cfg.max_moments,
+        cfg.exculpatory_rules.join(","),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -944,6 +1006,29 @@ mod tests {
             assert_eq!(a.as_str().parse::<Attention>(), Ok(a));
         }
         assert!("bogus".parse::<Attention>().is_err());
+    }
+
+    #[test]
+    fn cfg_fingerprint_is_stable_and_threshold_sensitive() {
+        let cfg = RbrCfg::default();
+        let fp1 = cfg_fingerprint(&cfg);
+        assert!(
+            fp1.starts_with(ENGINE_VERSION),
+            "the fingerprint must carry the engine version: {fp1}"
+        );
+        assert_eq!(
+            fp1,
+            cfg_fingerprint(&RbrCfg::default()),
+            "identical config must fingerprint identically"
+        );
+
+        let mut changed = cfg.clone();
+        changed.attention_threshold_p += 0.01;
+        assert_ne!(
+            fp1,
+            cfg_fingerprint(&changed),
+            "a changed threshold must change the fingerprint"
+        );
     }
 
     fn rr(n: u32, start: i32, end: i32, winner: Side, ct: &[u64], t: &[u64]) -> ReviewRound {
@@ -1188,6 +1273,58 @@ mod tests {
         assert_eq!(r1.verdict, Verdict::Quiet);
     }
 
+    /// The live defect (V1.2 final-review fix wave, finding #1; observed on
+    /// inferno-loss R2: +0.3767 impact, round lost, no exculpatory rule):
+    /// a `Quiet`-verdict round with a large positive impact was selected
+    /// anyway — bright dot, full moments — because `select_rounds` only
+    /// ever checked `|impact|` magnitude, never the verdict. Fixed by
+    /// excluding `Verdict::Quiet` from candidacy. This reproduces the exact
+    /// shape: positive impact clearing even the (higher) pivotal bar, round
+    /// lost, no exculpatory rule -> `Quiet`, and now correctly unselected
+    /// with no dot and no moments.
+    #[test]
+    fn quiet_round_with_large_positive_impact_is_never_selected() {
+        let round = rr(1, 0, 5000, Side::T, &[1, 2, 3, 4, 5], &[6, 7, 8, 9, 10]);
+        // Three entry kills push impact past `pivotal_threshold_p`, not
+        // just past `attention_threshold_p` — the live case cleared the
+        // pivotal bar too (0.3767 > 0.35), so a weaker fixture wouldn't
+        // reproduce its full shape.
+        let inp = input(
+            vec![round],
+            vec![
+                kill(1, 1000, 1, 6),
+                kill(1, 1500, 1, 7),
+                kill(1, 2000, 1, 8),
+            ],
+            vec![],
+            vec![],
+        );
+        let cfg = DetectorConfig::default();
+        let reviews = review_rounds(&inp, &cfg);
+        let r1 = reviews.iter().find(|r| r.round == 1).unwrap();
+
+        assert!(
+            r1.impact >= cfg.rbr.pivotal_threshold_p,
+            "fixture must clear the pivotal bar to reproduce the live shape: {}",
+            r1.impact
+        );
+        assert!(!r1.header.won, "the round must be lost");
+        assert_eq!(
+            r1.verdict,
+            Verdict::Quiet,
+            "no win, no exculpatory rule, no trade -> Quiet per assign_verdict's precedence"
+        );
+        assert!(
+            !r1.selected,
+            "a Quiet round must never be selected, regardless of |impact|"
+        );
+        assert_eq!(r1.attention, Attention::None, "no dot without rail content");
+        assert!(
+            r1.moments.is_empty(),
+            "an unselected round carries no moments"
+        );
+    }
+
     #[test]
     fn unselected_round_has_no_moments_and_quiet_ok() {
         let round = rr(1, 0, 5000, Side::T, &[1, 2, 3, 4, 5], &[6, 7, 8, 9, 10]);
@@ -1207,13 +1344,18 @@ mod tests {
     fn selection_threshold_and_cap() {
         let cfg = RbrCfg::default();
         let impacts = [0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15, 0.10, 0.05];
+        // Legitimately non-quiet: every one of these is a positive-impact
+        // round, so `WonIt` (impact clears the bar, and the round was won)
+        // is a real verdict for it — `Quiet` candidates are never
+        // selectable regardless of |impact| (fix #1), so this test must not
+        // use it for rounds it expects `select_rounds` to pick.
         let candidates: Vec<RoundCandidate> = impacts
             .iter()
             .enumerate()
             .map(|(i, &imp)| RoundCandidate {
                 round: (i + 1) as u32,
                 impact: imp,
-                verdict: Verdict::Quiet,
+                verdict: Verdict::WonIt,
             })
             .collect();
         let selections = select_rounds(&candidates, &cfg);
@@ -1251,6 +1393,12 @@ mod tests {
     fn won_it_guarantee_swaps_weakest() {
         let cfg = RbrCfg::default(); // max_rounds = 6, attention_threshold_p = 0.25
         let impacts = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3];
+        // The first 6 are legitimately non-quiet (positive impact, tracked
+        // died but the kill was traded) yet deliberately NOT `WonIt`, so the
+        // "swap the weakest non-WonIt" search below has something to find —
+        // `Quiet` candidates are never selectable regardless of |impact|
+        // (fix #1), so this test must not lean on `Quiet` for rounds it
+        // expects to occupy the selection.
         let candidates: Vec<RoundCandidate> = impacts
             .iter()
             .enumerate()
@@ -1260,7 +1408,7 @@ mod tests {
                 verdict: if i == 6 {
                     Verdict::WonIt
                 } else {
-                    Verdict::Quiet
+                    Verdict::Traded
                 },
             })
             .collect();
@@ -1289,6 +1437,7 @@ mod tests {
             .map(|i| ScoredEvent {
                 tick: 1000 + i * 100,
                 delta_p: Some(0.05),
+                team_kill: false,
                 detail: if i % 2 == 0 {
                     EventDetail::Kill {
                         attacker: Some(tracked),
@@ -1401,6 +1550,45 @@ mod tests {
             .find(|m| m.tick == 2000)
             .expect("a moment for the self-kill tick must exist");
         assert_eq!(m.kind, "tracked_death");
+    }
+
+    /// V1.2 final-review fix wave, minor #6: a teamkill by the tracked
+    /// player still surfaces as a `tracked_kill` moment (the self-kill
+    /// guard above only excludes attacker==victim, not same-side victims),
+    /// but its facts must mark it honestly so the narrator doesn't reuse
+    /// the enemy-kill wording.
+    #[test]
+    fn team_kill_moment_marks_itself_honestly() {
+        let round = rr(1, 0, 5000, Side::Ct, &[1, 2, 3, 4, 5], &[6, 7, 8, 9, 10]);
+        // Tracked (CT) kills a CT teammate — victim on tracked's OWN
+        // roster, not the enemy roster.
+        let inp = input(vec![round], vec![kill(1, 2000, 1, 2)], vec![], vec![]);
+        let mut cfg = DetectorConfig::default();
+        cfg.rbr.attention_threshold_p = 0.0;
+
+        let reviews = review_rounds(&inp, &cfg);
+        let r1 = reviews.iter().find(|r| r.round == 1).unwrap();
+
+        assert!(
+            r1.impact < 0.0,
+            "losing a teammate must cost tracked's own side, not credit it: {}",
+            r1.impact
+        );
+        assert_eq!(
+            r1.header.kills, 0,
+            "a teamkill must never count toward enemy kills"
+        );
+        let m = r1
+            .moments
+            .iter()
+            .find(|m| m.kind == "tracked_kill")
+            .expect("the teamkill still surfaces as a tracked_kill moment");
+        assert_eq!(m.facts["victim"], json!("2"));
+        assert_eq!(
+            m.facts["team_kill"],
+            json!(true),
+            "the moment must mark itself as a teamkill for the narrator to label honestly"
+        );
     }
 
     #[test]
