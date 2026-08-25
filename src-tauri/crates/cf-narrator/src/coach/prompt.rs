@@ -9,9 +9,11 @@ use super::types::{MatchInput, RoundInput, SynthesisInput};
 
 pub const DEFAULT_ROUND_MODEL: &str = "gemini-3.7-flash";
 pub const DEFAULT_SYNTHESIS_MODEL: &str = "gemini-3.7-flash";
-/// Bump when the persona, rendering or schema changes — cached responses
-/// under an older style are regenerated.
-pub const STYLE_VERSION: &str = "coach-v1";
+/// Bump when the persona, rendering, schema or validator changes — cached
+/// responses under an older style are regenerated. v2: word-boundary
+/// grounding and "Round N" digests (V1.3 final-review fixes); `ok` rows
+/// validated under v1's looser rules must not survive.
+pub const STYLE_VERSION: &str = "coach-v2";
 pub const ROUNDS_PER_CALL: usize = 6;
 
 pub const SYSTEM_PERSONA: &str = "You are ClutchFactor's coach: a calm, experienced CS2 coach reviewing one player's demo with them. \
@@ -111,9 +113,11 @@ pub fn render_synthesis(si: &SynthesisInput) -> String {
             .unwrap_or_default(),
         m.roster.join(", "),
     );
+    // "Round 11", not "R11": the tokenizer only grounds a digit that stands
+    // alone, so this spelling is what lets the coach cite a round by number.
     for r in &si.rounds {
         s.push_str(&format!(
-            "- R{} · {} · {}: {}\n",
+            "- Round {} · {} · {}: {}\n",
             r.round,
             r.verdict_label,
             if r.won { "won" } else { "lost" },
@@ -227,7 +231,7 @@ mod tests {
                 },
             ],
             timeline: vec!["+38 s Sam killed Kit (m4a1)".into()],
-            prior_digest: vec!["R5 · Quiet · won".into()],
+            prior_digest: vec!["Round 5 · Quiet · won".into()],
         }
     }
 
@@ -248,10 +252,32 @@ mod tests {
             "812 u, ak47",
             "Died to Kit",
             "+38 s Sam killed Kit (m4a1)",
-            "R5 · Quiet · won",
+            "Round 5 · Quiet · won",
         ] {
             assert!(block.contains(needle), "missing {needle:?} in:\n{block}");
         }
+    }
+
+    #[test]
+    fn synthesis_prompt_spells_rounds_out_so_the_number_is_grounded() {
+        let si = SynthesisInput {
+            match_input: m(),
+            rounds: vec![RoundDigest {
+                round: 11,
+                verdict_label: "Cost you".into(),
+                won: false,
+                read: "Died first at Connector.".into(),
+            }],
+            insights: vec![],
+            habits: vec![],
+        };
+        let p = render_synthesis(&si);
+        assert!(
+            p.contains("- Round 11 · Cost you · lost: Died first at Connector."),
+            "{p}"
+        );
+        assert!(!p.contains("R11"), "{p}");
+        assert_eq!(STYLE_VERSION, "coach-v2");
     }
 
     #[test]

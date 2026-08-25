@@ -188,8 +188,10 @@ pub fn build_round_inputs(
                 .collect(),
             prior_digest: digest.clone(),
         });
+        // "Round 7", not "R7": only a digit standing alone is grounded, so
+        // this spelling is what lets the coach cite an earlier round.
         digest.push(format!(
-            "R{} · {} · {}",
+            "Round {} · {} · {}",
             rv.round,
             rv.verdict_label,
             if rv.won { "won" } else { "lost" }
@@ -785,7 +787,7 @@ mod tests {
         assert_eq!(r6.plays[0].clock, "+5 s"); // (26752-26432)/64 = 5.0
         assert_eq!(r6.timeline[0], "+40 s Kit killed misosoupy3 (awp)");
         assert_eq!(r6.timeline[1], "+48 s Kit planted the bomb");
-        assert_eq!(r6.prior_digest, vec!["R5 · Quiet · won".to_string()]);
+        assert_eq!(r6.prior_digest, vec!["Round 5 · Quiet · won".to_string()]);
         assert!(inputs[0].prior_digest.is_empty());
     }
 

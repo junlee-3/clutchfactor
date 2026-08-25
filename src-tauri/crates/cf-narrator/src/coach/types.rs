@@ -41,7 +41,8 @@ pub struct RoundInput {
     pub plays: Vec<PlayLine>,
     /// Everyone's kills/bomb events this round, one narrated line each.
     pub timeline: Vec<String>,
-    /// One line per earlier round of this match ("R5 · Quiet · won").
+    /// One line per earlier round of this match ("Round 5 · Quiet · won" —
+    /// spelled out so the validator grounds the round number).
     pub prior_digest: Vec<String>,
 }
 
