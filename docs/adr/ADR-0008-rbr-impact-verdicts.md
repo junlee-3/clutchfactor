@@ -63,7 +63,9 @@ The 8-point model, implemented as small pure sub-functions
 Thresholds (`RbrCfg`: `attention_threshold_p=0.18`, `pivotal_threshold_p=0.35`,
 `max_rounds=6`, `max_moments=6`) are tunable approximations, not derived
 constants — they get calibrated against real matches in the §12
-hand-verification pass, the same way H2's severities were.
+hand-verification pass, the same way H2's severities were. See
+**Calibration** below for that pass's actual numbers and the raised
+`attention_threshold_p`.
 
 ## Consequences
 
@@ -79,6 +81,14 @@ hand-verification pass, the same way H2's severities were.
   casing the engine — the engine has no test-only branches.
 - Round reviews are not part of `AnalysisOutput`/the golden-demo regression
   surface; they get their own contract (this ADR) and their own tests.
+- **Task 9 divergence note:** the replay canvas computes its own nearest
+  living teammate from live tick-sampled positions at the current playback
+  tick (`src/replay/annotation.ts`'s `nearestLivingTeammate`), independently
+  of the rail's `H2_ISOLATED_DEATH` `nearest_teammate` fact fixed at
+  analysis time, so in rare ties/edge cases the two may name a DIFFERENT
+  teammate — an accepted identity divergence between two independently-
+  correct views, not a bug (same ruling as the moment-focus ordering fix:
+  V1.2 final-review fix wave, finding #3).
 
 ## Calibration (2026-08-22)
 
@@ -111,3 +121,30 @@ checked by hand and remain valid unchanged (their synthetic impacts already
 clear 0.25). `commands.rs`'s `threshold_rows` reads the config live, so the
 Settings screen's "Coach rail attention threshold" row picks up the new
 value with no code change.
+
+## Final-review fixes (2026-08-25)
+
+Two rulings from the V1.2 final-review fix wave amend this ADR's contract:
+
+1. **Selection must check verdict, not just `|impact|`** (finding #1,
+   CONTROLLER RULING). Model point 5's `select_rounds` only ever checked
+   `|impact| ≥ attention_threshold_p`, so a `Quiet`-verdict round with a
+   large-magnitude impact (positive impact, round lost, no exculpatory rule
+   — live: inferno-loss R2, +0.3767) could clear the bar and get selected
+   anyway, contradicting "Quiet: nothing notable; summary only." Fixed:
+   `select_rounds` now also excludes `verdict == Quiet` from candidacy.
+   Verdict is already assigned before selection runs (`review_rounds`
+   builds each round's verdict, then passes the assembled candidates —
+   verdict included — into `select_rounds`), so no reordering was needed.
+   `selection_threshold_and_cap` and `won_it_guarantee_swaps_weakest`
+   (§ Calibration, above) were touched again here: their synthetic
+   candidates now carry a legitimately non-`Quiet` verdict (`WonIt`/
+   `Traded`) instead of `Quiet`, since a `Quiet` candidate is never
+   selectable regardless of impact.
+2. **Stored reviews need a config fingerprint** (finding #5, CONTROLLER
+   RULING). A `round_review` row computed under an old engine version or a
+   since-changed `RbrCfg` threshold was served as-is forever. Migration
+   0007 adds `cfg_fingerprint` (engine version + digest of `RbrCfg`'s
+   tunables, `round_review::cfg_fingerprint`); `get_round_review` recomputes
+   via `run_round_review` whenever the stored fingerprint doesn't match the
+   current one, the same lazy-backfill path already used for empty rows.

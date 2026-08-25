@@ -136,7 +136,7 @@ matches (inferno-win id 4, inferno-loss id 3, mirage-tie id 8):**
 | 9 | Replay highlights only EvidenceRef/moment focus players | PASS | Live death moment (inferno-win R2) drew a dashed line + "118 u" tag to exactly the named teammate/killer pair; no other player annotated. |
 | 10 | Not on you only rule-established | PASS | Inferno-loss R6 shows "Not on you" backed by the real `H2_BAITED_TRADE` flag's own facts (teammate name, distance) rendered in the moment — never inferred from absent flags. |
 | 11 | No unsupported causal claims | PASS | All narration is numbers-first and factual (see the why-it-mattered dump above) — no line asserts an unevidenced cause. |
-| 12 | Quiet rounds summary-only | PASS | Inferno-loss R1: single sentence, no moments/why/practise sections rendered. |
+| 12 | Quiet rounds summary-only | PASS (corrected 2026-08-25) | Original 2026-08-22 check only looked at inferno-loss R1 (single sentence, no moments/why/practise) and missed a real defect: inferno-loss R2 (+0.3767 impact, round lost, no exculpatory rule → `quiet` per the verdict precedence — see the §12 impact cross-check table above) was selected anyway, rendering a bright dot and full moments — `select_rounds` thresholded on `\|impact\|` alone and never checked verdict. Fixed in the V1.2 final-review fix wave (finding #1; ADR-0008 "Final-review fixes" amendment): `Quiet`-verdict rounds are now excluded from selection candidacy regardless of impact magnitude. Re-verified live post-fix: inferno-loss R2 now shows NO attention dot and renders the one-line quiet summary only, same disposition as R1 — see the "V1.2 final-review fix wave" section below for the full re-verification. |
 | 13 | Zero economy/buy text anywhere | PASS | Grepped `cf-narrator::rail` source (the entire narration surface) for econ/buy/$/price — no matches besides the doc-comment's own negative statement; visually confirmed on every screenshot. |
 | 14 | Attention dots use no color channel | PASS | Zoomed round-strip screenshot: dots render in chalk white/grey only (`--chalk-faint`/`--chalk-bright`), distinguished by size, never hue — the blue/orange winner underline is a separate, pre-existing element. |
 
@@ -148,3 +148,47 @@ rationale) — 0.18 saturated the 6-round cap on all 5 owner matches
 (candidates 15/11/13/12/11); 0.25 leaves only the closest match (nuke-tie,
 a 12-12 tie) at the cap, with the other four now selecting fewer than 6
 rounds on the threshold alone.
+
+## V1.2 final-review fix wave (2026-08-25)
+
+The §12 impact cross-check above verified `round_review.impact`/`verdict`
+numerically but never cross-checked *selection* against verdict — a gap
+the final-review pass caught. Live case: inferno-loss (id 3) round 2
+(impact **+0.3767**, round lost, no exculpatory rule → `quiet` per the
+verdict precedence — see the round-2 row in the §12 impact cross-check
+table above) was selected anyway: bright attention dot, full moments, a
+`why_it_mattered` line — everything acceptance criterion #12 says a
+`quiet` round must never show. Root cause: `select_rounds` thresholded on
+`|impact| ≥ attention_threshold_p` alone and never checked `verdict`, so a
+large-magnitude `quiet` round cleared the bar on magnitude and got
+selected. Fixed (`round_review.rs`'s `select_rounds`; ADR-0008's
+"Final-review fixes" amendment): a `Quiet`-verdict round is now excluded
+from selection candidacy regardless of `|impact|`.
+
+**Re-verified live, post-fix:** `pkill -f clutchfactor`; cleared the dev
+DB's `round_review` table (pre-migration-0007 rows have no fingerprint to
+compare, so a manual clear was still needed this one time — future engine
+changes recompute automatically via the new `cfg_fingerprint` column);
+fresh `pnpm tauri dev`; opened inferno-loss (match id 3).
+
+- **Round 2** (the fixed case): the round chip shows NO attention dot
+  (round 6/12's dots are visible for comparison in the same screenshot);
+  the rail reads "Round 2 · Quiet · CT · lost · you 2-1 · 3v0" and renders
+  only "Nothing here needed the coach — you lost it, 2-1, 3v0." — no
+  moments list, no why-it-mattered, no what-to-practise. Screenshot:
+  `t-finalfix-r2-quiet.png`.
+- **Round 6** (`not_on_you`, spot-checked as a previously-selected non-quiet
+  round): dot still present above its chip; full rail renders unchanged
+  from the 2026-08-22 pass — "Round 6 · Not on you", the `H2_ISOLATED_DEATH`
+  moment ("Nearest: Mashed Potato", "1,575 u away at Banana", "Mashed
+  Potato 1,575 u back when SirEggsAlot went down — never in trade range",
+  "Not traded — round lost 62 s later") and its what-to-practise line
+  ("Before you take a fight at Banana, know who is close enough to trade
+  you.") — confirming the fix only removed `Quiet` rounds from candidacy
+  and didn't disturb any other verdict's selection or rendering.
+  Screenshot: `t-finalfix-r6-notonyou.png`.
+
+Screenshots (plus the Library and pre-fix Match Report/Replay-launch shots)
+live in
+`/private/tmp/claude-501/-Users-junlee-Documents-programming-clutchfactor/ed626285-4a44-4fc2-9c1f-bff2273fbf21/scratchpad/`,
+prefixed `t-finalfix-`.
