@@ -142,16 +142,20 @@ pub struct MatchStats {
 }
 
 impl MatchStats {
+    /// `None` when `deaths == 0` (would divide by zero) — the UI shows a bare kill count like "12-0" instead.
     pub fn kd(&self) -> Option<f32> {
         (self.deaths > 0).then(|| self.kills as f32 / self.deaths as f32)
     }
+    /// `Some(0.0)` when rounds were played but no damage was dealt; `None` only when no rounds were played.
     pub fn adr(&self) -> Option<f32> {
         (self.rounds_played > 0)
             .then(|| (self.damage as f32 / self.rounds_played as f32 * 10.0).round() / 10.0)
     }
+    /// `None` when there are no kills to take a headshot share of.
     pub fn hs_pct(&self) -> Option<u32> {
         (self.kills > 0).then(|| (self.headshots as f32 / self.kills as f32 * 100.0).round() as u32)
     }
+    /// `None` when no rounds were played.
     pub fn kast_pct(&self) -> Option<u32> {
         (self.rounds_played > 0)
             .then(|| (self.kast_rounds as f32 / self.rounds_played as f32 * 100.0).round() as u32)
@@ -495,5 +499,36 @@ mod tests {
             .build();
         let (s, _) = stats_for(&lost);
         assert_eq!((s.clutch_attempts, s.clutch_wins), (1, 0));
+    }
+
+    #[test]
+    fn clutch_attempt_when_starting_the_round_alone() {
+        // ME is already alone against two enemies with no kills at all --
+        // this exercises clutch_state's pre-loop check (the initial-roster
+        // case), not the tick-by-tick replay.
+        let data = Scenario::new("de_mirage")
+            .players_ct(&[ME])
+            .players_t(&[E1, E2])
+            .round(1, 1000, 5000)
+            .hold(ME, 1000, 5000, 0.0, 0.0, 0.0)
+            .hold(E1, 1000, 5000, 3000.0, 0.0, 0.0)
+            .hold(E2, 1000, 5000, 3200.0, 0.0, 0.0)
+            .build();
+        let (s, _) = stats_for(&data);
+        assert_eq!(s.clutch_attempts, 1);
+    }
+
+    #[test]
+    fn traded_accumulates_across_duplicate_victim_rows() {
+        // Two Kill records with victim ME in one round: the first
+        // (E1's kill) is never traded, the second (E2's kill) is. `traded`
+        // is accumulated with OR across all of a sid's victim rows, so the
+        // row ends up traded even though the first record alone would not.
+        let data = base()
+            .kill_full(Some(E1), ME, 1, 3000, "weapon_ak47", false, 0)
+            .kill_full(Some(E2), ME, 1, 3100, "weapon_ak47", false, 0)
+            .kill(MATE, E2, 1, 3150, "weapon_ak47")
+            .build();
+        assert!(row(&rows_for(&data), 1, ME).traded);
     }
 }
