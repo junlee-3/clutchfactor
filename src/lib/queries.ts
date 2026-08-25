@@ -1,9 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   buildCorpus,
+  coachStatus,
   corpusStatus,
   deleteMatch,
   getAppSettings,
+  getCoachRounds,
+  getCoachSynthesis,
   getGrid,
   getHabits,
   getMatchDetail,
@@ -15,7 +18,13 @@ import {
   importDemo,
   listMatches,
   reAnalyzeMatch,
+  regenerateCoachRound,
+  regenerateCoachSynthesis,
+  setCoachEnabled,
+  setCoachModels,
+  setGeminiKey,
   setTrackedOverride,
+  testGeminiKey,
   trackedPlayer,
 } from "./ipc";
 import type { ProgressEvent } from "./ipc";
@@ -149,6 +158,10 @@ export function useReAnalyzeMatch(onProgress: (e: ProgressEvent) => void) {
       void client.invalidateQueries({ queryKey: ["ticks", matchId] });
       void client.invalidateQueries({ queryKey: ["habits"] });
       void client.invalidateQueries({ queryKey: ["trends"] });
+      // A re-parse changes the facts: the coach cache hash handles the
+      // regeneration, but the UI must refetch.
+      void client.invalidateQueries({ queryKey: ["coach_rounds", matchId] });
+      void client.invalidateQueries({ queryKey: ["coach_synthesis", matchId] });
     },
   });
 }
@@ -164,6 +177,83 @@ export function useDeleteMatch() {
       void client.invalidateQueries({ queryKey: ["trends"] });
       void client.invalidateQueries({ queryKey: ["app_settings"] });
       void client.invalidateQueries({ queryKey: ["tracked_player"] });
+    },
+  });
+}
+
+// ---- V1.3: the coach ----
+
+export function useCoachStatus() {
+  return useQuery({ queryKey: ["coach_status"], queryFn: coachStatus });
+}
+
+export function useCoachRounds(matchId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ["coach_rounds", matchId],
+    queryFn: () => getCoachRounds(matchId),
+    enabled,
+    staleTime: Infinity,
+  });
+}
+
+export function useCoachSynthesis(matchId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ["coach_synthesis", matchId],
+    queryFn: () => getCoachSynthesis(matchId),
+    enabled,
+    staleTime: Infinity,
+  });
+}
+
+function useCoachSettingMutation<T>(fn: (v: T) => Promise<void>) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["coach_status"] });
+      void client.invalidateQueries({ queryKey: ["coach_rounds"] });
+      void client.invalidateQueries({ queryKey: ["coach_synthesis"] });
+    },
+  });
+}
+
+export function useSetGeminiKey() {
+  return useCoachSettingMutation((key: string | null) => setGeminiKey(key));
+}
+
+export function useSetCoachModels() {
+  return useCoachSettingMutation(
+    ({ roundModel, synthesisModel }: { roundModel: string; synthesisModel: string }) =>
+      setCoachModels(roundModel, synthesisModel),
+  );
+}
+
+export function useSetCoachEnabled() {
+  return useCoachSettingMutation((enabled: boolean) => setCoachEnabled(enabled));
+}
+
+export function useTestGeminiKey() {
+  return useMutation({ mutationFn: () => testGeminiKey() });
+}
+
+export function useRegenerateCoachRound() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ matchId, round }: { matchId: number; round: number }) =>
+      regenerateCoachRound(matchId, round),
+    onSuccess: (data, { matchId }) => {
+      client.setQueryData(["coach_rounds", matchId], data);
+      void client.invalidateQueries({ queryKey: ["coach_synthesis", matchId] });
+    },
+  });
+}
+
+export function useRegenerateCoachSynthesis() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (matchId: number) => regenerateCoachSynthesis(matchId),
+    onSuccess: (data, matchId) => {
+      client.setQueryData(["coach_synthesis", matchId], data);
     },
   });
 }

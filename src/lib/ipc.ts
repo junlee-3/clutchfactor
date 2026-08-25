@@ -20,6 +20,7 @@
 //   TrendsDto (+ RuleSeries) <- src-tauri/src/commands.rs
 //   AppSettings (+ ThresholdRow) <- src-tauri/src/commands.rs
 //   ReAnalyzeResult <- src-tauri/src/commands.rs
+//   CoachStatusDto/CoachRoundsDto (+ RoundCommentaryDto/PlayCommentDto)/CoachSynthesisDto (+ MatchSynthesisDto) <- src-tauri/src/commands.rs
 // Conventions: steamids are strings (steamid64 overflows JS number);
 // command names are snake_case; Rust arg names arrive camelCased.
 
@@ -435,4 +436,89 @@ export function reAnalyzeMatch(
 
 export function deleteMatch(matchId: number): Promise<void> {
   return invoke<void>("delete_match", { matchId });
+}
+
+// ---- V1.3: the coach ----
+
+export interface CoachStatusDto {
+  enabled: boolean;
+  key_source: "env" | "settings" | null;
+  key_hint: string | null;
+  round_model: string;
+  synthesis_model: string;
+}
+
+export interface PlayCommentDto {
+  tick: number;
+  comment: string;
+}
+
+export interface RoundCommentaryDto {
+  round: number;
+  read: string;
+  plays: PlayCommentDto[];
+  why_it_mattered: string | null;
+  what_to_practise: string | null;
+  focus: string | null;
+  model: string;
+}
+
+export interface CoachRoundsDto {
+  rounds: RoundCommentaryDto[];
+  error: string | null;
+}
+
+export interface MatchSynthesisDto {
+  opening: string;
+  work_on: string[];
+  model: string;
+}
+
+export interface CoachSynthesisDto {
+  synthesis: MatchSynthesisDto | null;
+  error: string | null;
+}
+
+export function coachStatus(): Promise<CoachStatusDto> {
+  return invoke<CoachStatusDto>("coach_status");
+}
+
+export function setGeminiKey(key: string | null): Promise<void> {
+  return invoke<void>("set_gemini_key", { key });
+}
+
+export function setCoachModels(
+  roundModel: string,
+  synthesisModel: string,
+): Promise<void> {
+  return invoke<void>("set_coach_models", { roundModel, synthesisModel });
+}
+
+export function setCoachEnabled(enabled: boolean): Promise<void> {
+  return invoke<void>("set_coach_enabled", { enabled });
+}
+
+export function testGeminiKey(): Promise<string> {
+  return invoke<string>("test_gemini_key");
+}
+
+export function getCoachRounds(matchId: number): Promise<CoachRoundsDto> {
+  return invoke<CoachRoundsDto>("get_coach_rounds", { matchId });
+}
+
+export function regenerateCoachRound(
+  matchId: number,
+  round: number,
+): Promise<CoachRoundsDto> {
+  return invoke<CoachRoundsDto>("regenerate_coach_round", { matchId, round });
+}
+
+export function getCoachSynthesis(matchId: number): Promise<CoachSynthesisDto> {
+  return invoke<CoachSynthesisDto>("get_coach_synthesis", { matchId });
+}
+
+export function regenerateCoachSynthesis(
+  matchId: number,
+): Promise<CoachSynthesisDto> {
+  return invoke<CoachSynthesisDto>("regenerate_coach_synthesis", { matchId });
 }

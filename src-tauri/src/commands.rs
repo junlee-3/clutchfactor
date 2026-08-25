@@ -361,6 +361,222 @@ pub async fn re_analyze_match(
     })
 }
 
+// ---- V1.3: the coach ----
+
+#[derive(serde::Serialize)]
+pub struct CoachStatusDto {
+    pub enabled: bool,
+    /// "env" | "settings" | null
+    pub key_source: Option<String>,
+    /// "…ab12" — never the key itself.
+    pub key_hint: Option<String>,
+    pub round_model: String,
+    pub synthesis_model: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct PlayCommentDto {
+    pub tick: i32,
+    pub comment: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct RoundCommentaryDto {
+    pub round: u32,
+    pub read: String,
+    pub plays: Vec<PlayCommentDto>,
+    pub why_it_mattered: Option<String>,
+    pub what_to_practise: Option<String>,
+    pub focus: Option<String>,
+    pub model: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct CoachRoundsDto {
+    pub rounds: Vec<RoundCommentaryDto>,
+    pub error: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct MatchSynthesisDto {
+    pub opening: String,
+    pub work_on: Vec<String>,
+    pub model: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct CoachSynthesisDto {
+    pub synthesis: Option<MatchSynthesisDto>,
+    pub error: Option<String>,
+}
+
+#[tauri::command]
+pub fn coach_status(state: State<'_, AppState>) -> Result<CoachStatusDto, String> {
+    use crate::coach::key::*;
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    let key = resolve_key(&store)?;
+    let enabled = coach_enabled(&store)? && key.is_some();
+    let model = |k: &str, d: &str| {
+        store
+            .get_setting(k)
+            .map(|v| {
+                v.filter(|s| !s.trim().is_empty())
+                    .unwrap_or_else(|| d.to_string())
+            })
+            .map_err(|e| e.to_string())
+    };
+    Ok(CoachStatusDto {
+        enabled,
+        key_source: key.as_ref().map(|(_, s)| s.as_str().to_string()),
+        key_hint: key.as_ref().map(|(k, _)| k.hint()),
+        round_model: model(
+            SETTING_ROUND_MODEL,
+            cf_narrator::coach::prompt::DEFAULT_ROUND_MODEL,
+        )?,
+        synthesis_model: model(
+            SETTING_SYNTHESIS_MODEL,
+            cf_narrator::coach::prompt::DEFAULT_SYNTHESIS_MODEL,
+        )?,
+    })
+}
+
+/// `None`/empty clears the stored key; anything else must look like a key
+/// (no whitespace, at least 20 characters). The value is never logged.
+#[tauri::command]
+pub fn set_gemini_key(state: State<'_, AppState>, key: Option<String>) -> Result<(), String> {
+    use crate::coach::key::SETTING_KEY;
+    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    match key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty()) {
+        None => {
+            store
+                .delete_setting(SETTING_KEY)
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        Some(k) => {
+            if k.len() < 20 || k.chars().any(char::is_whitespace) {
+                return Err("That doesn't look like a Gemini API key — paste the whole key from Google AI Studio.".to_string());
+            }
+            store
+                .set_setting(SETTING_KEY, &k)
+                .map_err(|e| e.to_string())
+        }
+    }
+}
+
+/// Empty → default model (the setting is deleted).
+#[tauri::command]
+pub fn set_coach_models(
+    state: State<'_, AppState>,
+    round_model: String,
+    synthesis_model: String,
+) -> Result<(), String> {
+    use crate::coach::key::{SETTING_ROUND_MODEL, SETTING_SYNTHESIS_MODEL};
+    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    for (k, v) in [
+        (SETTING_ROUND_MODEL, round_model),
+        (SETTING_SYNTHESIS_MODEL, synthesis_model),
+    ] {
+        let v = v.trim();
+        if v.is_empty() {
+            store.delete_setting(k).map_err(|e| e.to_string())?;
+        } else if !v
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
+        {
+            return Err(format!(
+                "\"{v}\" is not a model id (letters, digits, dots and dashes only)."
+            ));
+        } else {
+            store.set_setting(k, v).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_coach_enabled(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    use crate::coach::key::SETTING_ENABLED;
+    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    if enabled {
+        store
+            .delete_setting(SETTING_ENABLED)
+            .map_err(|e| e.to_string())
+    } else {
+        store
+            .set_setting(SETTING_ENABLED, "0")
+            .map_err(|e| e.to_string())
+    }
+}
+
+/// One tiny round-trip with the configured round model:
+/// "Connected — gemini-3.7-flash answered in 812 ms."
+#[tauri::command]
+pub async fn test_gemini_key(state: State<'_, AppState>) -> Result<String, String> {
+    use crate::coach::{gemini::GeminiClient, key::*, CoachError};
+    let (key, model) = {
+        let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        let Some((key, _)) = resolve_key(&store)? else {
+            return Err(CoachError::NoKey.to_string());
+        };
+        let model = store
+            .get_setting(SETTING_ROUND_MODEL)
+            .map_err(|e| e.to_string())?
+            .filter(|m| !m.trim().is_empty())
+            .unwrap_or_else(|| cf_narrator::coach::prompt::DEFAULT_ROUND_MODEL.to_string());
+        (key, model)
+    };
+    let client = GeminiClient::new(key).map_err(|e| e.to_string())?;
+    let started = std::time::Instant::now();
+    let schema = serde_json::json!({"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"]});
+    client
+        .generate_json(
+            &model,
+            "Answer with JSON.",
+            "Reply with {\"ok\": true}.",
+            &schema,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!(
+        "Connected — {model} answered in {} ms.",
+        started.elapsed().as_millis()
+    ))
+}
+
+#[tauri::command]
+pub async fn get_coach_rounds(
+    state: State<'_, AppState>,
+    match_id: i64,
+) -> Result<CoachRoundsDto, String> {
+    crate::coach::round_commentary(&state, match_id, &[]).await
+}
+
+#[tauri::command]
+pub async fn regenerate_coach_round(
+    state: State<'_, AppState>,
+    match_id: i64,
+    round: u32,
+) -> Result<CoachRoundsDto, String> {
+    crate::coach::round_commentary(&state, match_id, &[round]).await
+}
+
+#[tauri::command]
+pub async fn get_coach_synthesis(
+    state: State<'_, AppState>,
+    match_id: i64,
+) -> Result<CoachSynthesisDto, String> {
+    crate::coach::synthesis(&state, match_id, false).await
+}
+
+#[tauri::command]
+pub async fn regenerate_coach_synthesis(
+    state: State<'_, AppState>,
+    match_id: i64,
+) -> Result<CoachSynthesisDto, String> {
+    crate::coach::synthesis(&state, match_id, true).await
+}
+
 #[tauri::command]
 pub fn list_matches(state: State<'_, AppState>) -> Result<Vec<MatchSummary>, String> {
     let store = state.store.lock().map_err(|_| "store lock poisoned")?;
@@ -427,7 +643,7 @@ pub struct HabitEvidence {
     pub evidence: cf_analysis::EvidenceRef,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 pub struct HabitReport {
     pub rule_id: String,
     pub title: String,
@@ -440,7 +656,7 @@ pub struct HabitReport {
 }
 
 /// Rebuild a cf_analysis::Insight from its stored row (JSON strings → values).
-fn insight_from_row(row: &cf_store::store::InsightRow) -> Option<cf_analysis::Insight> {
+pub(crate) fn insight_from_row(row: &cf_store::store::InsightRow) -> Option<cf_analysis::Insight> {
     use cf_analysis::Category;
     let category = match row.category.as_str() {
         "deaths" => Category::Deaths,
@@ -469,23 +685,26 @@ fn insight_from_row(row: &cf_store::store::InsightRow) -> Option<cf_analysis::In
 /// Computing these once here — instead of once inline in `get_match_report`
 /// and again inside this helper — is the point: two call sites, one set of
 /// store reads.
-struct MatchCtxBundle {
-    ctx: cf_narrator::MatchContext,
+pub(crate) struct MatchCtxBundle {
+    pub(crate) ctx: cf_narrator::MatchContext,
     /// The same `MatchDetail` this function already read to build `ctx` —
     /// handed back so `get_match_report` doesn't issue its own second
     /// `match_detail` read for the raw fields (`map`/`score_a`/`score_b`)
     /// it serializes directly onto `MatchReport` (V1.2 final-review fix
     /// wave, minor #6).
-    detail: MatchDetail,
+    pub(crate) detail: MatchDetail,
     death_classes: Vec<cf_store::store::DeathClassDbRow>,
     tracked: Option<String>,
-    tracked_result: Option<String>,
+    pub(crate) tracked_result: Option<String>,
     class_13_share_pct: f32,
 }
 
 /// Builds the shared match-context bundle. `None` when the match doesn't
 /// exist.
-fn match_context(store: &Store, match_id: i64) -> Result<Option<MatchCtxBundle>, String> {
+pub(crate) fn match_context(
+    store: &Store,
+    match_id: i64,
+) -> Result<Option<MatchCtxBundle>, String> {
     let Some(detail) = store.match_detail(match_id).map_err(|e| e.to_string())? else {
         return Ok(None);
     };
@@ -613,8 +832,14 @@ pub fn get_match_report(
 
 #[tauri::command]
 pub fn get_habits(state: State<'_, AppState>) -> Result<Vec<HabitReport>, String> {
-    use cf_analysis::habits::{death_hotspots, promote_habits, DeathPoint, HabitInput};
     let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    habit_reports(&store)
+}
+
+/// The body of `get_habits`, callable under a lock the caller already holds
+/// — the V1.3 coach synthesis feeds these to the model.
+pub(crate) fn habit_reports(store: &Store) -> Result<Vec<HabitReport>, String> {
+    use cf_analysis::habits::{death_hotspots, promote_habits, DeathPoint, HabitInput};
     let Some(tracked) = store.tracked_steamid().map_err(|e| e.to_string())? else {
         return Ok(vec![]);
     };
@@ -1400,7 +1625,7 @@ fn should_suppress_flag_moment(kind: &str, facts: &[String]) -> bool {
     kind == "flag" && facts.is_empty()
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 pub struct RailMomentDto {
     pub tick: i32,
     pub headline: String,
@@ -1416,7 +1641,7 @@ pub struct RailMomentDto {
     pub killer: Option<String>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 pub struct PlayDto {
     pub tick: i32,
     pub kind: String,
@@ -1431,7 +1656,7 @@ pub struct PlayDto {
     pub killer: Option<String>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 pub struct TimelineDto {
     pub tick: i32,
     pub kind: String,
@@ -1441,7 +1666,7 @@ pub struct TimelineDto {
     pub weapon: Option<String>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 pub struct RoundReviewDto {
     pub round: u32,
     pub impact: f32,
@@ -1470,10 +1695,19 @@ pub fn get_round_review(
     state: State<'_, AppState>,
     match_id: i64,
 ) -> Result<Vec<RoundReviewDto>, String> {
+    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    assemble_round_reviews(&mut store, match_id)
+}
+
+/// The body of `get_round_review`, callable under a lock the caller already
+/// holds — the V1.3 coach orchestrator reads the same reviews.
+pub(crate) fn assemble_round_reviews(
+    store: &mut Store,
+    match_id: i64,
+) -> Result<Vec<RoundReviewDto>, String> {
     use cf_analysis::round_review::{Attention, Moment, RoundHeader, RoundReview, Verdict};
     use cf_narrator::rail;
 
-    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
     let mut rows = store
         .load_round_reviews(match_id)
         .map_err(|e| e.to_string())?;
@@ -1487,13 +1721,13 @@ pub fn get_round_review(
         .first()
         .is_some_and(|r| r.cfg_fingerprint != current_fingerprint);
     if rows.is_empty() || stale {
-        run_round_review(&mut store, match_id)?;
+        run_round_review(store, match_id)?;
         rows = store
             .load_round_reviews(match_id)
             .map_err(|e| e.to_string())?;
     }
 
-    let Some(MatchCtxBundle { ctx, .. }) = match_context(&store, match_id)? else {
+    let Some(MatchCtxBundle { ctx, .. }) = match_context(store, match_id)? else {
         return Ok(vec![]);
     };
 
