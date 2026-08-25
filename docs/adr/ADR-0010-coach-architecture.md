@@ -63,3 +63,8 @@ trait; the coach needs the network, batching and a cache.
   round read (a cite of the final score is rejected).
 - A future `ClaudeNarrator` reuses the pure half unchanged; only
   `gemini.rs` is provider-specific.
+- Tick labels are confined to the `plays` array's `tick` field — the prose
+  fields (`read`, `why_it_mattered`, `what_to_practise`, `focus`) refer to
+  moments by clock time or event, never `[tick N]`; place names are used
+  exactly as the facts write them, never a map slug or internal id. Style
+  `coach-v3`.

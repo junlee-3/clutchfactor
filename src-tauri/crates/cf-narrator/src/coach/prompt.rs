@@ -12,8 +12,10 @@ pub const DEFAULT_SYNTHESIS_MODEL: &str = "gemini-3.7-flash";
 /// Bump when the persona, rendering, schema or validator changes — cached
 /// responses under an older style are regenerated. v2: word-boundary
 /// grounding and "Round N" digests (V1.3 final-review fixes); `ok` rows
-/// validated under v1's looser rules must not survive.
-pub const STYLE_VERSION: &str = "coach-v2";
+/// validated under v1's looser rules must not survive. v3: tick labels
+/// confined to the plays array and the match header renders a pretty map
+/// name instead of the slug — rows written under v2's prose leaked both.
+pub const STYLE_VERSION: &str = "coach-v3";
 pub const ROUNDS_PER_CALL: usize = 6;
 
 pub const SYSTEM_PERSONA: &str = "You are ClutchFactor's coach: a calm, experienced CS2 coach reviewing one player's demo with them. \
@@ -22,10 +24,33 @@ Your job is judgment: read the round like a coach watching the tape, decide what
 Use your own CS2 knowledge freely for interpretation and advice (positioning, utility usage, timing, trading, discipline). \
 \n\nHard rules:\n\
 - Cite ONLY facts that appear in the provided text: numbers, names, callouts, times and events. Never invent a number, a name, a place, or an event that is not there. If the facts do not say, do not claim.\n\
-- Refer to plays by their [tick N] labels when you comment on them.\n\
+- Put a play's tick number ONLY in the plays array's tick field. In read, why_it_mattered, what_to_practise and focus, never write tick labels — refer to moments by their clock time (for example \"at +40 s\") or by what happened.\n\
+- Use place names exactly as they are written in the facts. Never use map codes or internal ids.\n\
 - Voice: numbers first, then the fix. Be specific — name the callout, the teammate, the time. No exclamation marks. Never scold; describe what happened and what to change. Positioning that is merely uncommon is 'unusual, not wrong'. No economy or buy advice.\n\
 - 'read' is 2 to 4 sentences of live commentary on the round. 'plays' comments only the plays worth a note (good or bad). 'why_it_mattered' and 'what_to_practise' are one sentence each or null. 'focus' is the single most useful takeaway, or null.\n\
 - Answer with JSON matching the schema, nothing else.";
+
+/// "de_mirage" → "Mirage". Same rule as `templates::map_name` and
+/// `src/lib/mapName.ts` — keep all three in sync. Unlike `templates::map_name`
+/// this always returns a `String` (empty in, empty out) since the coach
+/// header has no "no map" case to omit.
+pub fn map_display_name(slug: &str) -> String {
+    let raw = slug.trim();
+    if raw.is_empty() {
+        return String::new();
+    }
+    let stripped = raw
+        .strip_prefix("de_")
+        .or_else(|| raw.strip_prefix("cs_"))
+        .or_else(|| raw.strip_prefix("ar_"))
+        .unwrap_or(raw);
+    let spaced = stripped.replace('_', " ");
+    let mut c = spaced.chars();
+    match c.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
+}
 
 pub fn render_round_block(m: &MatchInput, r: &RoundInput) -> String {
     let mut s = String::new();
@@ -72,7 +97,7 @@ pub fn render_round_block(m: &MatchInput, r: &RoundInput) -> String {
 pub fn render_round_batch(m: &MatchInput, rounds: &[RoundInput], retry_notes: &[String]) -> String {
     let mut s = format!(
         "# Match: {} · final score {}-{} · reviewing {}{}\nPlayers: {}\n\n",
-        m.map,
+        map_display_name(&m.map),
         m.score.0,
         m.score.1,
         m.tracked_name,
@@ -103,7 +128,7 @@ pub fn render_synthesis(si: &SynthesisInput) -> String {
     let m = &si.match_input;
     let mut s = format!(
         "# Match: {} · final score {}-{} · reviewing {}{}\nPlayers: {}\n\n## Round by round\n",
-        m.map,
+        map_display_name(&m.map),
         m.score.0,
         m.score.1,
         m.tracked_name,
@@ -277,7 +302,7 @@ mod tests {
             "{p}"
         );
         assert!(!p.contains("R11"), "{p}");
-        assert_eq!(STYLE_VERSION, "coach-v2");
+        assert_eq!(STYLE_VERSION, "coach-v3");
     }
 
     #[test]
@@ -292,7 +317,8 @@ mod tests {
         let i6 = p.find("## Round 6").unwrap();
         let i7 = p.find("## Round 7").unwrap();
         assert!(i6 < i7);
-        assert!(p.contains("de_mirage") && p.contains("13-9"));
+        assert!(p.contains("Mirage") && p.contains("13-9"));
+        assert!(!p.contains("de_mirage"), "{p}");
         assert!(
             p.ends_with("Round 6: the number 1,500 is not in the facts.\n")
                 || p.contains("Round 6: the number 1,500 is not in the facts.")
@@ -333,11 +359,21 @@ mod tests {
             "exclamation",
             "never scold",
             "numbers first",
+            "only in the plays array",
+            "map codes",
         ] {
             assert!(
                 SYSTEM_PERSONA.to_lowercase().contains(needle),
                 "persona lacks {needle}"
             );
         }
+    }
+
+    #[test]
+    fn map_display_name_strips_prefix_and_capitalizes_first_char_only() {
+        assert_eq!(map_display_name("de_mirage"), "Mirage");
+        assert_eq!(map_display_name("de_dust2"), "Dust2");
+        assert_eq!(map_display_name("cs_office"), "Office");
+        assert_eq!(map_display_name(""), "");
     }
 }
