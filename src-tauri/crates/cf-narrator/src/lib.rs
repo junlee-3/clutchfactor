@@ -6,6 +6,7 @@
 mod templates;
 
 pub mod callouts;
+pub mod coach;
 pub mod plays;
 pub mod rail;
 
