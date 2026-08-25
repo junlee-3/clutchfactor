@@ -267,6 +267,42 @@ fn d_rbr_exculpatory() -> Vec<String> {
     vec!["H2_BAITED_TRADE".to_string()]
 }
 
+/// V1.2b play ledger (docs/spec/play-ledger-and-coach.md §2). Seconds only.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LedgerCfg {
+    /// Setup checkpoint: positioning is sampled this long after freeze end.
+    #[serde(default = "d_ledger_setup_s")]
+    pub setup_s: f32,
+    /// HE damage is attributed to a detonate within this window after it.
+    #[serde(default = "d_ledger_he_window_s")]
+    pub he_window_s: f32,
+    /// Molotov burn length assumed when no `molotov_expire` event follows.
+    #[serde(default = "d_ledger_molotov_burn_s")]
+    pub molotov_burn_s: f32,
+    /// A flashbang detonate and a blind group this close in time are the
+    /// same grenade (detonate and blind ticks are not guaranteed equal).
+    #[serde(default = "d_ledger_flash_join_s")]
+    pub flash_join_s: f32,
+    /// Step used when walking tick samples for rush / rotation checkpoints.
+    #[serde(default = "d_ledger_sample_step_s")]
+    pub sample_step_s: f32,
+}
+fn d_ledger_setup_s() -> f32 {
+    5.0
+}
+fn d_ledger_he_window_s() -> f32 {
+    0.5
+}
+fn d_ledger_molotov_burn_s() -> f32 {
+    7.0
+}
+fn d_ledger_flash_join_s() -> f32 {
+    0.25
+}
+fn d_ledger_sample_step_s() -> f32 {
+    1.0
+}
+
 /// §5A cross-demo habit promotion (+ spec H4_REPEAT_HOTSPOT parameters).
 #[derive(Debug, Clone, Deserialize)]
 pub struct HabitCfg {
@@ -450,7 +486,8 @@ default_impl!(
     GeneralCfg,
     SeverityCfg,
     PhaseCfg,
-    RbrCfg
+    RbrCfg,
+    LedgerCfg
 );
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -483,6 +520,8 @@ pub struct DetectorConfig {
     pub phase: PhaseCfg,
     #[serde(default)]
     pub rbr: RbrCfg,
+    #[serde(default)]
+    pub ledger: LedgerCfg,
 }
 
 impl DetectorConfig {
@@ -518,6 +557,12 @@ mod tests {
         assert_eq!(c.rbr.max_rounds, 6);
         assert_eq!(c.rbr.max_moments, 6);
         assert_eq!(c.rbr.exculpatory_rules, vec!["H2_BAITED_TRADE"]);
+        // V1.2b play ledger (docs/spec/play-ledger-and-coach.md §2).
+        assert_eq!(c.ledger.setup_s, 5.0);
+        assert_eq!(c.ledger.he_window_s, 0.5);
+        assert_eq!(c.ledger.molotov_burn_s, 7.0);
+        assert_eq!(c.ledger.flash_join_s, 0.25);
+        assert_eq!(c.ledger.sample_step_s, 1.0);
     }
 
     #[test]
