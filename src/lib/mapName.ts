@@ -1,5 +1,5 @@
 // Display-name prettifier for map slugs ("de_mirage" -> "Mirage"), used by
-// MatchHeader (design-system.md §8) for the Fraunces map-name moment.
+// MatchHeader (design-system.md §8) for the display-sans map-name moment.
 //
 // MIRROR: ported 1:1 from cf-narrator's map_name — keep both in sync:
 //   src-tauri/crates/cf-narrator/src/templates.rs (fn map_name, ~:1165)
@@ -14,4 +14,11 @@ export function mapName(map: string): string {
   if (raw.length === 0) return "";
   const stripped = raw.replace(PREFIX_RE, "").replace(/_/g, " ");
   return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+}
+
+/** Two-letter fallback tile for a map with no radar image ("de_mirage" ->
+ *  "MI"); "??" when the slug is empty. */
+export function mapInitials(map: string): string {
+  const letters = mapName(map).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase();
+  return letters.length === 2 ? letters : "??";
 }

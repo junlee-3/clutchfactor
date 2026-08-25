@@ -64,7 +64,7 @@
 
 .sidebar-wordmark {
   padding: 0 var(--s2) var(--s5);
-  color: var(--chalk-bright);
+  color: var(--ink-bright);
   white-space: nowrap;
 }
 
@@ -86,7 +86,7 @@
   display: block;
   padding: var(--s2) var(--s3);
   border-radius: var(--r-sm);
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
   font: var(--text-ui);
   text-decoration: none;
   transition:
@@ -99,16 +99,16 @@
 }
 
 .sidebar-link:hover {
-  color: var(--chalk);
+  color: var(--ink);
   background: var(--bg2);
 }
 
-/* Active nav (design-system.md §7): chalk-bright ink + 2px chalk left edge,
+/* Active nav (design-system.md §7): ink-bright text + 2px ink left edge,
    inset so there's no layout shift on route change. */
 .sidebar-link-active,
 .sidebar-link-active:hover {
-  color: var(--chalk-bright);
-  box-shadow: inset 2px 0 0 0 var(--chalk);
+  color: var(--ink-bright);
+  box-shadow: inset 2px 0 0 0 var(--ink);
 }
 
 .sidebar-footer {
@@ -146,14 +146,14 @@
 .match-header-back,
 .match-header-cross {
   font: var(--text-ui);
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
   text-decoration: none;
   transition: color var(--dur-fast) var(--ease);
 }
 
 .match-header-back:hover,
 .match-header-cross:hover {
-  color: var(--chalk-bright);
+  color: var(--ink-bright);
 }
 
 /* Report<->Replay cross-link sits at the far end of the row. */
@@ -163,11 +163,11 @@
 
 .match-header-map {
   margin: 0;
-  color: var(--chalk-bright);
+  color: var(--ink-bright);
 }
 
 .match-header-score {
-  color: var(--chalk);
+  color: var(--ink);
 }
 
 .match-header-result {
@@ -193,7 +193,7 @@
 
 .match-header-date,
 .match-header-stats {
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
   /* Monospace (--text-data), so ch is an exact fit for imported_at's fixed
      "YYYY-MM-DD HH:MM:SS" length and a generous one for the K-D/HS% pair —
      reserved up front so the useMatches() join filling in late (§10) never
@@ -204,7 +204,7 @@
 /* Optional slot with no data yet: same box, faint placeholder dash instead
    of omitting the element (§10 — never conditionally-rendered layout). */
 .match-header-pending {
-  color: var(--chalk-faint);
+  color: var(--ink-faint);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -235,14 +235,14 @@
 /* Skeleton sized + spaced to match the actual Card row (§10: no layout
    shift on data arrival) — a bare .ui-skel-row (40px, s2 gap) is tuned for
    a dense table row, not this screen's taller Card rows, so both are
-   overridden here to the real row's dimensions. Height: 32px padding
-   (2×s4) + 2px Card border (1px ×2) + ~28.2px button content ≈ 62px. */
+   overridden here to the real row's dimensions. Height: 56px radar thumb
+   + 32px padding (2×s4) + 2px Card border (1px ×2) = 90px. */
 .library-loading .ui-skel-group {
   gap: var(--s3);
 }
 
 .library-row-skeleton {
-  height: 62px;
+  height: 90px;
 }
 
 /* Each match is a Card (design-system.md §6) laid out as [open][actions] —
@@ -271,7 +271,7 @@
    instead of the row overlapping the delete buttons. */
 .library-row-open {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 104px 64px 60px 76px 152px;
+  grid-template-columns: 56px minmax(0, 1fr) 104px 64px 60px 76px 152px;
   align-items: center;
   column-gap: var(--s4);
   flex: 1;
@@ -286,13 +286,38 @@
   overflow: hidden;
 }
 
-/* The map name's Fraunces moment (design-system.md §9). */
+/* Radar thumbnail (spec §1): cover-fit, hairline, dimmed until the row is
+   hovered/focused so the map reads as furniture, not a photo strip. */
+.library-row-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--bg-tape);
+  object-fit: cover;
+  opacity: 0.8;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.library-row-open:hover .library-row-thumb,
+.library-row-open:focus-visible .library-row-thumb {
+  opacity: 1;
+}
+
+.library-row-thumb-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-dim);
+}
+
+/* The map name's display-sans title moment (design-system.md §9). */
 .library-row-map {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--chalk-bright);
+  color: var(--ink-bright);
 }
 
 .library-row-score {
@@ -331,7 +356,7 @@
 }
 
 .library-row-meta {
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -398,30 +423,30 @@
 }
 
 /* The editorial lead (design-system.md §5, §9): the coach's write-up in
-   its own voice — "the one place the serif speaks at length". A solid 2px
-   chalk edge, not dashed: this is furniture around a quote, not a claim
-   you click through to the tape. */
+   its own voice — "the one place the display-sans font speaks at length".
+   A solid 2px ink edge, not dashed: this is furniture around a quote, not
+   a claim you click through to the tape. */
 .report-lead {
   margin: 0 0 var(--s6);
   padding-left: var(--s4);
-  border-left: 2px solid var(--chalk);
+  border-left: 2px solid var(--ink);
 }
 
 .report-lead-title {
   margin: 0 0 var(--s2);
   font-style: italic;
-  color: var(--chalk-bright);
+  color: var(--ink-bright);
 }
 
 /* Body copy stays on the --text-body token (size/line-height) — only the
-   face and slant swap to Fraunces italic, so the "speaks at length" moment
-   never leaves the app's seven-size scale (§3, §9). */
+   style swaps to italic, so the "speaks at length" moment never leaves the
+   app's seven-size scale (§3, §9). */
 .report-lead-body {
   margin: 0;
   font: var(--text-body);
   font-family: var(--font-display);
   font-style: italic;
-  color: var(--chalk);
+  color: var(--ink);
 }
 
 /* Round strip — a compact mono grid (frontend-design pass). rpt- prefixed
@@ -447,7 +472,7 @@
   background: var(--bg1);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  color: var(--chalk);
+  color: var(--ink);
   cursor: pointer;
   transition:
     background-color var(--dur-fast) var(--ease),
@@ -507,7 +532,7 @@
 
 .rpt-body {
   margin: var(--s2) 0 0;
-  color: var(--chalk);
+  color: var(--ink);
 }
 
 .rpt-chips {
@@ -545,14 +570,14 @@
 }
 
 .rpt-cb-label {
-  color: var(--chalk);
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .rpt-cb-count {
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
   text-align: right;
 }
 
@@ -569,9 +594,9 @@
   border-radius: 0 var(--r-sm) var(--r-sm) 0;
 }
 
-/* Preventable classes: chalk — the coach's actionable material. */
+/* Preventable classes: ink — the coach's actionable material. */
 .rpt-cb-fill-preventable {
-  background: var(--chalk);
+  background: var(--ink);
 }
 
 /* Class 13 ONLY: win-green, the one "good news" status (a fair duel lost
@@ -580,29 +605,29 @@
   background: var(--win);
 }
 
-/* Hygiene/unclassified: chalk-faint, quieter without a border drawn around
+/* Hygiene/unclassified: ink-faint, quieter without a border drawn around
    it (a border-as-separator is the dataviz anti-pattern the legacy
    .cb-hygiene committed). */
 .rpt-cb-fill-hygiene {
-  background: var(--chalk-faint);
+  background: var(--ink-faint);
 }
 
 .rpt-cb-row:hover .rpt-cb-fill-preventable {
-  background: var(--chalk-bright);
+  background: var(--ink-bright);
 }
 
 .rpt-cb-row:hover .rpt-cb-fill-hygiene {
-  background: var(--chalk-dim);
+  background: var(--ink-dim);
 }
 
 .rpt-cb-note {
   margin: var(--s3) 0 0;
-  color: var(--chalk);
+  color: var(--ink);
 }
 
 .rpt-cb-honesty {
   margin: var(--s2) 0 0;
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -676,7 +701,7 @@
   min-width: 26px;
   padding: var(--s1) 0;
   background: var(--bg1);
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
   border: 1px solid var(--line);
   border-bottom-width: 2px;
   border-radius: var(--r-sm);
@@ -689,7 +714,7 @@
 
 .rpl-round-chip:hover {
   border-color: var(--line-strong);
-  color: var(--chalk);
+  color: var(--ink);
 }
 
 .rpl-round-chip-winner-ct {
@@ -702,11 +727,11 @@
 
 .rpl-round-chip-active {
   background: var(--bg2);
-  color: var(--chalk-bright);
+  color: var(--ink-bright);
 }
 
 /* Attention dots (issue #9 §3): presence and size carry attention, zero
-   color channel — only chalk tokens here, never --ct/--t/--win/--loss (the
+   color channel — only ink tokens here, never --ct/--t/--win/--loss (the
    winner underline above stays the only color in this strip). */
 .rpl-att {
   position: absolute;
@@ -720,13 +745,13 @@
 .rpl-att-dim {
   width: 4px;
   height: 4px;
-  background: var(--chalk-faint);
+  background: var(--ink-faint);
 }
 
 .rpl-att-bright {
   width: 6px;
   height: 6px;
-  background: var(--chalk-bright);
+  background: var(--ink-bright);
 }
 
 .rpl-main {
@@ -822,7 +847,7 @@
 
 .rpl-roster-weapon,
 .rpl-roster-hp {
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 .rpl-roster-hp {
@@ -867,13 +892,13 @@
 }
 
 .rpl-side-none {
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 /* ---- KillFeed ---- */
 
 .rpl-kf-empty {
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 .rpl-kf-row {
@@ -887,7 +912,7 @@
   border: none;
   border-radius: var(--r-sm);
   font: inherit;
-  color: var(--chalk);
+  color: var(--ink);
   text-align: left;
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease);
@@ -897,10 +922,10 @@
   background: var(--bg2);
 }
 
-/* A kill within the last 3s of playback — a quiet chalk fleck, never a
+/* A kill within the last 3s of playback — a quiet ink fleck, never a
    game-hue tint: recency is app chrome, not side data (§2). */
 .rpl-kf-row-recent {
-  background: color-mix(in srgb, var(--bg2) 85%, var(--chalk-bright) 8%);
+  background: color-mix(in srgb, var(--bg2) 85%, var(--ink-bright) 8%);
 }
 
 /* Attacker/weapon/victim spans truncate independently instead of wrapping —
@@ -917,7 +942,7 @@
 
 .rpl-kf-weapon {
   flex-shrink: 0;
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 /* ---- CoachRail (CoachRail.tsx) — issue #9, design-system.md §5/§6/§9 ---- */
@@ -948,12 +973,12 @@
 
 .rpl-rail-round-num {
   margin: 0;
-  color: var(--chalk-bright);
+  color: var(--ink-bright);
 }
 
 .rpl-rail-context {
   margin: 0;
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 /* Result word only — game hues, same restraint as .match-header-result-*
@@ -967,18 +992,26 @@
   color: var(--loss);
 }
 
-/* Verdict chip tints — the two measured-impact verdicts only, via the §2
-   derived surface tokens (no fresh color-mix here). "Not on you"/"Traded"/
-   "Quiet" stay the Chip default (bg2/chalk-dim): the verdict is named, not
-   graded. */
+/* Verdict chips — outlined per the owner's mockup (spec §1). The Chip base
+   has no border; these add a 1px outline in the verdict's hue and keep the
+   fill transparent. "Not on you"/"Traded"/"Quiet" = neutral outline: the
+   verdict is named, not graded. */
 .rpl-rail-verdict-won {
-  background: var(--surface-win);
+  background: transparent;
+  border: 1px solid var(--border-win);
   color: var(--win);
 }
 
 .rpl-rail-verdict-loss {
-  background: var(--surface-loss);
+  background: transparent;
+  border: 1px solid var(--border-loss);
   color: var(--loss);
+}
+
+.rpl-rail-verdict-neutral {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-dim);
 }
 
 .rpl-rail-moments {
@@ -999,12 +1032,12 @@
   padding: var(--s2);
   background: none;
   /* Reserve the stripe's width on every row (transparent) so the active
-     row's dashed stripe never nudges the text (§10: no layout shift). */
+     row's tone edge never nudges the text (§10: no layout shift). */
   border: none;
   border-left: 2px solid transparent;
   border-radius: var(--r-sm);
   font: inherit;
-  color: var(--chalk);
+  color: var(--ink);
   text-align: left;
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease);
@@ -1016,7 +1049,7 @@
 
 .rpl-rail-moment-time {
   padding-top: 1px;
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 .rpl-rail-moment-body {
@@ -1027,22 +1060,27 @@
 }
 
 .rpl-rail-moment-headline {
-  color: var(--chalk-bright);
+  color: var(--ink-bright);
 }
 
 .rpl-rail-moment-fact {
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
-/* The §5 signature grammar: dashed chalk marks the moment the tape is
-   currently at. The one dashed stripe this component spends. */
+/* The active row's tone edge (spec §1): solid, 2px, colored by what the
+   play measured — loss / win / neutral. Dashed is reserved for evidence
+   (chips, the canvas teammate line); this edge is a state, not evidence. */
 .rpl-rail-moment-active {
-  border-left: 2px dashed var(--chalk);
+  border-left: 2px solid var(--ink-dim);
   background: var(--bg2);
 }
 
-.rpl-rail-moment-active:hover {
-  border-left-color: var(--chalk-bright);
+.rpl-rail-moment-active.rpl-rail-tone-loss {
+  border-left-color: var(--loss);
+}
+
+.rpl-rail-moment-active.rpl-rail-tone-win {
+  border-left-color: var(--win);
 }
 
 .rpl-rail-note {
@@ -1059,7 +1097,7 @@
   margin: var(--s3) 0 0;
   padding-top: var(--s3);
   border-top: 1px solid var(--line);
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 .rpl-rail-footer {
@@ -1091,7 +1129,7 @@
 }
 
 .rpl-scrubber-clock {
-  color: var(--chalk);
+  color: var(--ink);
   min-width: 4ch;
 }
 
@@ -1106,7 +1144,7 @@
   inset: 0;
   width: 100%;
   margin: 0;
-  accent-color: var(--chalk);
+  accent-color: var(--ink);
   cursor: pointer;
 }
 
@@ -1138,7 +1176,7 @@
   top: 2px;
   width: 2px;
   height: 6px;
-  background: var(--chalk-faint);
+  background: var(--ink-faint);
 }
 
 /* Bomb pips — one hue (loss), not the legacy plant/defuse/explode split:
@@ -1202,7 +1240,7 @@
 
 .trends-ribbon-cell {
   font: var(--text-data);
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
   background: var(--bg1);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
@@ -1213,19 +1251,19 @@
    match_id — TrendMatchRow itself carries no result field. A tie gets no
    tint: neutral furniture, not a claim (mirrors Library's EDGE_BY_RESULT). */
 .trends-ribbon-cell-win {
-  color: var(--chalk);
+  color: var(--ink);
   background: var(--surface-win);
   border-color: var(--border-win);
 }
 
 .trends-ribbon-cell-loss {
-  color: var(--chalk);
+  color: var(--ink);
   background: var(--surface-loss);
   border-color: var(--border-loss);
 }
 
 .trends-ribbon-note {
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
   margin-left: var(--s2);
 }
 
@@ -1246,13 +1284,13 @@
 .trends-line-note {
   margin: 0;
   max-width: 60ch;
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 .trends-line-value {
   flex: none;
   font: var(--text-stat);
-  color: var(--chalk-bright);
+  color: var(--ink-bright);
   white-space: nowrap;
 }
 
@@ -1274,14 +1312,14 @@
 }
 
 .trends-line-dot {
-  fill: var(--chalk);
+  fill: var(--ink);
 }
 
 .trends-line-annotation {
   font: var(--text-micro);
   letter-spacing: normal;
   text-transform: none;
-  fill: var(--chalk-dim);
+  fill: var(--ink-dim);
 }
 
 /* ---- Rule sparkline rows ---- */
@@ -1310,7 +1348,7 @@
 }
 
 .trends-rule-title {
-  color: var(--chalk);
+  color: var(--ink);
 }
 
 .trends-spark {
@@ -1320,7 +1358,7 @@
 }
 
 /* The "current period" dot on the de-emphasized line (dataviz stat-tile
-   figure spec) — chalk-bright, distinct from the big line's plain-chalk
+   figure spec) — ink-bright, distinct from the big line's plain-ink
    marks, since these rows are the compact/muted genre, not the headline
    chart. */
 .trends-spark-dot-ring {
@@ -1328,16 +1366,16 @@
 }
 
 .trends-spark-dot {
-  fill: var(--chalk-bright);
+  fill: var(--ink-bright);
 }
 
 .trends-rule-count {
-  color: var(--chalk);
+  color: var(--ink);
   text-align: right;
 }
 
 .trends-rule-callout {
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 /* Win-green only when the streak is genuinely good news (a bad-count metric
@@ -1436,7 +1474,7 @@
 }
 
 /* Reuses the sidebar nav's own selection grammar (design-system.md §7:
-   "active item chalk-bright with a 2px chalk left edge") — picking a map
+   "active item ink-bright with a 2px ink left edge") — picking a map
    in the archive lights up exactly like picking a screen in the sidebar. */
 .cps-gate-row {
   display: flex;
@@ -1447,7 +1485,7 @@
   background: transparent;
   border: none;
   border-bottom: 1px solid var(--line);
-  color: var(--chalk);
+  color: var(--ink);
   text-align: left;
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease);
@@ -1463,11 +1501,11 @@
 
 .cps-gate-row-active {
   background: var(--bg2);
-  box-shadow: inset 2px 0 0 0 var(--chalk-bright);
+  box-shadow: inset 2px 0 0 0 var(--ink-bright);
 }
 
 .cps-gate-row-active .cps-gate-map {
-  color: var(--chalk-bright);
+  color: var(--ink-bright);
 }
 
 .cps-gate-map {
@@ -1476,7 +1514,7 @@
 }
 
 /* The gate meter: a real unit count, not a faked percentage bar (dataviz —
-   one cell per demo needed). Chalk-filled = have it, hairline = still
+   one cell per demo needed). Ink-filled = have it, hairline = still
    need it. */
 .cps-gate-meter {
   display: inline-flex;
@@ -1493,23 +1531,23 @@
 }
 
 .cps-gate-cell-filled {
-  background: var(--chalk);
-  border-color: var(--chalk);
+  background: var(--ink);
+  border-color: var(--ink);
 }
 
 .cps-gate-count {
   margin-left: auto;
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
   white-space: nowrap;
 }
 
 .cps-gate-note {
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
   white-space: nowrap;
 }
 
 .cps-note {
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 .cps-viewer {
@@ -1556,7 +1594,7 @@
 
 .cps-heatmap-caption,
 .cps-heatmap-empty {
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 .cps-viewer-built {
@@ -1611,7 +1649,7 @@
 }
 
 .stg-hint-inline {
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 .stg-override {
@@ -1629,7 +1667,7 @@
 
 .stg-hint {
   margin: var(--s3) 0 0;
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 /* ---------------------------------------------------------------------- */

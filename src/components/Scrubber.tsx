@@ -12,11 +12,12 @@ interface Props {
   onSeek: (tick: number) => void;
 }
 
-// The transport's scrub bar (design-system.md §9): chalk accent-color on the
-// native range input — the app's one accent is chalk, never --ct. Kill pips
-// are chalk-faint ticks; bomb pips are the round's one loss-colored marker
-// (no legacy plant/defuse/explode split — §2 reserves win/loss-mixed marks
-// for outcome and severity, not a decorative second palette).
+// The transport's scrub bar (design-system.md §9): ink accent-color on the
+// native range input — not one of the app's four --accent surfaces, and
+// never --ct. Kill pips are ink-faint ticks; bomb pips are the round's one
+// loss-colored marker (no legacy plant/defuse/explode split — §2 reserves
+// win/loss-mixed marks for outcome and severity, not a decorative second
+// palette).
 export function Scrubber({
   spec,
   tick,

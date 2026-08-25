@@ -5,6 +5,7 @@ import {
   nextFlagged,
   overlayWindow,
   prevFlagged,
+  stripeTone,
 } from "./rail";
 
 describe("activeMomentIndex", () => {
@@ -136,5 +137,22 @@ describe("annotationMomentIndex", () => {
 
   it("is -1 for an empty moment list", () => {
     expect(annotationMomentIndex([], 10_000, tickrate)).toBe(-1);
+  });
+});
+
+describe("stripeTone", () => {
+  it("a quality tag wins over everything else", () => {
+    expect(stripeTone({ delta_p: 0.3, rule_id: null, quality: "bad" })).toBe("loss");
+    expect(stripeTone({ delta_p: -0.3, rule_id: "H2_ISOLATED_DEATH", quality: "good" })).toBe("win");
+    expect(stripeTone({ delta_p: -0.3, rule_id: null, quality: "neutral" })).toBe("neutral");
+  });
+  it("a rule flag reads as loss", () => {
+    expect(stripeTone({ delta_p: null, rule_id: "H6_DEAD_TIME_SMOKE" })).toBe("loss");
+  });
+  it("otherwise the sign of delta_p decides; no signal is neutral", () => {
+    expect(stripeTone({ delta_p: 0.12, rule_id: null })).toBe("win");
+    expect(stripeTone({ delta_p: -0.12, rule_id: null })).toBe("loss");
+    expect(stripeTone({ delta_p: 0, rule_id: null })).toBe("neutral");
+    expect(stripeTone({ delta_p: null, rule_id: null })).toBe("neutral");
   });
 });

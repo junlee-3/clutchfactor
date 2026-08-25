@@ -12,7 +12,8 @@ import {
 } from "../lib/importQueue";
 import { useDeleteMatch, useImportDemo, useMatches } from "../lib/queries";
 import { formatMatchRow } from "../lib/score";
-import { mapName } from "../lib/mapName";
+import { mapInitials, mapName } from "../lib/mapName";
+import { radarImageUrl } from "../replay/coords";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -33,6 +34,29 @@ const EDGE_BY_RESULT: Record<"W" | "L" | "T", "win" | "loss" | undefined> = {
   L: "loss",
   T: undefined,
 };
+
+// The radar image as a 56px tile (spec §1 "Library thumbnails"). Decorative:
+// the row's aria-label already names the map, so the image is aria-hidden.
+// A map with no vendored radar (404) falls back to a two-letter mono tile.
+function MapThumb({ map }: { map: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <span className="library-row-thumb library-row-thumb-fallback type-data" aria-hidden="true">
+        {mapInitials(map)}
+      </span>
+    );
+  }
+  return (
+    <img
+      className="library-row-thumb"
+      src={radarImageUrl(map, "upper")}
+      alt=""
+      aria-hidden="true"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 export function Library() {
   const navigate = useNavigate();
@@ -143,6 +167,7 @@ export function Library() {
                     title="Open match report"
                     aria-label={accessibleLabel}
                   >
+                    <MapThumb map={m.map} />
                     <span className="library-row-map type-title">{mapName(m.map)}</span>
                     <span className="library-row-score">
                       {row.resultLetter && (

@@ -39,40 +39,40 @@
   padding: var(--s1) var(--s3);
 }
 
-/* primary — chalk fill, bg0 ink */
+/* primary — accent fill, tape ink (v0's blue button, restored — ADR-0009) */
 .ui-btn-primary {
-  background: var(--chalk);
-  border-color: var(--chalk);
-  color: var(--bg0);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-tape);
 }
 
 .ui-btn-primary:hover:not(:disabled) {
-  background: var(--chalk-bright);
-  border-color: var(--chalk-bright);
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
 }
 
 /* secondary — bg2 fill + line border */
 .ui-btn-secondary {
   background: var(--bg2);
   border-color: var(--line);
-  color: var(--chalk);
+  color: var(--ink);
 }
 
 .ui-btn-secondary:hover:not(:disabled) {
   border-color: var(--line-strong);
-  color: var(--chalk-bright);
+  color: var(--ink-bright);
 }
 
 /* ghost — borderless */
 .ui-btn-ghost {
   background: transparent;
   border-color: transparent;
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 .ui-btn-ghost:hover:not(:disabled) {
   background: var(--bg2);
-  color: var(--chalk-bright);
+  color: var(--ink-bright);
 }
 
 /* danger — loss border/ink; two-step confirm pattern stays a screen
@@ -85,7 +85,7 @@
 
 .ui-btn-danger:hover:not(:disabled) {
   border-color: var(--loss);
-  color: var(--chalk-bright);
+  color: var(--ink-bright);
 }
 
 .ui-btn-armed {
@@ -136,25 +136,25 @@
   padding: var(--s1) var(--s2);
   border-radius: var(--r-sm);
   background: var(--bg2);
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
   font: var(--text-data);
   font-variant-numeric: tabular-nums;
   border: none;
   white-space: nowrap;
 }
 
-/* evidence — the chalk-annotation grammar (§5): dashed = evidence, always
+/* evidence — the dashed-annotation grammar (§5): dashed = evidence, always
    interactive, jumps to the tape. Never decorative. */
 .ui-chip-evidence {
   background: transparent;
-  border-bottom: 1px dashed var(--chalk-dim);
+  border-bottom: 1px dashed var(--ink-dim);
   border-radius: 0;
   cursor: pointer;
 }
 
 .ui-chip-evidence:hover {
-  color: var(--chalk-bright);
-  border-bottom-color: var(--chalk-bright);
+  color: var(--ink-bright);
+  border-bottom-color: var(--ink-bright);
 }
 
 /* side-ct / side-t — colored TEXT only, no fills; the color IS the game
@@ -198,7 +198,7 @@
 .ui-table td {
   font: var(--text-data);
   font-variant-numeric: tabular-nums;
-  color: var(--chalk);
+  color: var(--ink);
 }
 
 .ui-table tbody tr:hover {
@@ -230,8 +230,8 @@
   border-radius: var(--r-sm);
   padding: var(--s2) var(--s3);
   font: var(--text-ui);
-  color: var(--chalk);
-  caret-color: var(--chalk);
+  color: var(--ink);
+  caret-color: var(--ink);
   transition: border-color var(--dur-fast) var(--ease);
 }
 
@@ -240,7 +240,7 @@
 }
 
 .ui-input::placeholder {
-  color: var(--chalk-faint);
+  color: var(--ink-faint);
 }
 
 .ui-input-mono {
@@ -265,7 +265,7 @@
   border: none;
   border-radius: var(--r-sm);
   background: transparent;
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
   font: var(--text-ui);
   cursor: pointer;
   transition:
@@ -274,12 +274,12 @@
 }
 
 .ui-seg-option:hover:not(.ui-seg-option-active) {
-  color: var(--chalk);
+  color: var(--ink);
 }
 
 .ui-seg-option-active {
   background: var(--bg1);
-  color: var(--chalk-bright);
+  color: var(--ink-bright);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -307,7 +307,7 @@
 .ui-empty-body {
   margin: 0;
   max-width: 420px;
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -364,7 +364,7 @@
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-float);
   font: var(--text-body);
-  color: var(--chalk);
+  color: var(--ink);
   animation: ui-toast-in var(--dur) var(--ease);
 }
 
@@ -443,7 +443,7 @@
 }
 
 .ui-import-detail {
-  color: var(--chalk-dim);
+  color: var(--ink-dim);
 }
 
 .ui-progress-track {
@@ -454,10 +454,10 @@
 }
 
 /* Progress fills are one of the two things allowed to animate position
-   (design-system.md §4) — chalk, not --ct: the fill is app chrome, not a
-   side identity. */
+   (design-system.md §4) — accent: the fill is app chrome, not a side
+   identity, and the accent is the one interaction hue. */
 .ui-progress-fill {
   height: 100%;
-  background: var(--chalk);
+  background: var(--accent);
   transition: width var(--dur) var(--ease);
 }

@@ -13,9 +13,10 @@ interface EmptyStateProps {
   className?: string;
 }
 
-// "An invitation with a next action" (design-system.md §6): Fraunces title,
-// body copy, one optional primary action. Every screen's empty/zero-result
-// state uses this — never a bare sentence (§9, §10 no-layout-shift floor).
+// "An invitation with a next action" (design-system.md §6): display-sans
+// title, body copy, one optional primary action. Every screen's
+// empty/zero-result state uses this — never a bare sentence (§9, §10
+// no-layout-shift floor).
 export function EmptyState({ title, body, action, className }: EmptyStateProps) {
   const classes = ["ui-empty", className].filter(Boolean).join(" ");
   return (

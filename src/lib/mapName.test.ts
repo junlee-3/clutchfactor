@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapName } from "./mapName";
+import { mapInitials, mapName } from "./mapName";
 
 describe("mapName", () => {
   it("strips the de_ prefix and capitalizes the first letter", () => {
@@ -36,5 +36,16 @@ describe("mapName", () => {
 
   it("returns an empty string for empty input", () => {
     expect(mapName("")).toBe("");
+  });
+});
+
+describe("mapInitials", () => {
+  it("takes the first two letters of the pretty name, uppercased", () => {
+    expect(mapInitials("de_mirage")).toBe("MI");
+    expect(mapInitials("de_dust2")).toBe("DU");
+    expect(mapInitials("cs_office")).toBe("OF");
+  });
+  it("falls back to ?? for an empty slug", () => {
+    expect(mapInitials("")).toBe("??");
   });
 });

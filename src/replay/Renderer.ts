@@ -45,7 +45,7 @@ export interface Scene {
   tickrate: number;
   focus: Set<string>; // empty = no dimming
   // Non-null only while playback sits inside a tracked_death moment's
-  // overlay window (Replay.tsx gates this) — the coach's chalk diagram for
+  // overlay window (Replay.tsx gates this) — the coach's ink diagram for
   // THAT death: dashed line to the nearest living teammate (with distance),
   // solid --loss line to the killer. null = no annotation drawn this frame.
   annotation: { victimId: string; killerId: string | null } | null;
@@ -84,13 +84,14 @@ export function draw(ctx: CanvasRenderingContext2D, scene: Scene): void {
   drawUtility(ctx, scene);
   drawBomb(ctx, scene);
   drawDeaths(ctx, scene);
-  drawAnnotation(ctx, scene);
+  const geo = annotationGeometry(scene);
+  if (geo) drawAnnotation(ctx, geo);
   drawPlayers(ctx, scene, layer);
   // The distance tag draws LAST — on top of the player dots — so it stays
   // legible over a crowded radar; the lines it labels stay underneath them
   // (§5: dashed = evidence, and evidence must read, but dots are the scene's
   // primary subject and shouldn't be occluded by furniture).
-  drawAnnotationTag(ctx, scene);
+  if (geo) drawAnnotationTag(ctx, geo);
 }
 
 function drawUtility(ctx: CanvasRenderingContext2D, scene: Scene): void {
@@ -105,12 +106,12 @@ function drawUtility(ctx: CanvasRenderingContext2D, scene: Scene): void {
       const r = 144 / scene.cal.scale;
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);
-      ctx.fillStyle = rgba("--chalk-dim", 0.35); // smoke stays neutral grey, chalk-derived
+      ctx.fillStyle = rgba("--ink-dim", 0.35); // smoke stays neutral grey, ink-derived
       ctx.fill();
       // remaining-life ring
       ctx.beginPath();
       ctx.arc(px, py, r, -Math.PI / 2, -Math.PI / 2 + life * Math.PI * 2);
-      ctx.strokeStyle = rgba("--chalk", 0.7);
+      ctx.strokeStyle = rgba("--ink", 0.7);
       ctx.lineWidth = 2;
       ctx.stroke();
     } else if (u.kind === "molly") {
@@ -237,16 +238,13 @@ function annotationGeometry(scene: Scene): AnnotationGeometry | null {
   return { victim, killer, teammate };
 }
 
-/** The two annotation lines — dashed chalk to the nearest living teammate,
+/** The two annotation lines — dashed ink to the nearest living teammate,
  *  solid --loss to the killer. Drawn under the player dots. Restraint: no
  *  glow, no arrowheads (issue #9 §5). */
-function drawAnnotation(ctx: CanvasRenderingContext2D, scene: Scene): void {
-  const geo = annotationGeometry(scene);
-  if (!geo) return;
-
+function drawAnnotation(ctx: CanvasRenderingContext2D, geo: AnnotationGeometry): void {
   if (geo.teammate) {
     ctx.setLineDash([4, 3]);
-    ctx.strokeStyle = rgba("--chalk", 0.9);
+    ctx.strokeStyle = rgba("--ink", 0.9);
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(geo.victim.u, geo.victim.v);
@@ -266,32 +264,31 @@ function drawAnnotation(ctx: CanvasRenderingContext2D, scene: Scene): void {
 }
 
 /** The teammate-distance tag: rounded --bg-tape chip, bold 8px
- *  ui-monospace (the bomb-text convention), --chalk-bright text. Drawn
+ *  ui-monospace (the bomb-text convention), --ink-bright text. Drawn
  *  after the player dots so it's never occluded by them. */
-function drawAnnotationTag(ctx: CanvasRenderingContext2D, scene: Scene): void {
-  const geo = annotationGeometry(scene);
-  if (!geo?.teammate) return;
+function drawAnnotationTag(ctx: CanvasRenderingContext2D, geo: AnnotationGeometry): void {
+  if (geo.teammate) {
+    const { u, v, label } = geo.teammate;
+    const midX = (geo.victim.u + u) / 2;
+    const midY = (geo.victim.v + v) / 2;
 
-  const { u, v, label } = geo.teammate;
-  const midX = (geo.victim.u + u) / 2;
-  const midY = (geo.victim.v + v) / 2;
+    ctx.font = "bold 8px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const textW = ctx.measureText(label).width;
+    const padX = 4;
+    const padY = 3;
+    const w = textW + padX * 2;
+    const h = 8 + padY * 2;
 
-  ctx.font = "bold 8px ui-monospace, monospace";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const textW = ctx.measureText(label).width;
-  const padX = 4;
-  const padY = 3;
-  const w = textW + padX * 2;
-  const h = 8 + padY * 2;
+    ctx.fillStyle = getToken("--bg-tape");
+    ctx.beginPath();
+    ctx.roundRect(midX - w / 2, midY - h / 2, w, h, 3);
+    ctx.fill();
 
-  ctx.fillStyle = getToken("--bg-tape");
-  ctx.beginPath();
-  ctx.roundRect(midX - w / 2, midY - h / 2, w, h, 3);
-  ctx.fill();
-
-  ctx.fillStyle = rgba("--chalk-bright", 1);
-  ctx.fillText(label, midX, midY);
+    ctx.fillStyle = rgba("--ink-bright", 1);
+    ctx.fillText(label, midX, midY);
+  }
 }
 
 function drawPlayers(
@@ -337,7 +334,7 @@ function drawPlayers(
       ctx.font = "10px -apple-system, system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      ctx.fillStyle = rgba("--chalk", 0.9);
+      ctx.fillStyle = rgba("--ink", 0.9);
       ctx.fillText(name, px, py + 9);
     }
     ctx.globalAlpha = 1;

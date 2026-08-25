@@ -9,7 +9,8 @@ const baseCss = readFileSync(new URL("../styles/base.css", import.meta.url), "ut
 
 const REQUIRED = [
   "--bg0", "--bg1", "--bg2", "--bg-tape", "--line", "--line-strong",
-  "--chalk", "--chalk-bright", "--chalk-dim", "--chalk-faint",
+  "--ink", "--ink-bright", "--ink-dim", "--ink-faint",
+  "--accent", "--accent-bright",
   "--ct", "--t", "--win", "--loss", "--tie",
   "--surface-win", "--surface-loss", "--border-win", "--border-loss",
   "--font-display", "--font-sans", "--font-mono",
@@ -28,6 +29,15 @@ describe("tokens.css contract", () => {
     expect(css).toContain("--ct:   #4aa3ff");
     expect(css).toContain("--t:    #f5b83d");
   });
+  it("is the v0 navy palette with system font stacks (spec §1)", () => {
+    expect(css).toContain("--bg0:   #0e1116");
+    expect(css).toContain("--ink:      #dfe5ec");
+    expect(css).toContain("--accent:   #4aa3ff");
+    expect(css).toMatch(/--font-sans:\s*-apple-system, "Inter", "Segoe UI", system-ui, sans-serif/);
+    expect(css).toMatch(/--font-mono:\s*ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace/);
+    expect(css).toMatch(/--font-display:\s*var\(--font-sans\)/);
+    expect(css).not.toMatch(/chalk|Fraunces|ui-serif|Georgia/);
+  });
   it("declares dark color-scheme", () => {
     expect(css).toContain("color-scheme: dark");
   });
@@ -38,5 +48,9 @@ describe("base.css contract", () => {
     expect(baseCss).toMatch(
       /\*,\s*\n\s*\*::before,\s*\n\s*\*::after\s*\{\s*\n\s*margin:\s*0;\s*\n\s*padding:\s*0;\s*\n\s*box-sizing:\s*border-box;/,
     );
+  });
+  it("bundles no fonts (ADR-0009 supersedes ADR-0007)", () => {
+    expect(baseCss).not.toContain("@font-face");
+    expect(baseCss).not.toContain("/fonts/");
   });
 });
