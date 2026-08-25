@@ -49,5 +49,11 @@ trait; the coach needs the network, batching and a cache.
 - Word numerals and entities outside the roster/callout sets are not
   validated — the prompt forbids them; the validator catches every numeric,
   roster-name, callout and tick invention.
+- What the validator provably does not catch: mis-attribution of a real
+  name or number to the wrong event ("Kit awped you" when Sam did, with
+  both in the facts), word numerals ("three teammates"), and callouts
+  outside the match's visited set (nobody stood there, so it isn't in the
+  known set). The prompt forbids all three; the owner's voice review of
+  real output (the milestone hand-verification) is what covers them.
 - A future `ClaudeNarrator` reuses the pure half unchanged; only
   `gemini.rs` is provider-specific.

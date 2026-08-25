@@ -139,7 +139,7 @@ K-D, man context), verdict + impact, match context (map, score, names), and a
 compact digest of the last N rounds' ledgers in this match (so it can say "the
 third time this half you pushed Connector without info").
 
-**Prompt.** System: the coach persona under PROMPT.md §8 voice rules (numbers
+**Prompt.** System: the coach persona under PROMPT-V1.md's voice rules (the §8 seam in PROMPT.md; the rules text is in PROMPT-V1.md) (numbers
 first, then the fix; no exclamation marks; never scold; "unusual, not wrong"
 for corpus positioning; specific — name the callout, the teammate, the
 timestamp). It may judge, prioritize, and advise from its own CS2 knowledge.
