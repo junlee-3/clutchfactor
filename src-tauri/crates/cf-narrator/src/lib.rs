@@ -71,6 +71,7 @@ impl CoachingNarrator for TemplateNarrator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::templates::narrate;
     use cf_analysis::types::{Category, Insight};
     use serde_json::json;
 
@@ -270,7 +271,8 @@ mod tests {
             n.body,
             "You committed to the trade and the follow-up never came — 4 times, rounds 3, 8, \
              11 and 16. You were the only one who re-peeked; that is a team spacing problem, \
-             not a reason to stop trading."
+             not a reason to stop trading: keep re-peeking and call the swing so the second man \
+             leaves with you."
         );
         let lower = n.body.to_lowercase();
         for blame in [
@@ -334,8 +336,8 @@ mod tests {
         assert_eq!(
             n.body,
             "You were mid-animation — throwing, reloading, swapping — for 7 of your 19 deaths \
-             (37%). The nade and the reload each cost you a second: spend it where nobody has a \
-             line on you."
+             (37%). The nade and the reload each cost you a second: step behind cover first and \
+             spend it where nobody has a line on you."
         );
     }
 
@@ -596,8 +598,8 @@ mod tests {
         assert_eq!(
             n.body,
             "3 of your smokes went out after the round had already ended. That is utility you \
-             paid for and never used — throw it while the round is still live, or keep the money \
-             for a rifle."
+             paid for and never used — throw it while the round is still live, on the crossing \
+             or the retake you are about to make."
         );
     }
 
@@ -1214,6 +1216,287 @@ mod tests {
                 c.detector,
                 n.body
             );
+        }
+    }
+
+    // ---- actionability guard (V1.3 audit) --------------------------------
+
+    /// One realistic `Insight` per `templates::narrate` arm, plus one per
+    /// phrasing variant and coaching branch where an arm has more than one
+    /// (`pick` hashes (detector, round, count); the counts below were chosen
+    /// to land on each side). The unknown-detector fallback is left out on
+    /// purpose: "Flagged 3 times this match." is a readable stub for a
+    /// detector that has no template yet, not coaching, and every detector
+    /// cf-analysis ships has an arm — see docs/design/template-audit-v1.3.md.
+    fn representative_insights() -> Vec<(&'static str, Insight)> {
+        vec![
+            (
+                "H2_ISOLATED_DEATH/a",
+                ins(
+                    "H2_ISOLATED_DEATH",
+                    json!({ "count": 5, "rule": "H2_ISOLATED_DEATH" }),
+                    json!({ "count": 5, "per_round": per_round(&[4, 7, 12, 15, 19]) }),
+                ),
+            ),
+            (
+                "H2_ISOLATED_DEATH/b",
+                ins(
+                    "H2_ISOLATED_DEATH",
+                    json!({ "count": 9, "rule": "H2_ISOLATED_DEATH" }),
+                    json!({ "count": 9, "per_round": per_round(&[2, 6, 11, 14, 17, 19, 21, 23, 24]) }),
+                ),
+            ),
+            (
+                "H2_FAILED_TRADE/a",
+                ins(
+                    "H2_FAILED_TRADE",
+                    json!({ "count": 2, "rule": "H2_FAILED_TRADE" }),
+                    json!({ "count": 2, "per_round": per_round(&[5, 9]) }),
+                ),
+            ),
+            (
+                "H2_FAILED_TRADE/b",
+                ins(
+                    "H2_FAILED_TRADE",
+                    json!({ "count": 3, "rule": "H2_FAILED_TRADE" }),
+                    json!({ "count": 3, "per_round": per_round(&[5, 9, 14]) }),
+                ),
+            ),
+            (
+                "H2_FAILED_TRADE/team-pattern",
+                ins(
+                    "H2_FAILED_TRADE",
+                    json!({ "count": 3, "rule": "H2_FAILED_TRADE", "team_pattern": true }),
+                    json!({ "count": 3, "per_round": per_round(&[5, 9, 14]) }),
+                ),
+            ),
+            (
+                "H2_BAITED_TRADE",
+                ins(
+                    "H2_BAITED_TRADE",
+                    json!({ "count": 4, "rule": "H2_BAITED_TRADE" }),
+                    json!({ "count": 4, "per_round": per_round(&[3, 8, 11, 16]) }),
+                ),
+            ),
+            (
+                "H2_BAITED_TRADE/named",
+                ins(
+                    "H2_BAITED_TRADE",
+                    json!({ "count": 2, "rule": "H2_BAITED_TRADE", "non_following_teammates": ["77"] }),
+                    json!({ "count": 2, "per_round": per_round(&[3, 8]) }),
+                ),
+            ),
+            (
+                "H2_BAITED_TRADE/team-pattern",
+                ins(
+                    "H2_BAITED_TRADE",
+                    json!({ "count": 4, "rule": "H2_BAITED_TRADE", "team_pattern": true }),
+                    json!({ "count": 4, "per_round": per_round(&[3, 8, 11, 16]) }),
+                ),
+            ),
+            (
+                "H3_VULNERABLE_DEATHS/a",
+                ins(
+                    "H3_VULNERABLE_DEATHS",
+                    json!({ "vulnerable": 6, "total_deaths": 19 }),
+                    json!({ "vulnerable": 6, "total_deaths": 19, "pct": 0.315_789_5 }),
+                ),
+            ),
+            (
+                "H3_VULNERABLE_DEATHS/b",
+                ins(
+                    "H3_VULNERABLE_DEATHS",
+                    json!({ "vulnerable": 7, "total_deaths": 19 }),
+                    json!({ "vulnerable": 7, "total_deaths": 19, "pct": 0.368_421_05 }),
+                ),
+            ),
+            (
+                "H3_WASTED_UTILITY",
+                ins(
+                    "H3_WASTED_UTILITY",
+                    json!({ "deaths_holding": 5, "total_deaths": 19 }),
+                    json!({ "deaths_holding": 5, "total_deaths": 19, "most_common_item": "Smoke Grenade" }),
+                ),
+            ),
+            (
+                "H4_KILLED_WITHOUT_CONTACT/a",
+                ins(
+                    "H4_KILLED_WITHOUT_CONTACT",
+                    json!({ "smoke_deaths": 2, "wallbang_deaths": 2 }),
+                    json!({ "smoke_deaths": 2, "wallbang_deaths": 2, "total_deaths": 19 }),
+                ),
+            ),
+            (
+                "H4_KILLED_WITHOUT_CONTACT/b",
+                ins(
+                    "H4_KILLED_WITHOUT_CONTACT",
+                    json!({ "smoke_deaths": 3, "wallbang_deaths": 2 }),
+                    json!({ "smoke_deaths": 3, "wallbang_deaths": 2, "total_deaths": 21 }),
+                ),
+            ),
+            (
+                "H4_KILLED_WITHOUT_CONTACT/smoke-only",
+                ins(
+                    "H4_KILLED_WITHOUT_CONTACT",
+                    json!({ "smoke_deaths": 3, "wallbang_deaths": 0 }),
+                    json!({ "smoke_deaths": 3, "wallbang_deaths": 0, "total_deaths": 18 }),
+                ),
+            ),
+            (
+                "H4_CAUGHT_IN_CROSSFIRE",
+                ins(
+                    "H4_CAUGHT_IN_CROSSFIRE",
+                    json!({ "count": 3 }),
+                    json!({ "count": 3 }),
+                ),
+            ),
+            (
+                "H16_UTILITY_EXPOSURE",
+                ins(
+                    "H16_UTILITY_EXPOSURE",
+                    json!({ "utility_deaths": 2, "fire_linger_episodes": 3 }),
+                    json!({ "utility_deaths": 2, "fire_linger_episodes": 3, "total_fire_damage": 87 }),
+                ),
+            ),
+            (
+                "H16_UTILITY_EXPOSURE/fire-only",
+                ins(
+                    "H16_UTILITY_EXPOSURE",
+                    json!({ "utility_deaths": 0, "fire_linger_episodes": 4 }),
+                    json!({ "utility_deaths": 0, "fire_linger_episodes": 4, "total_fire_damage": 120 }),
+                ),
+            ),
+            (
+                "D2_FLASH_EFFECTIVENESS/self-flash",
+                ins(
+                    "D2_FLASH_EFFECTIVENESS",
+                    json!({ "flashes": 9, "effective": 4, "team_flashes": 3, "conversions": 2 }),
+                    json!({ "flashes": 9, "effective_rate": 0.444, "team_flashes": 3,
+                            "self_flashes": 1, "conversions": 2 }),
+                ),
+            ),
+            (
+                "D2_FLASH_EFFECTIVENESS/team-heavy",
+                ins(
+                    "D2_FLASH_EFFECTIVENESS",
+                    json!({ "flashes": 8, "effective": 2, "team_flashes": 5, "conversions": 1 }),
+                    json!({ "flashes": 8, "team_flashes": 5, "self_flashes": 2, "conversions": 1 }),
+                ),
+            ),
+            (
+                "D2_FLASH_EFFECTIVENESS/good-rate",
+                ins(
+                    "D2_FLASH_EFFECTIVENESS",
+                    json!({ "flashes": 8, "effective": 7, "team_flashes": 0, "conversions": 4 }),
+                    json!({ "flashes": 8, "effective_rate": 0.875, "team_flashes": 0,
+                            "self_flashes": 0, "conversions": 4 }),
+                ),
+            ),
+            (
+                "D2_FLASH_EFFECTIVENESS/plain",
+                ins(
+                    "D2_FLASH_EFFECTIVENESS",
+                    json!({ "flashes": 9, "effective": 3, "team_flashes": 0, "conversions": 1 }),
+                    json!({ "flashes": 9, "effective_rate": 0.333, "self_flashes": 0 }),
+                ),
+            ),
+            (
+                "H6_UTIL_TEAM_DAMAGE",
+                ins(
+                    "H6_UTIL_TEAM_DAMAGE",
+                    json!({ "events": 3, "total_damage": 96 }),
+                    json!({ "events": 3, "total_damage": 96, "victim": "77" }),
+                ),
+            ),
+            (
+                "H6_UNUSED_UTIL_AT_ROUND_END",
+                ins(
+                    "H6_UNUSED_UTIL_AT_ROUND_END",
+                    json!({ "rounds": 5, "min_nades": 2 }),
+                    json!({ "rounds": 5 }),
+                ),
+            ),
+            (
+                "H6_DEAD_TIME_SMOKE",
+                ins(
+                    "H6_DEAD_TIME_SMOKE",
+                    json!({ "rounds": 3 }),
+                    json!({ "rounds": 3 }),
+                ),
+            ),
+            (
+                "D4_ENTRY_PROFILE",
+                ins(
+                    "D4_ENTRY_PROFILE",
+                    json!({}),
+                    json!({ "entries": 6, "entry_wins": 2, "supported": 2, "unsupported": 4,
+                            "team_entries": 14, "team_entry_wins": 5, "non_trading_on_entries": 3 }),
+                ),
+            ),
+            (
+                "D4_ENTRY_PROFILE/clean",
+                ins(
+                    "D4_ENTRY_PROFILE",
+                    json!({}),
+                    json!({ "entries": 5, "entry_wins": 4, "supported": 5, "unsupported": 0,
+                            "team_entries": 12, "non_trading_on_entries": 0 }),
+                ),
+            ),
+            (
+                "D5_TIMING/all",
+                ins(
+                    "D5_TIMING",
+                    json!({}),
+                    json!({ "early_aggressive_deaths": 4, "slow_rotations": 3, "push_without_info": 2 }),
+                ),
+            ),
+            (
+                "D5_TIMING/early-only",
+                ins(
+                    "D5_TIMING",
+                    json!({}),
+                    json!({ "early_aggressive_deaths": 3, "slow_rotations": 0, "push_without_info": 0 }),
+                ),
+            ),
+            (
+                "D5_TIMING/slow-only",
+                ins(
+                    "D5_TIMING",
+                    json!({}),
+                    json!({ "early_aggressive_deaths": 0, "slow_rotations": 3, "push_without_info": 0 }),
+                ),
+            ),
+            (
+                "D6_UNUSUAL_POSITIONING",
+                ins(
+                    "D6_UNUSUAL_POSITIONING",
+                    json!({ "phase": "mid", "side": "T", "count": 3, "map": "de_mirage" }),
+                    json!({ "rounds": [4, 9, 17], "threshold": 2, "rounds_analyzed": 24 }),
+                ),
+            ),
+        ]
+    }
+
+    /// PROMPT.md §8: every insight is coaching, not a stat — the body must
+    /// contain a concrete action verb the player can rehearse.
+    #[test]
+    fn every_insight_template_carries_a_concrete_action() {
+        const ACTION_VERBS: &[&str] = &[
+            "hold", "arrive", "throw", "wait", "swing", "trade", "rotate", "check", "peek", "stay",
+            "flash", "smoke", "walk", "clear", "push", "step", "keep", "pair", "follow", "drop",
+            "commit", "move", "save", "use", "count", "call", "let", "play", "take", "pull",
+        ];
+        for (detector, insight) in representative_insights() {
+            let n = narrate(&insight, &ctx());
+            let body = n.body.to_lowercase();
+            assert!(
+                ACTION_VERBS
+                    .iter()
+                    .any(|v| body.split(|c: char| !c.is_alphanumeric()).any(|w| w == *v)),
+                "{detector}: no action verb in body:\n{}",
+                n.body
+            );
+            assert!(!n.body.contains('!'), "{detector}: exclamation mark");
         }
     }
 }
