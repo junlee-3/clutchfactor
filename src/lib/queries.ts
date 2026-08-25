@@ -7,11 +7,15 @@ import {
   getAppSettings,
   getCoachRounds,
   getCoachSynthesis,
+  getDetectorCatalog,
   getGrid,
   getHabits,
+  getMapCallouts,
   getMatchDetail,
   getMatchReport,
+  getMatchStats,
   getRoundReview,
+  getRoundScoreboard,
   getRoundTicks,
   getTrends,
   importCorpusDemo,
@@ -79,9 +83,17 @@ export function useImportDemo(onProgress: (e: ProgressEvent) => void) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (path: string) => importDemo(path, onProgress),
-    onSuccess: () => {
+    onSuccess: (result) => {
       void client.invalidateQueries({ queryKey: ["matches"] });
       void client.invalidateQueries({ queryKey: ["tracked_player"] });
+      void client.invalidateQueries({
+        queryKey: ["match_stats", result.match_id],
+      });
+      void client.invalidateQueries({
+        queryKey: ["scoreboard", result.match_id],
+      });
+      void client.invalidateQueries({ queryKey: ["trends"] });
+      void client.invalidateQueries({ queryKey: ["map_callouts"] });
     },
   });
 }
@@ -158,6 +170,9 @@ export function useReAnalyzeMatch(onProgress: (e: ProgressEvent) => void) {
       void client.invalidateQueries({ queryKey: ["ticks", matchId] });
       void client.invalidateQueries({ queryKey: ["habits"] });
       void client.invalidateQueries({ queryKey: ["trends"] });
+      void client.invalidateQueries({ queryKey: ["match_stats", matchId] });
+      void client.invalidateQueries({ queryKey: ["scoreboard", matchId] });
+      void client.invalidateQueries({ queryKey: ["map_callouts"] });
       // A re-parse changes the facts: the coach cache hash handles the
       // regeneration, but the UI must refetch.
       void client.invalidateQueries({ queryKey: ["coach_rounds", matchId] });
@@ -255,5 +270,33 @@ export function useRegenerateCoachSynthesis() {
     onSuccess: (data, matchId) => {
       client.setQueryData(["coach_synthesis", matchId], data);
     },
+  });
+}
+
+// ---- V1.4: stats & understanding ----
+
+export function useMatchStats(matchId: number) {
+  return useQuery({
+    queryKey: ["match_stats", matchId],
+    queryFn: () => getMatchStats(matchId),
+  });
+}
+
+export function useRoundScoreboard(matchId: number, round: number | null) {
+  return useQuery({
+    queryKey: ["scoreboard", matchId, round],
+    queryFn: () => getRoundScoreboard(matchId, round),
+  });
+}
+
+export function useDetectorCatalog() {
+  return useQuery({ queryKey: ["catalog"], queryFn: getDetectorCatalog });
+}
+
+export function useMapCallouts(map: string | null) {
+  return useQuery({
+    queryKey: ["map_callouts", map],
+    queryFn: () => getMapCallouts(map as string),
+    enabled: map !== null,
   });
 }

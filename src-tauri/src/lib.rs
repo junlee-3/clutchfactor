@@ -51,7 +51,11 @@ pub fn run() {
             commands::get_coach_rounds,
             commands::regenerate_coach_round,
             commands::get_coach_synthesis,
-            commands::regenerate_coach_synthesis
+            commands::regenerate_coach_synthesis,
+            commands::get_match_stats,
+            commands::get_round_scoreboard,
+            commands::get_detector_catalog,
+            commands::get_map_callouts
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

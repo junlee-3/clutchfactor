@@ -224,6 +224,11 @@ async fn analyze_and_persist(
             );
             run_positioning(&mut store, match_id)?;
         }
+        // Non-fatal (§7): a stale callout label is far less bad than
+        // failing the whole import over it.
+        if let Err(e) = refresh_map_callouts(&mut store, &map) {
+            eprintln!("map callouts for {map}: {e}");
+        }
     }
     Ok(())
 }
@@ -1021,6 +1026,7 @@ pub struct RuleSeries {
 pub struct TrendsDto {
     pub matches: Vec<cf_store::store::TrendMatchRow>,
     pub rules: Vec<RuleSeries>,
+    pub stats: Vec<StatSeries>,
 }
 
 /// Chronological deaths/class-13 series for the tracked player's own matches,
@@ -1034,6 +1040,7 @@ pub fn get_trends(state: State<'_, AppState>) -> Result<TrendsDto, String> {
         return Ok(TrendsDto {
             matches: vec![],
             rules: vec![],
+            stats: vec![],
         });
     };
 
@@ -1086,7 +1093,21 @@ pub fn get_trends(state: State<'_, AppState>) -> Result<TrendsDto, String> {
     });
     rules.truncate(8);
 
-    Ok(TrendsDto { matches, rules })
+    let ids: Vec<i64> = matches.iter().map(|m| m.match_id).collect();
+    let by_id: HashMap<i64, cf_store::store::MatchStatsRow> = store
+        .match_stats_for_matches(&ids)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .collect();
+    let rows: Vec<Option<cf_store::store::MatchStatsRow>> =
+        ids.iter().map(|id| by_id.get(id).copied()).collect();
+    let stats = stat_series(&rows);
+
+    Ok(TrendsDto {
+        matches,
+        rules,
+        stats,
+    })
 }
 
 #[tauri::command]
@@ -1174,6 +1195,12 @@ pub async fn import_corpus_demo(
         cf_store::store::MatchKind::Corpus,
     )
     .await?;
+    {
+        let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        if let Err(e) = refresh_map_callouts(&mut store, &data.map) {
+            eprintln!("map callouts for {}: {e}", data.map);
+        }
+    }
     send(&on_progress, "done", 1.0, "Corpus import complete");
     Ok(ImportResult {
         match_id,
@@ -1885,80 +1912,16 @@ pub struct AppSettings {
     pub thresholds: Vec<ThresholdRow>,
 }
 
+/// Every tunable threshold, straight from `cf_analysis::config`'s single
+/// source of truth (the same rows `catalog::render_thresholds` resolves
+/// `{trade.isolation_u}`-style placeholders against) — row names are now
+/// dotted config paths, not prose, and count-type rows carry an empty unit;
+/// the plain-language explanations live on the Watches screen (Task 9).
 fn threshold_rows(cfg: &cf_analysis::DetectorConfig) -> Vec<ThresholdRow> {
-    let row = |name: &str, value: String, unit: &str| ThresholdRow {
-        name: name.to_string(),
-        value,
-        unit: unit.to_string(),
-    };
-    vec![
-        row("Trade window", format!("{}", cfg.trade.window_s), "s"),
-        row(
-            "Trade distance",
-            format!("{}", cfg.trade.distance_u),
-            "units",
-        ),
-        row(
-            "Isolation distance",
-            format!("{}", cfg.trade.isolation_u),
-            "units",
-        ),
-        row("Effective flash", format!("{}", cfg.flash.effective_s), "s"),
-        row(
-            "Weapon-switch window",
-            format!("{}", cfg.h3.switch_window_s),
-            "s",
-        ),
-        row(
-            "Early aggression cutoff",
-            format!("{}", cfg.timing.early_aggression_s),
-            "s",
-        ),
-        row(
-            "Habit promotion",
-            format!(
-                "{} of last {}",
-                cfg.habit.min_matches, cfg.habit.window_matches
-            ),
-            "matches",
-        ),
-        row(
-            "Positioning corpus gate",
-            format!("{}", cfg.corpus.min_demos_per_map),
-            "demos per map",
-        ),
-        row(
-            "Coach rail attention threshold",
-            format!("{}", cfg.rbr.attention_threshold_p),
-            "win-prob Δp",
-        ),
-        row(
-            "Coach rail max rounds",
-            format!("{}", cfg.rbr.max_rounds),
-            "rounds",
-        ),
-        row("ledger.setup_s", format!("{}", cfg.ledger.setup_s), "s"),
-        row(
-            "ledger.he_window_s",
-            format!("{}", cfg.ledger.he_window_s),
-            "s",
-        ),
-        row(
-            "ledger.molotov_burn_s",
-            format!("{}", cfg.ledger.molotov_burn_s),
-            "s",
-        ),
-        row(
-            "ledger.flash_join_s",
-            format!("{}", cfg.ledger.flash_join_s),
-            "s",
-        ),
-        row(
-            "ledger.sample_step_s",
-            format!("{}", cfg.ledger.sample_step_s),
-            "s",
-        ),
-    ]
+    cf_analysis::config::threshold_values(cfg)
+        .into_iter()
+        .map(|(name, value, unit)| ThresholdRow { name, value, unit })
+        .collect()
 }
 
 #[tauri::command]
@@ -2029,6 +1992,332 @@ pub fn set_tracked_override(
 pub fn delete_match(state: State<'_, AppState>, match_id: i64) -> Result<(), String> {
     let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
     store.delete_match(match_id).map_err(|e| e.to_string())
+}
+
+// ---- V1.4: stats & understanding ----
+
+#[derive(Clone, serde::Serialize)]
+pub struct MatchStatsDto {
+    pub rounds_played: u32,
+    pub kills: u32,
+    pub deaths: u32,
+    pub assists: u32,
+    pub kd: Option<f32>,
+    pub adr: Option<f32>,
+    pub hs_pct: Option<u32>,
+    pub kast_pct: Option<u32>,
+    pub entry_attempts: u32,
+    pub entry_wins: u32,
+    pub traded_deaths: u32,
+    pub trade_kills: u32,
+    pub trade_opportunities: u32,
+    pub clutch_attempts: u32,
+    pub clutch_wins: u32,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct PlayerRoundStatsDto {
+    pub round: u32,
+    pub steamid: String,
+    pub name: String,
+    pub side: String,
+    pub kills: u32,
+    pub deaths: u32,
+    pub assists: u32,
+    pub damage: u32,
+    pub headshots: u32,
+    pub survived: bool,
+    pub traded: bool,
+    pub entry: Option<String>,
+    pub tracked: bool,
+}
+
+#[derive(serde::Serialize)]
+pub struct CatalogEntryDto {
+    pub id: String,
+    pub family: String,
+    pub title: String,
+    pub watches_for: String,
+    /// Rendered against live `DetectorConfig` values — never a raw
+    /// `{placeholder}` (catalog.rs's coverage test enforces this).
+    pub thresholds: String,
+    pub class_id: Option<u8>,
+    pub example: String,
+    pub stat_links: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct ClassEntryDto {
+    pub id: u8,
+    pub name: String,
+    pub source: String,
+    pub built: bool,
+    pub why_not: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct CatalogDto {
+    pub entries: Vec<CatalogEntryDto>,
+    pub classes: Vec<ClassEntryDto>,
+    pub cannot_see: Vec<(String, String)>,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct CalloutDto {
+    pub place: String,
+    /// `cf_narrator::callouts::callout_name` — the raw `last_place` value
+    /// turned into a human label ("BombsiteA" -> "Bombsite A").
+    pub name: String,
+    pub x: f32,
+    pub y: f32,
+    pub samples: u32,
+}
+
+#[derive(serde::Serialize)]
+pub struct StatSeries {
+    /// "kd" | "adr" | "hs" | "kast" | "entry" | "trade" | "clutch"
+    pub key: String,
+    pub title: String,
+    pub unit: String,
+    pub values: Vec<Option<f32>>,
+}
+
+/// The 14 stored counters -> `cf_analysis::stats::MatchStats`, the type
+/// whose methods (`kd`/`adr`/`hs_pct`/`kast_pct`) actually compute the
+/// ratios. Shared by `stats_dto` and `stat_series` so the field mapping
+/// exists exactly once.
+fn row_to_stats(r: &cf_store::store::MatchStatsRow) -> cf_analysis::stats::MatchStats {
+    cf_analysis::stats::MatchStats {
+        rounds_played: r.rounds_played,
+        kills: r.kills,
+        deaths: r.deaths,
+        assists: r.assists,
+        damage: r.damage,
+        headshots: r.headshots,
+        kast_rounds: r.kast_rounds,
+        entry_attempts: r.entry_attempts,
+        entry_wins: r.entry_wins,
+        traded_deaths: r.traded_deaths,
+        trade_kills: r.trade_kills,
+        trade_opportunities: r.trade_opportunities,
+        clutch_attempts: r.clutch_attempts,
+        clutch_wins: r.clutch_wins,
+    }
+}
+
+fn stats_dto(s: &cf_store::store::MatchStatsRow) -> MatchStatsDto {
+    let ms = row_to_stats(s);
+    MatchStatsDto {
+        rounds_played: s.rounds_played,
+        kills: s.kills,
+        deaths: s.deaths,
+        assists: s.assists,
+        kd: ms.kd(),
+        adr: ms.adr(),
+        hs_pct: ms.hs_pct(),
+        kast_pct: ms.kast_pct(),
+        entry_attempts: s.entry_attempts,
+        entry_wins: s.entry_wins,
+        traded_deaths: s.traded_deaths,
+        trade_kills: s.trade_kills,
+        trade_opportunities: s.trade_opportunities,
+        clutch_attempts: s.clutch_attempts,
+        clutch_wins: s.clutch_wins,
+    }
+}
+
+#[tauri::command]
+pub fn get_match_stats(
+    state: State<'_, AppState>,
+    match_id: i64,
+) -> Result<Option<MatchStatsDto>, String> {
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    Ok(store
+        .load_match_stats(match_id)
+        .map_err(|e| e.to_string())?
+        .map(|s| stats_dto(&s)))
+}
+
+#[tauri::command]
+pub fn get_round_scoreboard(
+    state: State<'_, AppState>,
+    match_id: i64,
+    round: Option<u32>,
+) -> Result<Vec<PlayerRoundStatsDto>, String> {
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    let tracked = store.tracked_steamid().map_err(|e| e.to_string())?;
+    let names: HashMap<String, String> = store
+        .match_detail(match_id)
+        .map_err(|e| e.to_string())?
+        .map(|d| d.players.into_iter().map(|p| (p.steamid, p.name)).collect())
+        .unwrap_or_default();
+    Ok(store
+        .load_round_player_stats(match_id, round)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|r| PlayerRoundStatsDto {
+            name: names
+                .get(&r.steamid)
+                .cloned()
+                .unwrap_or_else(|| r.steamid.clone()),
+            tracked: tracked.as_deref() == Some(r.steamid.as_str()),
+            round: r.round,
+            steamid: r.steamid,
+            side: r.side,
+            kills: r.kills,
+            deaths: r.deaths,
+            assists: r.assists,
+            damage: r.damage,
+            headshots: r.headshots,
+            survived: r.survived,
+            traded: r.traded,
+            entry: r.entry,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn get_detector_catalog() -> CatalogDto {
+    let values = cf_analysis::config::threshold_values(&detector_config());
+    CatalogDto {
+        entries: cf_analysis::catalog::entries()
+            .iter()
+            .map(|e| CatalogEntryDto {
+                id: e.id.into(),
+                family: e.family.into(),
+                title: e.title.into(),
+                watches_for: e.watches_for.into(),
+                thresholds: cf_analysis::catalog::render_thresholds(e.thresholds, &values),
+                class_id: e.class_id,
+                example: e.example.into(),
+                stat_links: e.stat_links.iter().map(|s| s.to_string()).collect(),
+            })
+            .collect(),
+        classes: cf_analysis::catalog::classes()
+            .iter()
+            .map(|c| ClassEntryDto {
+                id: c.id,
+                name: c.name.into(),
+                source: c.source.into(),
+                built: c.built,
+                why_not: c.why_not.map(str::to_string),
+            })
+            .collect(),
+        cannot_see: cf_analysis::catalog::CANNOT_SEE
+            .iter()
+            .map(|(t, s)| (t.to_string(), s.to_string()))
+            .collect(),
+    }
+}
+
+/// Per-place median of the raw positions; places with fewer than
+/// `min_samples` rows are dropped (a label for a spot nobody stood in is
+/// noise). Even-length medians take the lower middle (a real sample, so the
+/// label sits on the map).
+pub fn callout_medians(
+    positions: &[(String, f32, f32)],
+    min_samples: u32,
+) -> Vec<cf_store::store::MapCalloutRow> {
+    let mut by_place: HashMap<&str, (Vec<f32>, Vec<f32>)> = HashMap::new();
+    for (p, x, y) in positions {
+        let e = by_place.entry(p.as_str()).or_default();
+        e.0.push(*x);
+        e.1.push(*y);
+    }
+    let mut out: Vec<cf_store::store::MapCalloutRow> = by_place
+        .into_iter()
+        .filter(|(_, (xs, _))| xs.len() as u32 >= min_samples)
+        .map(|(place, (mut xs, mut ys))| {
+            xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            ys.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let mid = (xs.len() - 1) / 2;
+            cf_store::store::MapCalloutRow {
+                place: place.to_string(),
+                x: xs[mid],
+                y: ys[mid],
+                samples: xs.len() as u32,
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| a.place.cmp(&b.place));
+    out
+}
+
+pub const CALLOUT_MIN_SAMPLES: u32 = 30;
+
+/// Recompute a map's callout labels from every match on it. Called after an
+/// own import, a corpus import and a re-analyze (cheap: 1 Hz samples).
+pub fn refresh_map_callouts(store: &mut Store, map: &str) -> Result<usize, String> {
+    let positions = store.place_positions(map).map_err(|e| e.to_string())?;
+    let rows = callout_medians(&positions, CALLOUT_MIN_SAMPLES);
+    store
+        .save_map_callouts(map, &rows)
+        .map_err(|e| e.to_string())?;
+    Ok(rows.len())
+}
+
+#[tauri::command]
+pub fn get_map_callouts(
+    state: State<'_, AppState>,
+    map: String,
+) -> Result<Vec<CalloutDto>, String> {
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    let mut out: Vec<CalloutDto> = store
+        .load_map_callouts(&map)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|r| CalloutDto {
+            name: cf_narrator::callouts::callout_name(&r.place),
+            place: r.place,
+            x: r.x,
+            y: r.y,
+            samples: r.samples,
+        })
+        .collect();
+    // Task 10 needs the densest labels first for its priority layout.
+    out.sort_by_key(|c| std::cmp::Reverse(c.samples));
+    Ok(out)
+}
+
+fn pct(n: u32, d: u32) -> Option<f32> {
+    (d > 0).then(|| (n as f32 / d as f32 * 1000.0).round() / 10.0)
+}
+
+/// One series per spec §1 stat, aligned with the trend matches; `None`
+/// where a match has no stats row (pre-V1.4 import) or the ratio is
+/// undefined.
+pub fn stat_series(rows: &[Option<cf_store::store::MatchStatsRow>]) -> Vec<StatSeries> {
+    let series =
+        |key: &str,
+         title: &str,
+         unit: &str,
+         f: &dyn Fn(&cf_store::store::MatchStatsRow) -> Option<f32>| StatSeries {
+            key: key.into(),
+            title: title.into(),
+            unit: unit.into(),
+            values: rows.iter().map(|r| r.as_ref().and_then(f)).collect(),
+        };
+    vec![
+        series("kd", "K/D", "", &|r| {
+            row_to_stats(r).kd().map(|v| (v * 100.0).round() / 100.0)
+        }),
+        series("adr", "ADR", "dmg/round", &|r| row_to_stats(r).adr()),
+        series("hs", "Headshot %", "%", &|r| {
+            row_to_stats(r).hs_pct().map(|v| v as f32)
+        }),
+        series("kast", "KAST", "%", &|r| {
+            row_to_stats(r).kast_pct().map(|v| v as f32)
+        }),
+        series("entry", "Entry wins", "%", &|r| {
+            pct(r.entry_wins, r.entry_attempts)
+        }),
+        series("trade", "Deaths traded", "%", &|r| {
+            pct(r.traded_deaths, r.deaths)
+        }),
+        series("clutch", "Clutches won", "%", &|r| {
+            pct(r.clutch_wins, r.clutch_attempts)
+        }),
+    ]
 }
 
 #[cfg(test)]
@@ -2323,5 +2612,61 @@ mod tests {
         let dto2 = timeline_dto(unknown, &narrator_ctx());
         assert_eq!(dto2.actor, Some("999999999".to_string()));
         assert_eq!(dto2.subject, None);
+    }
+
+    // ---- V1.4: stats & understanding ----------------------------------
+
+    #[test]
+    fn callout_medians_take_the_per_place_median_and_drop_thin_places() {
+        let pos: Vec<(String, f32, f32)> = vec![
+            ("BombsiteA".into(), -300.0, -1900.0),
+            ("BombsiteA".into(), -400.0, -1800.0),
+            ("BombsiteA".into(), -380.0, -1890.0),
+            ("Ladder".into(), 100.0, 100.0),
+        ];
+        let rows = callout_medians(&pos, 3);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            (
+                rows[0].place.as_str(),
+                rows[0].x,
+                rows[0].y,
+                rows[0].samples
+            ),
+            ("BombsiteA", -380.0, -1890.0, 3)
+        );
+    }
+
+    #[test]
+    fn stat_series_aligns_with_matches_and_leaves_holes() {
+        let full = cf_store::store::MatchStatsRow {
+            rounds_played: 10,
+            kills: 12,
+            deaths: 8,
+            assists: 2,
+            damage: 800,
+            headshots: 6,
+            kast_rounds: 7,
+            entry_attempts: 4,
+            entry_wins: 1,
+            traded_deaths: 2,
+            trade_kills: 1,
+            trade_opportunities: 2,
+            clutch_attempts: 2,
+            clutch_wins: 1,
+        };
+        let s = stat_series(&[Some(full), None]);
+        let kd = s.iter().find(|x| x.key == "kd").unwrap();
+        assert_eq!(kd.values, vec![Some(1.5), None]);
+        let adr = s.iter().find(|x| x.key == "adr").unwrap();
+        assert_eq!(adr.values, vec![Some(80.0), None]);
+        let entry = s.iter().find(|x| x.key == "entry").unwrap();
+        assert_eq!(entry.values, vec![Some(25.0), None]); // wins / attempts, percent
+        let trade = s.iter().find(|x| x.key == "trade").unwrap();
+        assert_eq!(trade.values, vec![Some(25.0), None]); // traded deaths / deaths, percent
+        assert_eq!(
+            s.iter().map(|x| x.key.as_str()).collect::<Vec<_>>(),
+            vec!["kd", "adr", "hs", "kast", "entry", "trade", "clutch"]
+        );
     }
 }
