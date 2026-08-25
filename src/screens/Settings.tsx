@@ -94,8 +94,8 @@ export function Settings() {
               )}
             </div>
             <p className="type-body stg-hint">
-              Applies to new imports. To re-analyze an existing match, delete
-              it in the Library and import the demo again.
+              Applies to new imports — and to any existing match you
+              Re-analyze from the Library.
             </p>
           </Card>
 
