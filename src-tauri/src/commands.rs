@@ -239,25 +239,63 @@ pub async fn import_demo(
     })
 }
 
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 pub struct ReAnalyzeResult {
-    /// True when no usable file was found: the UI must ask the user to pick
-    /// the demo and call again with `path`.
+    /// True when no usable file was found — nothing at the recorded
+    /// `source_path`, or a file there whose contents no longer match the
+    /// imported demo: the UI must ask the user to pick the demo and call
+    /// again with `path`.
     pub needs_file: bool,
     pub file_name: String,
     pub map: String,
 }
 
+/// Which file `re_analyze_match` should read, and whether the user picked
+/// it: an explicit `path` wins over the stored `source_path`; a candidate
+/// that isn't a file on disk is dropped (the caller then asks for the file).
+/// `is_file` is injected so the resolution is testable off the disk.
+fn resolve_candidate(
+    path: Option<String>,
+    source_path: Option<String>,
+    is_file: impl Fn(&str) -> bool,
+) -> Option<(String, bool)> {
+    path.map(|p| (p, true))
+        .or_else(|| source_path.map(|p| (p, false)))
+        .filter(|(p, _)| is_file(p))
+}
+
+/// What a hash mismatch means depends on who chose the file (V1.2b
+/// final-review fix wave, #4): a stale file sitting at the stored
+/// `source_path` (`from_user == false`) is "we couldn't find the demo" —
+/// `needs_file`, so the Library opens the picker instead of dead-ending on
+/// an error the user can't act on — while a file the user just picked
+/// (`from_user == true`) is refused outright rather than silently replacing
+/// the match.
+fn hash_mismatch_result(from_user: bool, file_name: &str) -> Result<ReAnalyzeResult, String> {
+    if from_user {
+        Err(format!(
+            "That file isn't {file_name} — its contents don't match the imported demo. Pick the original file."
+        ))
+    } else {
+        Ok(ReAnalyzeResult {
+            needs_file: true,
+            file_name: file_name.to_string(),
+            map: String::new(),
+        })
+    }
+}
+
 /// Re-parses a match's demo and re-runs the whole pipeline in place (V1.2b
 /// spec §2 "Backfill"). Uses the recorded `source_path`, or `path` when
 /// given; the file's hash must equal the stored `file_hash` — a different
-/// file is refused rather than silently replacing the match.
+/// file is refused rather than silently replacing the match (a mismatch at
+/// the stored path just asks for the file — see `hash_mismatch_result`).
 ///
 /// Ordering guarantee: the parse completes (and is hash-verified) before any
-/// row changes; old analysis rows are cleared before `analyze_and_persist`
-/// runs, so a partial failure past that point leaves the match analysis-less
-/// (like a fresh import), never contradictory (new parsed rows next to old
-/// analysis rows).
+/// row changes; `replace_match_data` then swaps the parsed rows AND clears
+/// the old analysis rows in one transaction, so a partial failure past that
+/// point leaves the match analysis-less (like a fresh import), never
+/// contradictory (new parsed rows next to old analysis rows).
 #[tauri::command]
 pub async fn re_analyze_match(
     state: State<'_, AppState>,
@@ -272,10 +310,10 @@ pub async fn re_analyze_match(
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "That match is no longer in the library.".to_string())?
     };
-    let candidate = path
-        .or(file.source_path.clone())
-        .filter(|p| std::path::Path::new(p).is_file());
-    let Some(demo_path) = candidate else {
+    let candidate = resolve_candidate(path, file.source_path.clone(), |p| {
+        std::path::Path::new(p).is_file()
+    });
+    let Some((demo_path, from_user)) = candidate else {
         return Ok(ReAnalyzeResult {
             needs_file: true,
             file_name: file.file_name,
@@ -287,10 +325,7 @@ pub async fn re_analyze_match(
     let hash_path = PathBuf::from(&demo_path);
     let file_hash = hash_demo(&hash_path).await?;
     if file_hash != file.file_hash {
-        return Err(format!(
-            "That file isn't {} — its contents don't match the imported demo. Pick the original file.",
-            file.file_name
-        ));
+        return hash_mismatch_result(from_user, &file.file_name);
     }
 
     send(&on_progress, "parsing", 0.05, "Parsing demo");
@@ -301,24 +336,16 @@ pub async fn re_analyze_match(
     let map = data.map.clone();
     {
         let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        // Also clears rule_flags/insights/death_class/round_review/
+        // round_plays in the same transaction (cf-store
+        // `MATCH_ANALYSIS_TABLES`), so a failure in `analyze_and_persist`
+        // below can't leave the fresh rows beside a stale analysis.
         store
             .replace_match_data(match_id, &data)
             .map_err(|e| format!("failed to replace match data: {e}"))?;
         store
             .set_source_path(match_id, &demo_path)
             .map_err(|e| e.to_string())?;
-        // Clear the old analysis before re-analyzing: otherwise a failure in
-        // `analyze_and_persist` below would leave the freshly parsed rows
-        // sitting beside a stale rule_flags/insights/death_class/round_review/
-        // round_plays run — a user-visible contradiction. An empty output/row
-        // list is the existing DELETE+INSERT replace path, so this just
-        // deletes.
-        store
-            .save_analysis(match_id, &cf_analysis::AnalysisOutput::default())
-            .map_err(|e| format!("failed to clear old analysis: {e}"))?;
-        store
-            .save_round_reviews(match_id, &[])
-            .map_err(|e| format!("failed to clear old reviews: {e}"))?;
     }
     if let Err(e) = analyze_and_persist(&state, match_id, data, &on_progress).await {
         return Err(format!(
@@ -1293,20 +1320,26 @@ fn moment_kind_matches(moment_kind: &str, play_kind: &str) -> bool {
     )
 }
 
-/// One ledger play, narrated into its DTO. `delta_p` comes from the
-/// ADR-0008 engine only: joined here by tick to this round's review
-/// moments (kill/death/plant/defuse) via `moment_kind_matches` — never
-/// computed by this function.
+/// One ledger play, narrated into its DTO — `None` for a fact-less `flag`
+/// play (`should_suppress_flag_moment`: the same silence the moments path
+/// applies, so the ledger never renders a bare rule label either; V1.2b
+/// final-review fix wave, #6). `delta_p` comes from the ADR-0008 engine
+/// only: joined here by tick to this round's review moments
+/// (kill/death/plant/defuse) via `moment_kind_matches` — never computed by
+/// this function.
 fn play_dto(
     mut p: cf_analysis::play_ledger::Play,
     moments: &[cf_analysis::round_review::Moment],
     ctx: &cf_narrator::MatchContext,
-) -> PlayDto {
+) -> Option<PlayDto> {
     p.delta_p = moments
         .iter()
         .find(|m| m.tick == p.tick && moment_kind_matches(&m.kind, &p.kind))
         .and_then(|m| m.delta_p);
     let t = cf_narrator::plays::narrate_play(&p, ctx);
+    if should_suppress_flag_moment(&p.kind, &t.facts) {
+        return None;
+    }
     let killer = p
         .facts
         .get("killer")
@@ -1316,7 +1349,7 @@ fn play_dto(
         .iter()
         .filter_map(|k| p.facts.get(*k).and_then(|v| v.as_str()).map(str::to_string))
         .collect();
-    PlayDto {
+    Some(PlayDto {
         tick: p.tick,
         kind: p.kind.clone(),
         phase: p.phase.clone(),
@@ -1331,7 +1364,7 @@ fn play_dto(
         delta_p: p.delta_p,
         focus,
         killer,
-    }
+    })
 }
 
 /// One ledger timeline event, with `actor`/`subject` steamids resolved to
@@ -1527,7 +1560,7 @@ pub fn get_round_review(
             })
             .unwrap_or_default()
             .into_iter()
-            .map(|p| play_dto(p, &moments, &ctx))
+            .filter_map(|p| play_dto(p, &moments, &ctx))
             .collect();
         let timeline: Vec<TimelineDto> = ledger_by_round
             .get(&row.round)
@@ -1868,7 +1901,9 @@ mod tests {
 
         let matching = [rr_moment(500, "tracked_death", Some(-0.23))];
         assert_eq!(
-            play_dto(death.clone(), &matching, &narrator_ctx()).delta_p,
+            play_dto(death.clone(), &matching, &narrator_ctx())
+                .expect("play")
+                .delta_p,
             Some(-0.23)
         );
 
@@ -1876,13 +1911,20 @@ mod tests {
         // tracked_death — kind must match too, not just the tick.
         let wrong_kind = [rr_moment(500, "tracked_kill", Some(0.5))];
         assert_eq!(
-            play_dto(death.clone(), &wrong_kind, &narrator_ctx()).delta_p,
+            play_dto(death.clone(), &wrong_kind, &narrator_ctx())
+                .expect("play")
+                .delta_p,
             None
         );
 
         // No moment shares the tick at all.
         let no_match = [rr_moment(600, "tracked_death", Some(-0.9))];
-        assert_eq!(play_dto(death, &no_match, &narrator_ctx()).delta_p, None);
+        assert_eq!(
+            play_dto(death, &no_match, &narrator_ctx())
+                .expect("play")
+                .delta_p,
+            None
+        );
     }
 
     #[test]
@@ -1893,7 +1935,7 @@ mod tests {
             json!({"victim": "1", "killer": "9", "nearest_teammate": "2"}),
             None,
         );
-        let dto = play_dto(death, &[], &narrator_ctx());
+        let dto = play_dto(death, &[], &narrator_ctx()).expect("play");
         assert_eq!(
             dto.focus,
             vec!["1".to_string(), "9".to_string(), "2".to_string()]
@@ -1901,7 +1943,7 @@ mod tests {
         assert_eq!(dto.killer, Some("9".to_string()));
 
         let trade = play(100, "trade", json!({"teammate": "2", "killer": "9"}), None);
-        let dto2 = play_dto(trade, &[], &narrator_ctx());
+        let dto2 = play_dto(trade, &[], &narrator_ctx()).expect("play");
         assert_eq!(dto2.focus, vec!["9".to_string(), "2".to_string()]);
         assert_eq!(dto2.killer, Some("9".to_string()));
     }
@@ -1911,21 +1953,96 @@ mod tests {
         use cf_analysis::play_ledger::Quality;
         let good = play(100, "flash", json!({}), Some(Quality::Good));
         assert_eq!(
-            play_dto(good, &[], &narrator_ctx()).quality,
+            play_dto(good, &[], &narrator_ctx()).expect("play").quality,
             Some("good".to_string())
         );
         let bad = play(100, "flash", json!({}), Some(Quality::Bad));
         assert_eq!(
-            play_dto(bad, &[], &narrator_ctx()).quality,
+            play_dto(bad, &[], &narrator_ctx()).expect("play").quality,
             Some("bad".to_string())
         );
         let neutral = play(100, "flash", json!({}), Some(Quality::Neutral));
         assert_eq!(
-            play_dto(neutral, &[], &narrator_ctx()).quality,
+            play_dto(neutral, &[], &narrator_ctx())
+                .expect("play")
+                .quality,
             Some("neutral".to_string())
         );
         let none = play(100, "flash", json!({}), None);
-        assert_eq!(play_dto(none, &[], &narrator_ctx()).quality, None);
+        assert_eq!(
+            play_dto(none, &[], &narrator_ctx()).expect("play").quality,
+            None
+        );
+    }
+
+    /// V1.2b final-review fix wave, #6: the ledger path applies the same
+    /// silence as the moments path — a `flag` play whose narrated facts
+    /// came out empty (`H6_DEAD_TIME_SMOKE`'s schema carries nothing to
+    /// show) is dropped rather than rendered as a bare rule label.
+    #[test]
+    fn play_dto_suppresses_a_fact_less_flag_play() {
+        use cf_analysis::play_ledger::Quality;
+        let mut dead_time = play(100, "flag", json!({"round": 7}), Some(Quality::Bad));
+        dead_time.rule_id = Some("H6_DEAD_TIME_SMOKE".to_string());
+        assert!(play_dto(dead_time, &[], &narrator_ctx()).is_none());
+
+        let mut unused = play(
+            100,
+            "flag",
+            json!({"round": 7, "held": ["Flashbang"]}),
+            Some(Quality::Bad),
+        );
+        unused.rule_id = Some("H6_UNUSED_UTIL_AT_ROUND_END".to_string());
+        let dto = play_dto(unused, &[], &narrator_ctx()).expect("a flag with facts ships");
+        assert_eq!(dto.facts, vec!["1 held: Flashbang".to_string()]);
+
+        // Non-flag kinds ship even with nothing to say.
+        let plant = play(100, "plant", json!({}), None);
+        assert!(play_dto(plant, &[], &narrator_ctx()).is_some());
+    }
+
+    // ---- re_analyze_match resolution (V1.2b final-review fix wave, #4) ----
+
+    #[test]
+    fn resolve_candidate_prefers_the_users_pick_and_drops_missing_files() {
+        let exists = |_: &str| true;
+        assert_eq!(
+            resolve_candidate(None, Some("/demos/a.dem".into()), exists),
+            Some(("/demos/a.dem".to_string(), false)),
+            "the stored source_path is not the user's pick"
+        );
+        assert_eq!(
+            resolve_candidate(
+                Some("/picked/a.dem".into()),
+                Some("/demos/a.dem".into()),
+                exists
+            ),
+            Some(("/picked/a.dem".to_string(), true)),
+            "an explicit path wins and is the user's pick"
+        );
+        assert_eq!(resolve_candidate(None, None, exists), None);
+        let missing = |_: &str| false;
+        assert_eq!(
+            resolve_candidate(None, Some("/demos/gone.dem".into()), missing),
+            None,
+            "a stored path that no longer exists asks for the file"
+        );
+        assert_eq!(
+            resolve_candidate(Some("/picked/gone.dem".into()), None, missing),
+            None
+        );
+    }
+
+    #[test]
+    fn hash_mismatch_at_the_stored_path_asks_for_the_file_but_a_users_pick_is_refused() {
+        let stale = hash_mismatch_result(false, "a.dem").expect("needs_file, not an error");
+        assert!(stale.needs_file);
+        assert_eq!(stale.file_name, "a.dem");
+        assert_eq!(stale.map, "");
+
+        let err = hash_mismatch_result(true, "a.dem").expect_err("a wrong pick is refused");
+        assert!(err.contains("That file isn't a.dem"), "{err}");
+        assert!(err.contains("Pick the original file."), "{err}");
     }
 
     #[test]

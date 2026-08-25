@@ -1661,8 +1661,6 @@ fn insert_match_children(
 }
 
 /// Tables that hang off `matches(id)` and are rewritten by a re-parse.
-/// Analysis tables (rule_flags, insights, death_class, round_review,
-/// round_plays) are replaced by their own save_* calls afterwards.
 const MATCH_CHILD_TABLES: &[&str] = &[
     "players",
     "rounds",
@@ -1678,6 +1676,19 @@ const MATCH_CHILD_TABLES: &[&str] = &[
     "inventories",
 ];
 
+/// Analysis tables — everything `save_analysis` and `save_round_reviews`
+/// write. `replace_match_data` clears them in the SAME transaction as the
+/// child-table swap (V1.2b final-review fix wave, #8), so a re-parse can
+/// never commit new parsed rows beside an old analysis; the caller re-runs
+/// the pipeline afterwards.
+const MATCH_ANALYSIS_TABLES: &[&str] = &[
+    "rule_flags",
+    "insights",
+    "death_class",
+    "round_review",
+    "round_plays",
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MatchFile {
     pub file_name: String,
@@ -1687,7 +1698,10 @@ pub struct MatchFile {
 
 impl Store {
     /// Re-parse support (V1.2b): replaces a match's parsed rows in place —
-    /// same `id`, so report/replay URLs and cross-match keys survive.
+    /// same `id`, so report/replay URLs and cross-match keys survive — and
+    /// clears the match's analysis rows (`MATCH_ANALYSIS_TABLES`) in the
+    /// same transaction: after this commits the match is analysis-less,
+    /// like a fresh import, never a new parse beside an old analysis.
     pub fn replace_match_data(&mut self, id: i64, data: &MatchData) -> Result<(), StoreError> {
         let (roster_a, roster_b, wins_a, wins_b) = derive_score(&data.rounds);
         let roster_json = |r: &[u64]| {
@@ -1695,7 +1709,7 @@ impl Store {
                 .expect("roster json")
         };
         let tx = self.conn.transaction()?;
-        for table in MATCH_CHILD_TABLES {
+        for table in MATCH_CHILD_TABLES.iter().chain(MATCH_ANALYSIS_TABLES) {
             tx.execute(&format!("DELETE FROM {table} WHERE match_id = ?1"), [id])?;
         }
         tx.execute(
@@ -2000,6 +2014,76 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
+        // The previous parse's analysis: a flag, an insight, a death class,
+        // a one-round ledger and a review row — all of which must be gone
+        // after the replace, atomically with the child-table swap (V1.2b
+        // final-review fix wave, #8).
+        let analysis = cf_analysis::AnalysisOutput {
+            flags: vec![cf_analysis::RuleFlag {
+                rule_id: "H2_ISOLATED_DEATH",
+                round: 2,
+                tick: 2200,
+                steamid: 1,
+                confidence: 0.75,
+                severity: 0.8,
+                details: serde_json::json!({}),
+                evidence: cf_analysis::EvidenceRef {
+                    round: 2,
+                    tick_start: 1880,
+                    tick_end: 2328,
+                    focus_players: vec![1],
+                    camera_hint: None,
+                },
+            }],
+            insights: vec![cf_analysis::Insight {
+                detector: "H2_ISOLATED_DEATH".into(),
+                category: cf_analysis::Category::Deaths,
+                severity: 0.8,
+                confidence: 0.75,
+                round: 0,
+                player: 1,
+                title_data: serde_json::json!({"count": 1}),
+                metrics: serde_json::json!({"count": 1}),
+                evidence: vec![],
+            }],
+            death_classes: vec![cf_analysis::DeathClassRow {
+                round: 2,
+                tick: 2200,
+                victim: 1,
+                class_id: 6,
+                class_source: "H2_ISOLATED_DEATH".into(),
+                secondary_tags: vec![],
+                confidence: 0.75,
+            }],
+            ledger: vec![cf_analysis::play_ledger::RoundLedger {
+                round: 1,
+                plays: vec![],
+                timeline: vec![],
+            }],
+        };
+        store.save_analysis(match_id, &analysis).unwrap();
+        store
+            .save_round_reviews(
+                match_id,
+                &[RoundReviewRow {
+                    round: 1,
+                    impact: 0.1,
+                    verdict: "quiet".to_string(),
+                    attention: "none".to_string(),
+                    selected: false,
+                    pivotal_tick: 1200,
+                    header_json: "{}".to_string(),
+                    moments_json: "[]".to_string(),
+                    cfg_fingerprint: cf_analysis::round_review::cfg_fingerprint(
+                        &cf_analysis::config::RbrCfg::default(),
+                    ),
+                }],
+            )
+            .unwrap();
+        assert_eq!(store.load_round_plays(match_id).unwrap().len(), 1);
+        assert_eq!(store.flags_for_match(match_id).unwrap().len(), 1);
+        assert_eq!(store.load_round_reviews(match_id).unwrap().len(), 1);
+
         // A re-parse of the "same" demo with one extra kill.
         data.kills.push(cf_parser::model::Kill {
             tick: before.rounds[0].start_tick + 500,
@@ -2027,6 +2111,17 @@ mod tests {
         let f = store.match_file(match_id).unwrap().unwrap();
         assert_eq!(f.file_hash, before_hash);
         assert_eq!(f.source_path, None);
+        assert!(
+            store.load_round_plays(match_id).unwrap().is_empty(),
+            "the old ledger must not survive the re-parse"
+        );
+        assert!(
+            store.flags_for_match(match_id).unwrap().is_empty(),
+            "the old flags must not survive the re-parse"
+        );
+        assert!(store.insights_for_match(match_id).unwrap().is_empty());
+        assert!(store.death_classes_for_match(match_id).unwrap().is_empty());
+        assert!(store.load_round_reviews(match_id).unwrap().is_empty());
     }
 
     #[test]
