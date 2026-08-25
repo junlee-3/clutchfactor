@@ -156,3 +156,13 @@ describe("stripeTone", () => {
     expect(stripeTone({ delta_p: null, rule_id: null })).toBe("neutral");
   });
 });
+
+describe("activeMomentIndex over ledger plays", () => {
+  const plays = [{ tick: 1320 }, { tick: 2000 }, { tick: 2000 }, { tick: 5000 }];
+  it("last play at or before the scrubber, ties resolve to the later row", () => {
+    expect(activeMomentIndex(plays, 1000)).toBe(-1);
+    expect(activeMomentIndex(plays, 1320)).toBe(0);
+    expect(activeMomentIndex(plays, 2000)).toBe(2);
+    expect(activeMomentIndex(plays, 9999)).toBe(3);
+  });
+});

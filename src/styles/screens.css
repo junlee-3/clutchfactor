@@ -1105,6 +1105,11 @@
   color: var(--ink-dim);
 }
 
+.rpl-rail-hint {
+  margin: var(--s2) 0 0;
+  color: var(--ink-faint);
+}
+
 .rpl-rail-footer {
   display: grid;
   grid-template-columns: 1fr 1fr;
