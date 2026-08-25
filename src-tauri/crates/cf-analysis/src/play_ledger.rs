@@ -18,6 +18,7 @@ use serde_json::{json, Value};
 
 use crate::config::DetectorConfig;
 use crate::context::{AnalysisContext, RoundPhase};
+use crate::families::flash_util::{flash_groups, FlashGroup};
 use crate::families::h2::killed_in;
 use crate::types::RuleFlag;
 
@@ -77,6 +78,7 @@ pub fn build_ledger(
             let mut plays: Vec<Play> = vec![];
             plays.extend(setup_play(ctx, cfg, round, side));
             plays.extend(engagement_plays(ctx, cfg, round, side));
+            plays.extend(utility_plays(ctx, cfg, round, side));
             plays.extend(bomb_plays(ctx, cfg, round));
             plays.extend(outcome_play(ctx, cfg, round, side));
             merge_flags(ctx, cfg, round, tracked, &mut plays, flags);
@@ -424,6 +426,177 @@ fn outcome_play(
         }),
         None,
     ))
+}
+
+// ---- utility plays --------------------------------------------------------
+
+const FIRE_WEAPONS: &[&str] = &["inferno", "molotov", "incgrenade"];
+
+fn ids(v: &[u64]) -> Vec<String> {
+    v.iter().map(|s| s.to_string()).collect()
+}
+
+/// Enemy / team / self damage dealt by the tracked player with `weapons`
+/// in [t0, t1], plus the enemy victims hit.
+fn damage_split(
+    ctx: &AnalysisContext,
+    round: &Round,
+    side: Side,
+    t0: i32,
+    t1: i32,
+    weapons: &[&str],
+) -> (i32, i32, i32, Vec<String>) {
+    let tracked = ctx.tracked();
+    let (mut enemy, mut team, mut me) = (0, 0, 0);
+    let mut victims: Vec<String> = vec![];
+    for h in ctx.hurts_dealt_in(tracked, t0, t1) {
+        if h.dmg_health < 1 || !weapons.contains(&h.weapon.as_str()) {
+            continue;
+        }
+        if h.victim == tracked {
+            me += h.dmg_health;
+            continue;
+        }
+        match ctx.side_of(h.victim, round.number) {
+            Some(s) if s == side => team += h.dmg_health,
+            Some(_) => {
+                enemy += h.dmg_health;
+                let id = h.victim.to_string();
+                if !victims.contains(&id) {
+                    victims.push(id);
+                }
+            }
+            None => {}
+        }
+    }
+    (enemy, team, me, victims)
+}
+
+fn utility_plays(
+    ctx: &AnalysisContext,
+    cfg: &DetectorConfig,
+    round: &Round,
+    side: Side,
+) -> Vec<Play> {
+    let tracked = ctx.tracked();
+    let end = span_end(round);
+    let join = ctx.seconds(cfg.ledger.flash_join_s);
+    let groups: Vec<FlashGroup> = flash_groups(ctx, cfg)
+        .into_iter()
+        .filter(|g| g.round == round.number)
+        .collect();
+    let mut used: Vec<usize> = vec![];
+    let mut out = vec![];
+    let grenades = &ctx.data().grenades;
+    for g in grenades
+        .iter()
+        .filter(|g| g.thrower == Some(tracked) && g.tick >= round.start_tick && g.tick <= end)
+    {
+        let phase = phase_of(ctx, cfg, round.number, g.tick);
+        let place = ctx.state_at(tracked, g.tick).and_then(|s| s.place);
+        match g.kind.as_str() {
+            "flashbang" => {
+                // Left-join the detonate to its blind group (spec §2: a
+                // flash that blinded nobody is a dud, not invisible).
+                let grp = groups
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, fg)| !used.contains(i) && (fg.tick - g.tick).abs() <= join)
+                    .min_by_key(|(_, fg)| (fg.tick - g.tick).abs());
+                let (enemies, mates, self_blind, converted) = match grp {
+                    Some((i, fg)) => {
+                        used.push(i);
+                        (
+                            fg.enemies_effective.clone(),
+                            fg.teammates_blinded.clone(),
+                            fg.self_blind,
+                            fg.converted,
+                        )
+                    }
+                    None => (vec![], vec![], false, false),
+                };
+                let quality = if !mates.is_empty() || self_blind {
+                    Quality::Bad
+                } else if !enemies.is_empty() {
+                    Quality::Good
+                } else {
+                    Quality::Neutral
+                };
+                out.push(play(
+                    g.tick,
+                    phase,
+                    "flash",
+                    json!({
+                        "enemies_blinded": enemies.len(),
+                        "enemy_ids": ids(&enemies),
+                        "teammates_blinded": mates.len(),
+                        "teammate_ids": ids(&mates),
+                        "self_blind": self_blind,
+                        "converted": converted,
+                        "place": place,
+                        "x": g.x,
+                        "y": g.y,
+                    }),
+                    Some(quality),
+                ));
+            }
+            "smoke" => {
+                let dead_time = g.tick > round.end_tick;
+                let lifetime_s = grenades
+                    .iter()
+                    .find(|e| {
+                        e.kind == "smoke_expired"
+                            && e.thrower == Some(tracked)
+                            && e.tick > g.tick
+                            && (e.x - g.x).abs() < 1.0
+                            && (e.y - g.y).abs() < 1.0
+                    })
+                    .map(|e| secs_1dp(e.tick - g.tick, ctx.data().tickrate));
+                out.push(play(
+                    g.tick,
+                    phase,
+                    "smoke",
+                    json!({ "x": g.x, "y": g.y, "place": place, "dead_time": dead_time, "lifetime_s": lifetime_s }),
+                    dead_time.then_some(Quality::Bad),
+                ));
+            }
+            "he" => {
+                let t1 = g.tick + ctx.seconds(cfg.ledger.he_window_s);
+                let (enemy, team, me, victims) =
+                    damage_split(ctx, round, side, g.tick, t1, &["hegrenade"]);
+                out.push(play(
+                    g.tick,
+                    phase,
+                    "he",
+                    json!({ "enemy_damage": enemy, "team_damage": team, "self_damage": me, "victims": victims, "x": g.x, "y": g.y }),
+                    (team > 0).then_some(Quality::Bad),
+                ));
+            }
+            "molotov_start" => {
+                let expire = grenades
+                    .iter()
+                    .find(|e| {
+                        e.kind == "molotov_expire" && e.thrower == Some(tracked) && e.tick > g.tick
+                    })
+                    .map(|e| e.tick)
+                    .unwrap_or(g.tick + ctx.seconds(cfg.ledger.molotov_burn_s));
+                let (enemy, team, me, victims) =
+                    damage_split(ctx, round, side, g.tick, expire, FIRE_WEAPONS);
+                out.push(play(
+                    g.tick,
+                    phase,
+                    "molotov",
+                    json!({
+                        "enemy_damage": enemy, "team_damage": team, "self_damage": me, "victims": victims,
+                        "burn_s": secs_1dp(expire - g.tick, ctx.data().tickrate), "x": g.x, "y": g.y,
+                    }),
+                    (team > 0).then_some(Quality::Bad),
+                ));
+            }
+            _ => {}
+        }
+    }
+    out
 }
 
 // ---- flags + finalization -------------------------------------------------
@@ -784,5 +957,91 @@ mod tests {
             .build();
         let ctx = AnalysisContext::new(&spectator, ME);
         assert!(build_ledger(&ctx, &DetectorConfig::default(), &[]).is_empty());
+    }
+
+    #[test]
+    fn flash_that_blinds_an_enemy_is_good_and_a_dud_is_neutral() {
+        let data = base()
+            .grenade("flashbang", ME, 2000, 300.0, 0.0)
+            .blind(ME, ENEMY, 2002, 2.0)
+            .grenade("flashbang", ME, 2600, 300.0, 0.0) // nobody blinded
+            .build();
+        let l = ledger_for(&data, &[]);
+        let flashes: Vec<&Play> = l.plays.iter().filter(|p| p.kind == "flash").collect();
+        assert_eq!(flashes.len(), 2);
+        assert_eq!(flashes[0].tick, 2000);
+        assert_eq!(flashes[0].facts["enemies_blinded"], 1);
+        assert_eq!(flashes[0].facts["enemy_ids"][0], "9");
+        assert_eq!(flashes[0].facts["teammates_blinded"], 0);
+        assert_eq!(flashes[0].quality, Some(Quality::Good));
+        assert_eq!(flashes[1].tick, 2600);
+        assert_eq!(flashes[1].facts["enemies_blinded"], 0);
+        assert_eq!(
+            flashes[1].quality,
+            Some(Quality::Neutral),
+            "a dud is a fact, not invisible"
+        );
+    }
+
+    #[test]
+    fn team_or_self_flash_is_bad_and_conversion_is_recorded() {
+        let data = base()
+            .grenade("flashbang", ME, 2000, 300.0, 0.0)
+            .blind(ME, MATE, 2000, 1.5)
+            .blind(ME, ENEMY, 2000, 2.0)
+            .kill(ME, ENEMY, 1, 2064, "weapon_ak47")
+            .build();
+        let l = ledger_for(&data, &[]);
+        let f = find_play(&l, "flash");
+        assert_eq!(f.facts["teammates_blinded"], 1);
+        assert_eq!(f.facts["converted"], true);
+        assert_eq!(
+            f.quality,
+            Some(Quality::Bad),
+            "a team flash is bad even when it converts"
+        );
+    }
+
+    #[test]
+    fn smoke_after_the_round_is_decided_is_dead_time() {
+        let data = base()
+            .grenade("smoke", ME, 1500, 100.0, 100.0)
+            .grenade("smoke_expired", ME, 1500 + 64 * 18, 100.0, 100.0)
+            .grenade("smoke", ME, 5064, 900.0, 900.0) // end_tick 5000, officially 5128
+            .build();
+        let l = ledger_for(&data, &[]);
+        let smokes: Vec<&Play> = l.plays.iter().filter(|p| p.kind == "smoke").collect();
+        assert_eq!(smokes.len(), 2);
+        assert_eq!(smokes[0].facts["dead_time"], false);
+        assert_eq!(smokes[0].facts["lifetime_s"], 18.0);
+        assert!(
+            smokes[0].quality.is_none(),
+            "a live smoke's worth is the coach's call"
+        );
+        assert_eq!(smokes[1].facts["dead_time"], true);
+        assert_eq!(smokes[1].quality, Some(Quality::Bad));
+    }
+
+    #[test]
+    fn he_and_molotov_damage_is_split_by_side() {
+        let data = base()
+            .grenade("he", ME, 2000, 3900.0, 0.0)
+            .hurt(ME, ENEMY, 2001, 41, "hegrenade")
+            .grenade("molotov_start", ME, 3000, 400.0, 0.0)
+            .hurt(ME, MATE, 3010, 12, "inferno")
+            .hurt(ME, ENEMY, 3040, 30, "inferno")
+            .grenade("molotov_expire", ME, 3000 + 64 * 6, 400.0, 0.0)
+            .build();
+        let l = ledger_for(&data, &[]);
+        let he = find_play(&l, "he");
+        assert_eq!(he.facts["enemy_damage"], 41);
+        assert_eq!(he.facts["team_damage"], 0);
+        assert_eq!(he.facts["victims"][0], "9");
+        assert!(he.quality.is_none(), "damage stands alone");
+        let m = find_play(&l, "molotov");
+        assert_eq!(m.facts["enemy_damage"], 30);
+        assert_eq!(m.facts["team_damage"], 12);
+        assert_eq!(m.facts["burn_s"], 6.0);
+        assert_eq!(m.quality, Some(Quality::Bad));
     }
 }
