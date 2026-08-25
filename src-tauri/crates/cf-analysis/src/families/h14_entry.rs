@@ -149,22 +149,22 @@ impl Detector for H14EntryStructure {
 }
 
 /// One round's opening duel, resolved to its T-side "entry player".
-struct EntryInfo {
-    round: u32,
-    tick: i32,
-    entry_player: u64,
-    opponent: u64,
-    killer: u64,
-    won: bool,
-    supported: bool,
-    nearest_teammate: Option<(u64, f32)>,
+pub(crate) struct EntryInfo {
+    pub(crate) round: u32,
+    pub(crate) tick: i32,
+    pub(crate) entry_player: u64,
+    pub(crate) opponent: u64,
+    pub(crate) killer: u64,
+    pub(crate) won: bool,
+    pub(crate) supported: bool,
+    pub(crate) nearest_teammate: Option<(u64, f32)>,
 }
 
 /// Every round's opening duel (spec: first kill with both sides known,
 /// within the opening window), resolved to its entry player and support
 /// status. Rounds with no qualifying kill, or with the entry player's
 /// position unknown, are silently omitted (bias to silence).
-fn round_entries(ctx: &AnalysisContext, cfg: &DetectorConfig) -> Vec<EntryInfo> {
+pub(crate) fn round_entries(ctx: &AnalysisContext, cfg: &DetectorConfig) -> Vec<EntryInfo> {
     let mut out = vec![];
     for round in &ctx.data().rounds {
         let window_end = round.freeze_end_tick.unwrap_or(round.start_tick)

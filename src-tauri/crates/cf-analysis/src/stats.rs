@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::DetectorConfig;
 use crate::context::AnalysisContext;
+use crate::families::h14_entry::round_entries;
 use crate::families::h2::killed_in;
+use crate::play_ledger::RoundLedger;
 use cf_parser::model::{Round, Side};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -88,7 +90,7 @@ pub fn round_player_rows(ctx: &AnalysisContext, cfg: &DetectorConfig) -> Vec<Rou
                     deaths += 1;
                     if let Some(killer) = k.attacker.filter(|a| *a != *sid) {
                         if side_of(killer).is_some_and(|ks| ks != *side) {
-                            traded = killed_in(ctx, killer, k.tick, k.tick + commit_w);
+                            traded = traded || killed_in(ctx, killer, k.tick, k.tick + commit_w);
                         }
                     }
                 }
@@ -115,6 +117,163 @@ pub fn round_player_rows(ctx: &AnalysisContext, cfg: &DetectorConfig) -> Vec<Rou
         }
     }
     out
+}
+
+/// The tracked player's match totals (docs/spec/stats-and-understanding.md
+/// §1): KAST, opening-duel entries (both sides, via H14's finder), trade
+/// rate (from the play ledger) and clutch attempts/wins (kill-state
+/// replay). Also fills `entry` on `rows` for BOTH opening-duel participants.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct MatchStats {
+    pub rounds_played: u32,
+    pub kills: u32,
+    pub deaths: u32,
+    pub assists: u32,
+    pub damage: u32,
+    pub headshots: u32,
+    pub kast_rounds: u32,
+    pub entry_attempts: u32,
+    pub entry_wins: u32,
+    pub traded_deaths: u32,
+    pub trade_kills: u32,
+    pub trade_opportunities: u32,
+    pub clutch_attempts: u32,
+    pub clutch_wins: u32,
+}
+
+impl MatchStats {
+    pub fn kd(&self) -> Option<f32> {
+        (self.deaths > 0).then(|| self.kills as f32 / self.deaths as f32)
+    }
+    pub fn adr(&self) -> Option<f32> {
+        (self.rounds_played > 0)
+            .then(|| (self.damage as f32 / self.rounds_played as f32 * 10.0).round() / 10.0)
+    }
+    pub fn hs_pct(&self) -> Option<u32> {
+        (self.kills > 0).then(|| (self.headshots as f32 / self.kills as f32 * 100.0).round() as u32)
+    }
+    pub fn kast_pct(&self) -> Option<u32> {
+        (self.rounds_played > 0)
+            .then(|| (self.kast_rounds as f32 / self.rounds_played as f32 * 100.0).round() as u32)
+    }
+}
+
+/// Was the tracked player, at any point this round, the last one alive on
+/// their side with at least one enemy alive? Kill-event state replay (the
+/// ADR-0008 approach): rosters minus victims in tick order.
+fn clutch_state(
+    round: &Round,
+    kills: &[&cf_parser::model::Kill],
+    tracked: u64,
+    side: Side,
+) -> Option<u32> {
+    let (mine, theirs) = match side {
+        Side::Ct => (&round.ct_steamids, &round.t_steamids),
+        Side::T => (&round.t_steamids, &round.ct_steamids),
+    };
+    let mut my_alive: Vec<u64> = mine.clone();
+    let mut their_alive: Vec<u64> = theirs.clone();
+    let mut sorted: Vec<&cf_parser::model::Kill> = kills.to_vec();
+    sorted.sort_by_key(|k| k.tick);
+    let mut best: Option<u32> = None;
+    let check = |my: &Vec<u64>, th: &Vec<u64>, best: &mut Option<u32>| {
+        if my.len() == 1 && my[0] == tracked && !th.is_empty() {
+            let n = th.len() as u32;
+            *best = Some(best.map_or(n, |b| b.max(n)));
+        }
+    };
+    check(&my_alive, &their_alive, &mut best);
+    for k in sorted {
+        my_alive.retain(|s| *s != k.victim);
+        their_alive.retain(|s| *s != k.victim);
+        check(&my_alive, &their_alive, &mut best);
+    }
+    best
+}
+
+/// Fills `entry` on both opening-duel participants' rows and totals the
+/// tracked player's match stats. Pure: reuses H14's `round_entries` (no
+/// re-implementing opening-duel logic) and the play ledger's trade/
+/// missed_trade plays (no re-implementing trade logic).
+pub fn match_stats(
+    ctx: &AnalysisContext,
+    cfg: &DetectorConfig,
+    rows: &mut [RoundPlayerStats],
+    ledger: &[RoundLedger],
+) -> MatchStats {
+    let data = ctx.data();
+    let tracked = ctx.tracked();
+    let mut s = MatchStats {
+        rounds_played: rounds_played(ctx),
+        ..Default::default()
+    };
+    // Opening duels (H14's finder, both sides): mark both rows, count the
+    // tracked player's attempts/wins.
+    for e in round_entries(ctx, cfg) {
+        let (winner, loser) = (
+            e.killer,
+            if e.killer == e.entry_player {
+                e.opponent
+            } else {
+                e.entry_player
+            },
+        );
+        for r in rows.iter_mut().filter(|r| r.round == e.round) {
+            if r.steamid == winner {
+                r.entry = Some("win".to_string());
+            } else if r.steamid == loser {
+                r.entry = Some("loss".to_string());
+            }
+        }
+        if winner == tracked || loser == tracked {
+            s.entry_attempts += 1;
+            if winner == tracked {
+                s.entry_wins += 1;
+            }
+        }
+    }
+    for r in rows.iter().filter(|r| r.steamid == tracked) {
+        s.kills += r.kills;
+        s.deaths += r.deaths;
+        s.assists += r.assists;
+        s.damage += r.damage;
+        s.headshots += r.headshots;
+        if r.kills > 0 || r.assists > 0 || r.survived || r.traded {
+            s.kast_rounds += 1;
+        }
+        if r.traded {
+            s.traded_deaths += 1;
+        }
+    }
+    for l in ledger {
+        for p in &l.plays {
+            match p.kind.as_str() {
+                "trade" => {
+                    s.trade_kills += 1;
+                    s.trade_opportunities += 1;
+                }
+                "missed_trade" => s.trade_opportunities += 1,
+                _ => {}
+            }
+        }
+    }
+    for round in &data.rounds {
+        let Some(side) = ctx.side_of(tracked, round.number) else {
+            continue;
+        };
+        let kills: Vec<&cf_parser::model::Kill> = data
+            .kills
+            .iter()
+            .filter(|k| k.round == round.number)
+            .collect();
+        if clutch_state(round, &kills, tracked, side).is_some() {
+            s.clutch_attempts += 1;
+            if round.winner == side {
+                s.clutch_wins += 1;
+            }
+        }
+    }
+    s
 }
 
 #[cfg(test)]
@@ -221,5 +380,120 @@ mod tests {
             .build();
         let ctx = AnalysisContext::new(&spectator, ME);
         assert_eq!(rounds_played(&ctx), 0);
+    }
+
+    #[test]
+    fn world_and_self_kills_are_deaths_only() {
+        // World kill (attacker None) and a self-kill (attacker == victim):
+        // both count as a death for the victim, never a kill, never traded.
+        let data = base()
+            .kill_full(None, ME, 1, 3000, "world", false, 0)
+            .kill_full(Some(ME), ME, 2, 7000, "weapon_hegrenade", false, 0)
+            .build();
+        let rows = rows_for(&data);
+        let r1 = row(&rows, 1, ME);
+        assert_eq!((r1.kills, r1.deaths, r1.traded), (0, 1, false));
+        let r2 = row(&rows, 2, ME);
+        assert_eq!((r2.kills, r2.deaths, r2.traded), (0, 1, false));
+    }
+
+    use crate::play_ledger::build_ledger;
+
+    fn stats_for(data: &cf_parser::model::MatchData) -> (MatchStats, Vec<RoundPlayerStats>) {
+        let ctx = AnalysisContext::new(data, ME);
+        let cfg = DetectorConfig::default();
+        let mut rows = round_player_rows(&ctx, &cfg);
+        let ledger = build_ledger(&ctx, &cfg, &[]);
+        let s = match_stats(&ctx, &cfg, &mut rows, &ledger);
+        (s, rows)
+    }
+
+    #[test]
+    fn totals_and_derived_ratios() {
+        let data = base()
+            .kill(ME, E1, 1, 2000, "weapon_ak47")
+            .hurt(ME, E1, 1990, 100, "weapon_ak47")
+            .kill(E2, ME, 1, 2500, "weapon_ak47")
+            .kill(ME, E1, 2, 7000, "weapon_ak47")
+            .build();
+        let (s, _) = stats_for(&data);
+        assert_eq!(
+            (s.rounds_played, s.kills, s.deaths, s.damage),
+            (2, 2, 1, 100)
+        );
+        assert_eq!(s.kd(), Some(2.0));
+        assert_eq!(s.adr(), Some(50.0));
+        assert_eq!(s.hs_pct(), Some(0));
+        let (empty, _) = stats_for(&base().build());
+        assert_eq!(empty.kd(), None);
+        assert_eq!(empty.hs_pct(), None);
+        assert_eq!(empty.adr(), Some(0.0));
+    }
+
+    #[test]
+    fn kast_counts_kill_assist_survival_or_traded_death() {
+        // R1: died untraded, no kill/assist -> not KAST. R2: survived -> KAST.
+        let data = base().kill(E1, ME, 1, 3000, "weapon_ak47").build();
+        let (s, _) = stats_for(&data);
+        assert_eq!((s.kast_rounds, s.kast_pct()), (1, Some(50)));
+        let traded = base()
+            .kill(E1, ME, 1, 3000, "weapon_ak47")
+            .kill(MATE, E1, 1, 3060, "weapon_ak47")
+            .build();
+        assert_eq!(stats_for(&traded).0.kast_rounds, 2);
+    }
+
+    #[test]
+    fn entry_uses_h14s_opening_duel_on_both_sides_and_marks_both_rows() {
+        // R1 opening duel within 15 s: ME (CT) kills E1 -> attempt + win; E1 row gets "loss".
+        // R2: first kill after the window -> no entry.
+        let data = base()
+            .kill(ME, E1, 1, 1000 + 64 * 10, "weapon_ak47")
+            .kill(E2, ME, 2, 6000 + 64 * 40, "weapon_ak47")
+            .build();
+        let (s, rows) = stats_for(&data);
+        assert_eq!((s.entry_attempts, s.entry_wins), (1, 1));
+        assert_eq!(row(&rows, 1, ME).entry.as_deref(), Some("win"));
+        assert_eq!(row(&rows, 1, E1).entry.as_deref(), Some("loss"));
+        assert_eq!(row(&rows, 2, ME).entry, None);
+        // Losing the opening duel is an attempt too.
+        let lost = base().kill(E1, ME, 1, 1000 + 64 * 5, "weapon_ak47").build();
+        let (s, rows) = stats_for(&lost);
+        assert_eq!((s.entry_attempts, s.entry_wins), (1, 0));
+        assert_eq!(row(&rows, 1, ME).entry.as_deref(), Some("loss"));
+    }
+
+    #[test]
+    fn trade_rate_comes_from_the_ledger_and_the_death_rows() {
+        let data = base()
+            .kill(E1, MATE, 1, 3000, "weapon_ak47") // teammate dies 500 u from me
+            .kill(ME, E1, 1, 3060, "weapon_ak47") // I trade -> trade play (Good)
+            .kill(E2, MATE, 2, 7000, "weapon_ak47") // teammate dies, I do nothing -> missed_trade
+            .kill(E2, ME, 2, 7500, "weapon_ak47") // my untraded death
+            .build();
+        let (s, _) = stats_for(&data);
+        assert_eq!((s.trade_kills, s.trade_opportunities), (1, 2));
+        assert_eq!((s.traded_deaths, s.deaths), (0, 1));
+    }
+
+    #[test]
+    fn clutch_attempts_and_wins_from_the_kill_state_replay() {
+        // R1: MATE dies at 2000 -> ME is last alive vs 2 (1v2); ME kills both -> win.
+        // R2: ME dies first -> never a clutch.
+        let data = base()
+            .kill(E1, MATE, 1, 2000, "weapon_ak47")
+            .kill(ME, E1, 1, 2500, "weapon_ak47")
+            .kill(ME, E2, 1, 2600, "weapon_ak47")
+            .kill(E1, ME, 2, 6500, "weapon_ak47")
+            .build();
+        let (s, _) = stats_for(&data);
+        assert_eq!((s.clutch_attempts, s.clutch_wins), (1, 1));
+        let lost = base()
+            .kill(E1, MATE, 1, 2000, "weapon_ak47")
+            .kill(E1, ME, 1, 2500, "weapon_ak47")
+            .round_won_by(1, cf_parser::model::Side::T)
+            .build();
+        let (s, _) = stats_for(&lost);
+        assert_eq!((s.clutch_attempts, s.clutch_wins), (1, 0));
     }
 }
