@@ -1168,6 +1168,70 @@ fn moment_kind_matches(moment_kind: &str, play_kind: &str) -> bool {
     )
 }
 
+/// One ledger play, narrated into its DTO. `delta_p` comes from the
+/// ADR-0008 engine only: joined here by tick to this round's review
+/// moments (kill/death/plant/defuse) via `moment_kind_matches` — never
+/// computed by this function.
+fn play_dto(
+    mut p: cf_analysis::play_ledger::Play,
+    moments: &[cf_analysis::round_review::Moment],
+    ctx: &cf_narrator::MatchContext,
+) -> PlayDto {
+    p.delta_p = moments
+        .iter()
+        .find(|m| m.tick == p.tick && moment_kind_matches(&m.kind, &p.kind))
+        .and_then(|m| m.delta_p);
+    let t = cf_narrator::plays::narrate_play(&p, ctx);
+    let killer = p
+        .facts
+        .get("killer")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let focus = ["victim", "killer", "nearest_teammate", "teammate"]
+        .iter()
+        .filter_map(|k| p.facts.get(*k).and_then(|v| v.as_str()).map(str::to_string))
+        .collect();
+    PlayDto {
+        tick: p.tick,
+        kind: p.kind.clone(),
+        phase: p.phase.clone(),
+        headline: t.headline,
+        facts: t.facts,
+        quality: p.quality.map(|q| match q {
+            cf_analysis::play_ledger::Quality::Good => "good".to_string(),
+            cf_analysis::play_ledger::Quality::Bad => "bad".to_string(),
+            cf_analysis::play_ledger::Quality::Neutral => "neutral".to_string(),
+        }),
+        rule_id: p.rule_id.clone(),
+        delta_p: p.delta_p,
+        focus,
+        killer,
+    }
+}
+
+/// One ledger timeline event, with `actor`/`subject` steamids resolved to
+/// display names (falling back to the raw string if it isn't numeric).
+fn timeline_dto(
+    e: cf_analysis::play_ledger::TimelineEvent,
+    ctx: &cf_narrator::MatchContext,
+) -> TimelineDto {
+    let name = |id: &Option<String>| -> Option<String> {
+        id.as_ref().map(|s| {
+            s.parse::<u64>()
+                .map(|i| ctx.name(i))
+                .unwrap_or_else(|_| s.clone())
+        })
+    };
+    TimelineDto {
+        tick: e.tick,
+        kind: e.kind,
+        actor: name(&e.actor),
+        subject: name(&e.subject),
+        side: e.side,
+        weapon: e.weapon,
+    }
+}
+
 /// Silence over a bare label (V1.2 final-review fix wave, finding #4): a
 /// standalone `flag` moment whose narrated facts came out empty carries no
 /// evidence for the rail to show — the CLAUDE.md evidence contract's
@@ -1338,48 +1402,8 @@ pub fn get_round_review(
             })
             .unwrap_or_default()
             .into_iter()
-            .map(|mut p| {
-                // delta_p comes from the ADR-0008 engine only: join by tick
-                // to this round's moments (kill/death/plant/defuse).
-                p.delta_p = moments
-                    .iter()
-                    .find(|m| m.tick == p.tick && moment_kind_matches(&m.kind, &p.kind))
-                    .and_then(|m| m.delta_p);
-                let t = cf_narrator::plays::narrate_play(&p, &ctx);
-                let killer = p
-                    .facts
-                    .get("killer")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string);
-                let focus = ["victim", "killer", "nearest_teammate", "teammate"]
-                    .iter()
-                    .filter_map(|k| p.facts.get(*k).and_then(|v| v.as_str()).map(str::to_string))
-                    .collect();
-                PlayDto {
-                    tick: p.tick,
-                    kind: p.kind.clone(),
-                    phase: p.phase.clone(),
-                    headline: t.headline,
-                    facts: t.facts,
-                    quality: p.quality.map(|q| match q {
-                        cf_analysis::play_ledger::Quality::Good => "good".to_string(),
-                        cf_analysis::play_ledger::Quality::Bad => "bad".to_string(),
-                        cf_analysis::play_ledger::Quality::Neutral => "neutral".to_string(),
-                    }),
-                    rule_id: p.rule_id.clone(),
-                    delta_p: p.delta_p,
-                    focus,
-                    killer,
-                }
-            })
+            .map(|p| play_dto(p, &moments, &ctx))
             .collect();
-        let name = |id: &Option<String>| -> Option<String> {
-            id.as_ref().map(|s| {
-                s.parse::<u64>()
-                    .map(|i| ctx.name(i))
-                    .unwrap_or_else(|_| s.clone())
-            })
-        };
         let timeline: Vec<TimelineDto> = ledger_by_round
             .get(&row.round)
             .and_then(|r| {
@@ -1390,14 +1414,7 @@ pub fn get_round_review(
             })
             .unwrap_or_default()
             .into_iter()
-            .map(|e| TimelineDto {
-                tick: e.tick,
-                kind: e.kind,
-                actor: name(&e.actor),
-                subject: name(&e.subject),
-                side: e.side,
-                weapon: e.weapon,
-            })
+            .map(|e| timeline_dto(e, &ctx))
             .collect();
 
         // Narration prose only for selected rounds: moments now exist for
@@ -1673,5 +1690,144 @@ mod tests {
         ));
         assert!(!should_suppress_flag_moment("tracked_kill", &[]));
         assert!(!should_suppress_flag_moment("plant", &[]));
+    }
+
+    // ---- play_dto / timeline_dto (task-11 review finding #2) --------------
+
+    fn narrator_ctx() -> cf_narrator::MatchContext {
+        cf_narrator::MatchContext {
+            map: "de_mirage".to_string(),
+            tracked: 1,
+            names: std::collections::HashMap::from([
+                (1, "me".to_string()),
+                (2, "Sam".to_string()),
+                (9, "Kit".to_string()),
+            ]),
+            score: (13, 9),
+            tracked_result: Some("win".to_string()),
+            total_deaths: 10,
+            class_13_share_pct: 20.0,
+        }
+    }
+
+    fn play(
+        tick: i32,
+        kind: &str,
+        facts: serde_json::Value,
+        quality: Option<cf_analysis::play_ledger::Quality>,
+    ) -> cf_analysis::play_ledger::Play {
+        cf_analysis::play_ledger::Play {
+            tick,
+            phase: "mid".to_string(),
+            kind: kind.to_string(),
+            facts,
+            quality,
+            rule_id: None,
+            delta_p: None,
+        }
+    }
+
+    fn rr_moment(tick: i32, kind: &str, delta_p: Option<f32>) -> cf_analysis::round_review::Moment {
+        cf_analysis::round_review::Moment {
+            tick,
+            kind: kind.to_string(),
+            rule_id: None,
+            delta_p,
+            facts: json!({}),
+        }
+    }
+
+    #[test]
+    fn play_dto_joins_delta_p_from_the_matching_moment_only() {
+        let death = play(500, "death", json!({"victim": "1", "killer": "9"}), None);
+
+        let matching = [rr_moment(500, "tracked_death", Some(-0.23))];
+        assert_eq!(
+            play_dto(death.clone(), &matching, &narrator_ctx()).delta_p,
+            Some(-0.23)
+        );
+
+        // Same tick, but the only moment there is a tracked_kill, not a
+        // tracked_death — kind must match too, not just the tick.
+        let wrong_kind = [rr_moment(500, "tracked_kill", Some(0.5))];
+        assert_eq!(
+            play_dto(death.clone(), &wrong_kind, &narrator_ctx()).delta_p,
+            None
+        );
+
+        // No moment shares the tick at all.
+        let no_match = [rr_moment(600, "tracked_death", Some(-0.9))];
+        assert_eq!(play_dto(death, &no_match, &narrator_ctx()).delta_p, None);
+    }
+
+    #[test]
+    fn play_dto_focus_is_presence_ordered_and_killer_is_explicit() {
+        let death = play(
+            100,
+            "death",
+            json!({"victim": "1", "killer": "9", "nearest_teammate": "2"}),
+            None,
+        );
+        let dto = play_dto(death, &[], &narrator_ctx());
+        assert_eq!(
+            dto.focus,
+            vec!["1".to_string(), "9".to_string(), "2".to_string()]
+        );
+        assert_eq!(dto.killer, Some("9".to_string()));
+
+        let trade = play(100, "trade", json!({"teammate": "2", "killer": "9"}), None);
+        let dto2 = play_dto(trade, &[], &narrator_ctx());
+        assert_eq!(dto2.focus, vec!["9".to_string(), "2".to_string()]);
+        assert_eq!(dto2.killer, Some("9".to_string()));
+    }
+
+    #[test]
+    fn play_dto_quality_maps_to_the_wire_strings() {
+        use cf_analysis::play_ledger::Quality;
+        let good = play(100, "flash", json!({}), Some(Quality::Good));
+        assert_eq!(
+            play_dto(good, &[], &narrator_ctx()).quality,
+            Some("good".to_string())
+        );
+        let bad = play(100, "flash", json!({}), Some(Quality::Bad));
+        assert_eq!(
+            play_dto(bad, &[], &narrator_ctx()).quality,
+            Some("bad".to_string())
+        );
+        let neutral = play(100, "flash", json!({}), Some(Quality::Neutral));
+        assert_eq!(
+            play_dto(neutral, &[], &narrator_ctx()).quality,
+            Some("neutral".to_string())
+        );
+        let none = play(100, "flash", json!({}), None);
+        assert_eq!(play_dto(none, &[], &narrator_ctx()).quality, None);
+    }
+
+    #[test]
+    fn timeline_dto_resolves_known_names_and_keeps_unknown_ids_raw() {
+        let known = cf_analysis::play_ledger::TimelineEvent {
+            tick: 100,
+            kind: "kill".to_string(),
+            actor: Some("2".to_string()),
+            subject: Some("9".to_string()),
+            side: Some("CT".to_string()),
+            weapon: Some("ak47".to_string()),
+        };
+        let dto = timeline_dto(known, &narrator_ctx());
+        assert_eq!(dto.actor, Some("Sam".to_string()));
+        assert_eq!(dto.subject, Some("Kit".to_string()));
+        assert_eq!(dto.side, Some("CT".to_string()));
+
+        let unknown = cf_analysis::play_ledger::TimelineEvent {
+            tick: 100,
+            kind: "kill".to_string(),
+            actor: Some("999999999".to_string()),
+            subject: None,
+            side: None,
+            weapon: None,
+        };
+        let dto2 = timeline_dto(unknown, &narrator_ctx());
+        assert_eq!(dto2.actor, Some("999999999".to_string()));
+        assert_eq!(dto2.subject, None);
     }
 }

@@ -206,14 +206,6 @@ pub fn narrate_play(p: &Play, ctx: &MatchContext) -> PlayText {
                 if let Some(mc) = text(f, "man_context") {
                     facts.push(format!("{mc} before"));
                 }
-                if p.kind == "death" {
-                    let traded = f.get("traded").and_then(|v| v.as_bool()).unwrap_or(false);
-                    facts.push(if traded {
-                        "Traded within 2 s".to_string()
-                    } else {
-                        "Not traded".to_string()
-                    });
-                }
                 if f.get("thru_smoke")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false)
@@ -534,7 +526,13 @@ mod tests {
         );
         assert_eq!(d.headline, "Died to Kit");
         assert!(d.facts.contains(&"1,500 u, awp".to_string()));
-        assert!(d.facts.contains(&"Traded within 2 s".to_string()));
+        assert_eq!(
+            d.facts
+                .iter()
+                .filter(|f| f.to_lowercase().contains("traded"))
+                .count(),
+            1
+        );
     }
 
     #[test]
