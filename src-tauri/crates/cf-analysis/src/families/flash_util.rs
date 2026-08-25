@@ -314,7 +314,7 @@ fn util_team_damage(ctx: &AnalysisContext, cfg: &DetectorConfig) -> Vec<RuleFlag
 fn flash_report(ctx: &AnalysisContext, cfg: &DetectorConfig) -> Option<Insight> {
     let tracked = ctx.tracked();
     let groups = flash_groups(ctx, cfg);
-    if groups.len() < 3 {
+    if groups.len() < cfg.d2.min_flashes as usize {
         return None;
     }
     let flashes = groups.len();

@@ -136,6 +136,17 @@ pub struct FlashCfg {
     pub conversion_window_s: f32,
 }
 
+/// D2 — match-level flash-effectiveness report.
+#[derive(Debug, Clone, Deserialize)]
+pub struct D2Cfg {
+    /// Flashes needed before a flash-effectiveness profile is reported.
+    #[serde(default = "d_d2_min_flashes")]
+    pub min_flashes: u32,
+}
+fn d_d2_min_flashes() -> u32 {
+    3
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct H3Cfg {
     #[serde(default = "d_switch_window_s")]
@@ -475,6 +486,7 @@ macro_rules! default_impl {
 default_impl!(
     TradeCfg,
     FlashCfg,
+    D2Cfg,
     H3Cfg,
     H16Cfg,
     H4Cfg,
@@ -496,6 +508,8 @@ pub struct DetectorConfig {
     pub trade: TradeCfg,
     #[serde(default)]
     pub flash: FlashCfg,
+    #[serde(default)]
+    pub d2: D2Cfg,
     #[serde(default)]
     pub h3: H3Cfg,
     #[serde(default)]
@@ -566,6 +580,8 @@ pub fn threshold_values(cfg: &DetectorConfig) -> Vec<(String, String, String)> {
             format!("{}", cfg.flash.conversion_window_s),
             "s",
         ),
+        // Catalog prose already writes "or more flashes" after the placeholder.
+        row("d2.min_flashes", format!("{}", cfg.d2.min_flashes), ""),
         // H3 utility vulnerability.
         row(
             "h3.switch_window_s",

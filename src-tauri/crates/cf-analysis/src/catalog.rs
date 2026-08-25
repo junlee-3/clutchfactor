@@ -114,7 +114,7 @@ static ENTRIES: &[CatalogEntry] = &[
         class_id: None, example: "Took 118 utility damage, 2 deaths to utility without a duel.", stat_links: &["adr"] },
     CatalogEntry { id: "D2_FLASH_EFFECTIVENESS", family: "D2 Utility effect", title: "Flash effectiveness",
         watches_for: "How many of your flashes blinded enemies, hit teammates, or turned into kills.",
-        thresholds: "an enemy counts as blinded at {flash.effective_s} or more; a kill within {flash.conversion_window_s} of the flash counts as converted; reported after 3 or more flashes",
+        thresholds: "an enemy counts as blinded at {flash.effective_s} or more; a kill within {flash.conversion_window_s} of the flash counts as converted; reported after {d2.min_flashes} or more flashes",
         class_id: None, example: "9 flashes: 5 effective, 2 team flashes, 3 converted.", stat_links: &["adr"] },
     CatalogEntry { id: "D4_ENTRY_PROFILE", family: "D4 Entry structure", title: "Entry profile",
         watches_for: "How often you take the opening duel, how often you win it, and whether you had support.",

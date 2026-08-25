@@ -520,14 +520,16 @@ mod tests {
 
     #[test]
     fn traded_accumulates_across_duplicate_victim_rows() {
-        // Two Kill records with victim ME in one round: the first
-        // (E1's kill) is never traded, the second (E2's kill) is. `traded`
-        // is accumulated with OR across all of a sid's victim rows, so the
-        // row ends up traded even though the first record alone would not.
+        // Two Kill records with victim ME in one round: the first (E2's
+        // kill, earlier tick) is traded, the second (E1's kill, later tick)
+        // is never traded. `traded` is accumulated with OR across all of a
+        // sid's victim rows, so the row stays traded even though the later
+        // record alone would not be — a last-write-wins regression
+        // (overwriting instead of OR-ing) would flip this to false.
         let data = base()
-            .kill_full(Some(E1), ME, 1, 3000, "weapon_ak47", false, 0)
-            .kill_full(Some(E2), ME, 1, 3100, "weapon_ak47", false, 0)
-            .kill(MATE, E2, 1, 3150, "weapon_ak47")
+            .kill_full(Some(E2), ME, 1, 3000, "weapon_ak47", false, 0)
+            .kill(MATE, E2, 1, 3060, "weapon_ak47")
+            .kill_full(Some(E1), ME, 1, 3150, "weapon_ak47", false, 0)
             .build();
         assert!(row(&rows_for(&data), 1, ME).traded);
     }
