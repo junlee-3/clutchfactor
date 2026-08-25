@@ -1783,18 +1783,16 @@ mod tests {
     }
 
     /// One saved match, for tests that don't care about its contents beyond
-    /// having a valid `match_id` to hang analysis/ledger rows off of.
-    fn one_match() -> (Store, i64, MatchData) {
-        let (mut dir, mut store) = open_tmp();
+    /// having a valid `match_id` to hang analysis/ledger rows off of. Returns
+    /// the `TempDir` guard first so it drops last (fields drop in reverse
+    /// declaration order), same as `open_tmp()`'s callers.
+    fn one_match() -> (tempfile::TempDir, Store, i64, MatchData) {
+        let (dir, mut store) = open_tmp();
         let data = sample_match();
         let id = store
             .save_match("m1.dem", "h1", MatchKind::Own, &data)
             .unwrap();
-        // one_match() can't return the TempDir guard (fixed signature), so
-        // keep the directory on disk for the store's lifetime instead of
-        // deleting it out from under the still-open WAL connection.
-        dir.disable_cleanup(true);
-        (store, id, data)
+        (dir, store, id, data)
     }
 
     #[test]
@@ -2880,7 +2878,7 @@ mod tests {
 
     #[test]
     fn save_analysis_persists_the_play_ledger_and_source_path_round_trips() {
-        let (mut store, match_id, _data) = one_match();
+        let (_dir, mut store, match_id, _data) = one_match();
         let ledger = vec![cf_analysis::play_ledger::RoundLedger {
             round: 1,
             plays: vec![cf_analysis::play_ledger::Play {
