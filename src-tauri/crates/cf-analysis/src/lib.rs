@@ -5,6 +5,7 @@
 //! `RuleFlag`s + `Insight`s → `classify` assigns each tracked-player death
 //! exactly one taxonomy class by priority, with secondary tags.
 
+pub mod catalog;
 pub mod classify;
 pub mod config;
 pub mod context;
@@ -14,6 +15,7 @@ pub mod habits;
 pub mod play_ledger;
 pub mod round_review;
 pub mod scenario;
+pub mod stats;
 pub mod types;
 pub mod winprob;
 
@@ -60,10 +62,15 @@ pub fn analyze(data: &MatchData, tracked: u64, cfg: &DetectorConfig) -> Analysis
     }
     let death_classes = classify::classify_deaths(&ctx, cfg, &flags);
     let ledger = play_ledger::build_ledger(&ctx, cfg, &flags);
+    let mut round_players = stats::round_player_rows(&ctx, cfg);
+    let stats = (stats::rounds_played(&ctx) > 0)
+        .then(|| stats::match_stats(&ctx, cfg, &mut round_players, &ledger));
     AnalysisOutput {
         flags,
         insights,
         death_classes,
         ledger,
+        stats,
+        round_players,
     }
 }

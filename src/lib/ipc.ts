@@ -21,6 +21,11 @@
 //   AppSettings (+ ThresholdRow) <- src-tauri/src/commands.rs
 //   ReAnalyzeResult <- src-tauri/src/commands.rs
 //   CoachStatusDto/CoachRoundsDto (+ RoundCommentaryDto/PlayCommentDto)/CoachSynthesisDto (+ MatchSynthesisDto) <- src-tauri/src/commands.rs
+//   MatchStatsDto <- src-tauri/src/commands.rs
+//   PlayerRoundStatsDto <- src-tauri/src/commands.rs
+//   CatalogEntryDto/ClassEntryDto/CatalogDto <- src-tauri/src/commands.rs
+//   CalloutDto <- src-tauri/src/commands.rs
+//   StatSeries (TrendsDto.stats) <- src-tauri/src/commands.rs
 // Conventions: steamids are strings (steamid64 overflows JS number);
 // command names are snake_case; Rust arg names arrive camelCased.
 
@@ -383,9 +388,17 @@ export interface RuleSeries {
   total: number;
 }
 
+export interface StatSeries {
+  key: string; // "kd" | "adr" | "hs" | "kast" | "entry" | "trade" | "clutch"
+  title: string;
+  unit: string;
+  values: (number | null)[];
+}
+
 export interface TrendsDto {
   matches: TrendMatchRow[];
   rules: RuleSeries[];
+  stats: StatSeries[];
 }
 
 export function getTrends(): Promise<TrendsDto> {
@@ -521,4 +534,95 @@ export function regenerateCoachSynthesis(
   matchId: number,
 ): Promise<CoachSynthesisDto> {
   return invoke<CoachSynthesisDto>("regenerate_coach_synthesis", { matchId });
+}
+
+// ---- V1.4: stats & understanding ----
+
+export interface MatchStatsDto {
+  rounds_played: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  kd: number | null;
+  adr: number | null;
+  hs_pct: number | null;
+  kast_pct: number | null;
+  entry_attempts: number;
+  entry_wins: number;
+  traded_deaths: number;
+  trade_kills: number;
+  trade_opportunities: number;
+  clutch_attempts: number;
+  clutch_wins: number;
+}
+
+export interface PlayerRoundStatsDto {
+  round: number;
+  steamid: string;
+  name: string;
+  side: "CT" | "T";
+  kills: number;
+  deaths: number;
+  assists: number;
+  damage: number;
+  headshots: number;
+  survived: boolean;
+  traded: boolean;
+  entry: string | null;
+  tracked: boolean;
+}
+
+export interface CatalogEntryDto {
+  id: string;
+  family: string;
+  title: string;
+  watches_for: string;
+  thresholds: string;
+  class_id: number | null;
+  example: string;
+  stat_links: string[];
+}
+
+export interface ClassEntryDto {
+  id: number;
+  name: string;
+  source: string;
+  built: boolean;
+  why_not: string | null;
+}
+
+export interface CatalogDto {
+  entries: CatalogEntryDto[];
+  classes: ClassEntryDto[];
+  cannot_see: [string, string][];
+}
+
+export interface CalloutDto {
+  place: string;
+  name: string;
+  x: number;
+  y: number;
+  samples: number;
+}
+
+export function getMatchStats(matchId: number): Promise<MatchStatsDto | null> {
+  return invoke<MatchStatsDto | null>("get_match_stats", { matchId });
+}
+
+export function getRoundScoreboard(
+  matchId: number,
+  round: number | null,
+): Promise<PlayerRoundStatsDto[]> {
+  return invoke<PlayerRoundStatsDto[]>("get_round_scoreboard", {
+    matchId,
+    round,
+  });
+}
+
+export function getDetectorCatalog(): Promise<CatalogDto> {
+  return invoke<CatalogDto>("get_detector_catalog");
+}
+
+export function getMapCallouts(map: string): Promise<CalloutDto[]> {
+  return invoke<CalloutDto[]>("get_map_callouts", { map });
 }
