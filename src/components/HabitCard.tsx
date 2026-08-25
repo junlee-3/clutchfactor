@@ -13,7 +13,7 @@ interface Props {
 // Card + evidence-chip grammar as InsightCard, but no edge: HabitReport
 // carries a recurrence `score`, not a per-instance 0-1 `severity`, so
 // color-mixing an edge from it would misrepresent what the number means.
-// The recurrence count is a plain "count" Chip (mono, chalk) — this is
+// The recurrence count is a plain "count" Chip (mono, ink) — this is
 // where the legacy build colored it with `--t` (T-side amber), a side hue
 // leaking onto app chrome (design-system.md §2's `--ct`/`--t` rule).
 export function HabitCard({ habit }: Props) {

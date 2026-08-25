@@ -173,7 +173,7 @@ export function Trends() {
                           <polyline
                             points={polyline(r.counts, SPARK_W, SPARK_H)}
                             fill="none"
-                            stroke={getToken("--chalk-dim")}
+                            stroke={getToken("--ink-dim")}
                             strokeWidth="2"
                             strokeLinecap="round"
                             strokeLinejoin="round"
@@ -199,7 +199,7 @@ export function Trends() {
   );
 }
 
-/** The big class-13 line: full-weight chalk, min/max/last marked directly on
+/** The big class-13 line: full-weight ink, min/max/last marked directly on
  *  the line (dataviz: "label the endpoint, the extreme" — never every
  *  point). A flat series skips min/max annotation — there's no extreme to
  *  call out beyond the line's own shape. */
@@ -222,7 +222,7 @@ function ClassLine({ values }: { values: number[] }) {
       <polyline
         points={polyline(values, LINE_W, LINE_H)}
         fill="none"
-        stroke={getToken("--chalk")}
+        stroke={getToken("--ink")}
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"

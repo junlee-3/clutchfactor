@@ -381,7 +381,7 @@ function RoundPlayer({
   const annotationMoment = annotationIdx >= 0 ? moments[annotationIdx] : null;
 
   // While inside that window, the canvas annotation takes over both dimming
-  // and the chalk diagram; outside it (or with no active death moment), the
+  // and the ink diagram; outside it (or with no active death moment), the
   // URL's evidence focus is what's dimmed and there's no annotation.
   const focusSet = useMemo(
     () => new Set(annotationMoment ? annotationMoment.focus : focus),

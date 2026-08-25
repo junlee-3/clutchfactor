@@ -15,7 +15,7 @@ interface Props {
 // One insight = one Card with a severity edge (design-system.md §6, §9): the
 // left spine mixes --loss by the insight's own 0-1 severity, so the coach's
 // most urgent points read heavier without a second color. Evidence chips
-// are the dashed chalk-annotation grammar (§5) — always interactive, always
+// are the dashed-annotation grammar (§5) — always interactive, always
 // jumping straight to the tape (evidenceUrl, untouched).
 export function InsightCard({ matchId, insight, rounds, tickrate }: Props) {
   const navigate = useNavigate();

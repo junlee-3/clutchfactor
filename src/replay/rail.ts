@@ -71,7 +71,7 @@ export function overlayWindow(
  *  annotation always reflects the death actually unfolding right now, not
  *  a stale earlier one whose +2s post-roll simply hasn't expired yet.
  *  Non-`tracked_death` moments (e.g. utility/positioning notes) are never
- *  candidates — the canvas overlay only ever draws a death's chalk lines. */
+ *  candidates — the canvas overlay only ever draws a death's ink lines. */
 export function annotationMomentIndex(
   moments: { tick: number; kind: string }[],
   displayTick: number,
@@ -91,4 +91,26 @@ export function annotationMomentIndex(
     }
   }
   return bestIdx;
+}
+
+export type StripeTone = "loss" | "win" | "neutral";
+
+/** Color of the rail's active-row edge (spec §1 "Rail per the mockup"): a
+ *  measured quality tag first, then a fired rule (always a cost), then the
+ *  sign of the win-prob delta. Neutral when nothing measured says otherwise
+ *  — the stripe never guesses. */
+export function stripeTone(m: {
+  delta_p: number | null;
+  rule_id: string | null;
+  quality?: string | null;
+}): StripeTone {
+  if (m.quality === "bad") return "loss";
+  if (m.quality === "good") return "win";
+  if (m.quality === "neutral") return "neutral";
+  if (m.rule_id) return "loss";
+  if (m.delta_p !== null && m.delta_p !== undefined) {
+    if (m.delta_p < 0) return "loss";
+    if (m.delta_p > 0) return "win";
+  }
+  return "neutral";
 }

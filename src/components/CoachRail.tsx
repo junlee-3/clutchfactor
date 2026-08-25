@@ -1,5 +1,5 @@
 import type { RoundReviewDto } from "../lib/ipc";
-import { activeMomentIndex, nextFlagged, prevFlagged } from "../replay/rail";
+import { activeMomentIndex, nextFlagged, prevFlagged, stripeTone } from "../replay/rail";
 import { fmtClock } from "../replay/timeline";
 import type { TimelineSpec } from "../replay/timeline";
 import { Button } from "./ui/Button";
@@ -16,14 +16,13 @@ interface Props {
   onRound: (round: number) => void;
 }
 
-/** Verdict -> extra Chip class. Only the two measured-impact verdicts get a
- * surface tint (design-system.md §2 derived tokens); "not_on_you"/"traded"/
- * "quiet" stay neutral — the verdict is named, not color-coded, for anything
- * that isn't a measured swing. Side hues (--ct/--t) never appear here. */
-function verdictChipClass(verdict: string): string | undefined {
+/** Verdict -> Chip class. Outlined, never filled (spec §1): the two
+ * measured-impact verdicts get their outcome hue on the outline and text,
+ * everything else a neutral outline. Side hues (--ct/--t) never appear here. */
+function verdictChipClass(verdict: string): string {
   if (verdict === "won_it") return "rpl-rail-verdict-won";
   if (verdict === "cost_you") return "rpl-rail-verdict-loss";
-  return undefined;
+  return "rpl-rail-verdict-neutral";
 }
 
 /** The one-liner for a round the rail doesn't elaborate on. Verdict-agnostic
@@ -41,8 +40,8 @@ function quietSummary(r: RoundReviewDto): string {
 // (canvas overlay, Task 9) — this only names it: round header, a moment list
 // where the timestamp is mono and the numbers are the content, why/practise
 // as micro-eyebrow sections, prev/next flagged-round nav. The active moment
-// carries the §5 dashed-chalk left stripe — the one signature device, spent
-// here, nowhere else in this component.
+// carries a solid 2px tone edge (loss/win/neutral — spec §1), not a dashed
+// stripe; dashed stays reserved for evidence.
 export function CoachRail({
   reviews,
   round,
@@ -93,7 +92,9 @@ export function CoachRail({
               {moments.map((m, i) => (
                 <button
                   key={`${m.tick}-${i}`}
-                  className={`rpl-rail-moment${i === activeIdx ? " rpl-rail-moment-active" : ""}`}
+                  className={`rpl-rail-moment${
+                    i === activeIdx ? ` rpl-rail-moment-active rpl-rail-tone-${stripeTone(m)}` : ""
+                  }`}
                   title="Jump to this moment"
                   onClick={() => onJump(m.tick)}
                 >

@@ -34,11 +34,11 @@ const RESULT_LABEL: Record<MatchResult, string> = {
 };
 
 // Reused by Report and Replay (design-system.md §8, charter-mandated):
-// map (Fraunces) · score · result (game hues) · date · K-D/HS% strip, plus
-// back-navigation and the Report<->Replay cross-link. Every field but map/
-// score/back is optional — a screen whose loaded data lacks a stat still
-// renders that slot (as a placeholder, see below) rather than fetching more
-// to fill the mock.
+// map (display-sans title) · score · result (game hues) · date · K-D/HS%
+// strip, plus back-navigation and the Report<->Replay cross-link. Every
+// field but map/score/back is optional — a screen whose loaded data lacks a
+// stat still renders that slot (as a placeholder, see below) rather than
+// fetching more to fill the mock.
 export function MatchHeader({ map, score, result, date, stats, back, crossLink }: MatchHeaderProps) {
   const kd = stats?.kd ?? null;
   const hsPct = stats?.hsPct ?? null;

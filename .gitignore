@@ -20,3 +20,6 @@ dist-ssr/
 
 # Claude agent worktrees
 .claude/
+
+#env
+env.local
