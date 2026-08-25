@@ -1,6 +1,6 @@
 # ADR-0007: Bundled fonts — sourcing and licensing
 
-**Status:** accepted · 2026-08-22
+**Status:** superseded by ADR-0009 · 2026-08-25 (was: accepted · 2026-08-22)
 
 ## Context
 The design system (`docs/design/design-system.md` §3) gives the app three

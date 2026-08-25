@@ -84,13 +84,14 @@ export function draw(ctx: CanvasRenderingContext2D, scene: Scene): void {
   drawUtility(ctx, scene);
   drawBomb(ctx, scene);
   drawDeaths(ctx, scene);
-  drawAnnotation(ctx, scene);
+  const geo = annotationGeometry(scene);
+  if (geo) drawAnnotation(ctx, geo);
   drawPlayers(ctx, scene, layer);
   // The distance tag draws LAST — on top of the player dots — so it stays
   // legible over a crowded radar; the lines it labels stay underneath them
   // (§5: dashed = evidence, and evidence must read, but dots are the scene's
   // primary subject and shouldn't be occluded by furniture).
-  drawAnnotationTag(ctx, scene);
+  if (geo) drawAnnotationTag(ctx, geo);
 }
 
 function drawUtility(ctx: CanvasRenderingContext2D, scene: Scene): void {
@@ -240,10 +241,7 @@ function annotationGeometry(scene: Scene): AnnotationGeometry | null {
 /** The two annotation lines — dashed ink to the nearest living teammate,
  *  solid --loss to the killer. Drawn under the player dots. Restraint: no
  *  glow, no arrowheads (issue #9 §5). */
-function drawAnnotation(ctx: CanvasRenderingContext2D, scene: Scene): void {
-  const geo = annotationGeometry(scene);
-  if (!geo) return;
-
+function drawAnnotation(ctx: CanvasRenderingContext2D, geo: AnnotationGeometry): void {
   if (geo.teammate) {
     ctx.setLineDash([4, 3]);
     ctx.strokeStyle = rgba("--ink", 0.9);
@@ -268,30 +266,29 @@ function drawAnnotation(ctx: CanvasRenderingContext2D, scene: Scene): void {
 /** The teammate-distance tag: rounded --bg-tape chip, bold 8px
  *  ui-monospace (the bomb-text convention), --ink-bright text. Drawn
  *  after the player dots so it's never occluded by them. */
-function drawAnnotationTag(ctx: CanvasRenderingContext2D, scene: Scene): void {
-  const geo = annotationGeometry(scene);
-  if (!geo?.teammate) return;
+function drawAnnotationTag(ctx: CanvasRenderingContext2D, geo: AnnotationGeometry): void {
+  if (geo.teammate) {
+    const { u, v, label } = geo.teammate;
+    const midX = (geo.victim.u + u) / 2;
+    const midY = (geo.victim.v + v) / 2;
 
-  const { u, v, label } = geo.teammate;
-  const midX = (geo.victim.u + u) / 2;
-  const midY = (geo.victim.v + v) / 2;
+    ctx.font = "bold 8px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const textW = ctx.measureText(label).width;
+    const padX = 4;
+    const padY = 3;
+    const w = textW + padX * 2;
+    const h = 8 + padY * 2;
 
-  ctx.font = "bold 8px ui-monospace, monospace";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const textW = ctx.measureText(label).width;
-  const padX = 4;
-  const padY = 3;
-  const w = textW + padX * 2;
-  const h = 8 + padY * 2;
+    ctx.fillStyle = getToken("--bg-tape");
+    ctx.beginPath();
+    ctx.roundRect(midX - w / 2, midY - h / 2, w, h, 3);
+    ctx.fill();
 
-  ctx.fillStyle = getToken("--bg-tape");
-  ctx.beginPath();
-  ctx.roundRect(midX - w / 2, midY - h / 2, w, h, 3);
-  ctx.fill();
-
-  ctx.fillStyle = rgba("--ink-bright", 1);
-  ctx.fillText(label, midX, midY);
+    ctx.fillStyle = rgba("--ink-bright", 1);
+    ctx.fillText(label, midX, midY);
+  }
 }
 
 function drawPlayers(
