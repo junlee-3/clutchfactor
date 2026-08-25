@@ -96,12 +96,18 @@ impl Grounding {
 /// Every number-like token in `text`, normalized: signs, commas and `%`
 /// dropped; `3v5` yields "3v5", "3" and "5"; `0:45` stays one token;
 /// decimals keep their point. Order of appearance.
+///
+/// A token may only START at a digit that is not itself preceded by an
+/// ASCII alphanumeric character — otherwise digits embedded in identifiers
+/// ("misosoupy3", "ak47", "m4a1", "mp9") would leak invented-looking
+/// numbers into the grounding set. Letting such a digit through would be
+/// the exact ship-blocking bug this validator exists to prevent.
 pub fn number_tokens(text: &str) -> Vec<String> {
     let chars: Vec<char> = text.chars().collect();
     let mut out = vec![];
     let mut i = 0;
     while i < chars.len() {
-        if chars[i].is_ascii_digit() {
+        if chars[i].is_ascii_digit() && (i == 0 || !chars[i - 1].is_ascii_alphanumeric()) {
             let start = i;
             while i < chars.len()
                 && (chars[i].is_ascii_digit()
@@ -493,5 +499,66 @@ mod tests {
         assert!(v
             .iter()
             .any(|x| matches!(x.kind, ViolationKind::Callout) && x.token == "Apartments"));
+    }
+
+    #[test]
+    fn number_tokens_ignores_digits_embedded_in_identifiers() {
+        assert_eq!(
+            number_tokens("812 u, ak47 · misosoupy3 killed MyUnit (m4a1), mp9"),
+            vec!["812"]
+        );
+    }
+
+    #[test]
+    fn a_number_embedded_in_a_weapon_name_does_not_ground_an_invented_number() {
+        // A round whose only digit-bearing fact is "812 u, ak47" — the "47"
+        // in the weapon name must never ground an invented "47" elsewhere.
+        let weapon_round = RoundInput {
+            round: 6,
+            side: "CT".into(),
+            won: false,
+            verdict_label: "Not on you".into(),
+            impact_pct: -23,
+            man_context: None,
+            kills: 0,
+            deaths: 1,
+            plays: vec![PlayLine {
+                tick: 26752,
+                clock: "+5 s".into(),
+                kind: "death".into(),
+                headline: "Died to Konky".into(),
+                facts: vec!["812 u, ak47".into()],
+                quality: Some("neutral".into()),
+            }],
+            timeline: vec![],
+            prior_digest: vec![],
+        };
+        let block = render_round_block(&m(), &weapon_round);
+        let g2 = Grounding::for_round(&block, &m().roster, &[], &[26752], 6);
+
+        // "812" is a legitimate fact and passes.
+        let grounded = RoundCommentary {
+            round: 6,
+            read: "You were 812 u away.".into(),
+            plays: vec![],
+            why_it_mattered: None,
+            what_to_practise: None,
+            focus: None,
+        };
+        assert!(validate_round(&grounded, &g2).is_empty());
+
+        // "47" only exists inside the weapon name "ak47" and must be rejected.
+        let invented = RoundCommentary {
+            round: 6,
+            read: "You were 47 u away.".into(),
+            plays: vec![],
+            why_it_mattered: None,
+            what_to_practise: None,
+            focus: None,
+        };
+        let v = validate_round(&invented, &g2);
+        assert!(v
+            .iter()
+            .any(|x| matches!(x.kind, ViolationKind::Number) && x.token == "47"));
     }
 }
