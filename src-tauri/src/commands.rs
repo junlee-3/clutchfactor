@@ -315,6 +315,12 @@ fn insight_from_row(row: &cf_store::store::InsightRow) -> Option<cf_analysis::In
 /// store reads.
 struct MatchCtxBundle {
     ctx: cf_narrator::MatchContext,
+    /// The same `MatchDetail` this function already read to build `ctx` —
+    /// handed back so `get_match_report` doesn't issue its own second
+    /// `match_detail` read for the raw fields (`map`/`score_a`/`score_b`)
+    /// it serializes directly onto `MatchReport` (V1.2 final-review fix
+    /// wave, minor #6).
+    detail: MatchDetail,
     death_classes: Vec<cf_store::store::DeathClassDbRow>,
     tracked: Option<String>,
     tracked_result: Option<String>,
@@ -363,6 +369,7 @@ fn match_context(store: &Store, match_id: i64) -> Result<Option<MatchCtxBundle>,
 
     Ok(Some(MatchCtxBundle {
         ctx,
+        detail,
         death_classes,
         tracked,
         tracked_result,
@@ -377,18 +384,16 @@ pub fn get_match_report(
 ) -> Result<Option<MatchReport>, String> {
     use cf_narrator::{CoachingNarrator, TemplateNarrator};
     let store = state.store.lock().map_err(|_| "store lock poisoned")?;
-    let Some(detail) = store.match_detail(match_id).map_err(|e| e.to_string())? else {
-        return Ok(None);
-    };
     let Some(MatchCtxBundle {
         ctx,
+        detail,
         death_classes,
         tracked,
         tracked_result,
         class_13_share_pct,
     }) = match_context(&store, match_id)?
     else {
-        return Ok(None); // detail is already confirmed Some above
+        return Ok(None);
     };
 
     let narrator = TemplateNarrator;
@@ -1094,6 +1099,7 @@ fn run_round_review(store: &mut Store, match_id: i64) -> Result<(), String> {
     };
     let cfg = detector_config();
     let reviews = cf_analysis::round_review::review_rounds(&input, &cfg);
+    let fingerprint = cf_analysis::round_review::cfg_fingerprint(&cfg.rbr);
     let rows: Vec<cf_store::store::RoundReviewRow> = reviews
         .iter()
         .map(|r| -> Result<cf_store::store::RoundReviewRow, String> {
@@ -1106,6 +1112,7 @@ fn run_round_review(store: &mut Store, match_id: i64) -> Result<(), String> {
                 pivotal_tick: r.pivotal_tick,
                 header_json: serde_json::to_string(&r.header).map_err(|e| e.to_string())?,
                 moments_json: serde_json::to_string(&r.moments).map_err(|e| e.to_string())?,
+                cfg_fingerprint: fingerprint.clone(),
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
@@ -1114,15 +1121,45 @@ fn run_round_review(store: &mut Store, match_id: i64) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// Focus steamids for the replay overlay (Task 9's canvas rail): victim
-/// first, killer second when known, nearest teammate third when known — raw
-/// steamid strings, built straight from the moment's own facts. Name
-/// resolution is the frontend's job.
+/// Focus steamids for the replay overlay (Task 9's canvas rail): victim,
+/// killer, nearest teammate — in that priority order, but PRESENCE-ordered,
+/// not fixed-slot: a key the moment's facts don't carry is skipped rather
+/// than left as a hole, so the list compacts (e.g. `[victim]` alone when the
+/// killer is unknown, or `[victim, nearest_teammate]` when the killer is
+/// unknown but the nearest teammate is known). Never index into this array
+/// assuming a fixed position — `RailMomentDto.killer` exists for exactly
+/// that reason (V1.2 final-review fix wave, finding #3): read it directly
+/// instead of assuming `focus[1]` is the killer. Raw steamid strings, built
+/// straight from the moment's own facts; name resolution is the frontend's
+/// job.
 fn moment_focus(m: &cf_analysis::round_review::Moment) -> Vec<String> {
     ["victim", "killer", "nearest_teammate"]
         .iter()
         .filter_map(|k| m.facts.get(*k).and_then(|v| v.as_str()).map(str::to_string))
         .collect()
+}
+
+/// The moment's killer steamid, when its facts carry one — explicit,
+/// non-positional accessor for `RailMomentDto.killer` (V1.2 final-review fix
+/// wave, finding #3): `moment_focus`'s list compacts when a key is absent,
+/// so a positional read (`focus[1]`) can silently pick up a DIFFERENT
+/// person (e.g. `nearest_teammate`) when there's no killer. This is the only
+/// correct way to get the killer id off a moment.
+fn moment_killer(m: &cf_analysis::round_review::Moment) -> Option<String> {
+    m.facts
+        .get("killer")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+}
+
+/// Silence over a bare label (V1.2 final-review fix wave, finding #4): a
+/// standalone `flag` moment whose narrated facts came out empty carries no
+/// evidence for the rail to show — the CLAUDE.md evidence contract's
+/// "no evidence -> doesn't ship" rule, applied to a moment instead of a
+/// whole `Insight`. Non-`flag` kinds always ship even with empty facts
+/// (e.g. a plant/defuse with an unobserved `delta_p` still marks the event).
+fn should_suppress_flag_moment(kind: &str, facts: &[String]) -> bool {
+    kind == "flag" && facts.is_empty()
 }
 
 #[derive(serde::Serialize)]
@@ -1134,6 +1171,11 @@ pub struct RailMomentDto {
     pub delta_p: Option<f32>,
     pub kind: String,
     pub focus: Vec<String>,
+    /// The moment's killer steamid, when known — explicit (V1.2
+    /// final-review fix wave, finding #3) so the frontend never has to
+    /// infer it from `focus`'s position, which shifts when other keys are
+    /// absent (see `moment_focus`'s doc comment).
+    pub killer: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -1170,7 +1212,16 @@ pub fn get_round_review(
     let mut rows = store
         .load_round_reviews(match_id)
         .map_err(|e| e.to_string())?;
-    if rows.is_empty() {
+    // Empty (never computed) or stale (computed under an old engine
+    // version / a since-changed RbrCfg threshold) both force a recompute —
+    // a stored review must never be served once its fingerprint no longer
+    // matches what the current config would produce (V1.2 final-review fix
+    // wave, finding #5).
+    let current_fingerprint = cf_analysis::round_review::cfg_fingerprint(&detector_config().rbr);
+    let stale = rows
+        .first()
+        .is_some_and(|r| r.cfg_fingerprint != current_fingerprint);
+    if rows.is_empty() || stale {
         run_round_review(&mut store, match_id)?;
         rows = store
             .load_round_reviews(match_id)
@@ -1212,9 +1263,12 @@ pub fn get_round_review(
 
         let rail_moments: Vec<RailMomentDto> = moments
             .iter()
-            .map(|m| {
+            .filter_map(|m| {
                 let text = rail::narrate_moment(m, &ctx);
-                RailMomentDto {
+                if should_suppress_flag_moment(&m.kind, &text.facts) {
+                    return None;
+                }
+                Some(RailMomentDto {
                     tick: m.tick,
                     headline: text.headline,
                     facts: text.facts,
@@ -1222,12 +1276,27 @@ pub fn get_round_review(
                     delta_p: m.delta_p,
                     kind: m.kind.clone(),
                     focus: moment_focus(m),
-                }
+                    killer: moment_killer(m),
+                })
             })
             .collect();
 
-        let why_it_mattered = rail::why_it_mattered(&review, &ctx);
-        let what_to_practise = rail::what_to_practise(&review, &ctx);
+        // Narration only for selected rounds: an unselected round's
+        // `moments` is already empty, but `why_it_mattered`'s `WonIt` arm
+        // doesn't strictly require a moment to produce a line (its "no
+        // named victim" fallback fires even with zero moments) — without
+        // this gate, an unselected `WonIt` round cut by the selection cap
+        // could still render rail prose despite carrying no dot and no
+        // moments (V1.2 final-review fix wave: "no dot without rail
+        // content" extended to the narration, not just the moment list).
+        let (why_it_mattered, what_to_practise) = if row.selected {
+            (
+                rail::why_it_mattered(&review, &ctx),
+                rail::what_to_practise(&review, &ctx),
+            )
+        } else {
+            (None, None)
+        };
 
         out.push(RoundReviewDto {
             round: row.round,
@@ -1396,4 +1465,76 @@ pub fn set_tracked_override(
 pub fn delete_match(state: State<'_, AppState>, match_id: i64) -> Result<(), String> {
     let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
     store.delete_match(match_id).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn moment(facts: serde_json::Value) -> cf_analysis::round_review::Moment {
+        cf_analysis::round_review::Moment {
+            tick: 100,
+            kind: "tracked_death".to_string(),
+            rule_id: None,
+            delta_p: Some(-0.2),
+            facts,
+        }
+    }
+
+    /// V1.2 final-review fix wave, finding #3: `moment_focus` is
+    /// presence-ordered, so a missing `killer` compacts the list rather
+    /// than leaving a hole — `focus[1]` is NOT reliably the killer.
+    #[test]
+    fn moment_focus_compacts_when_a_key_is_absent() {
+        let victim_and_teammate_only = moment(json!({
+            "victim": "1",
+            "nearest_teammate": "3",
+        }));
+        assert_eq!(
+            moment_focus(&victim_and_teammate_only),
+            vec!["1".to_string(), "3".to_string()],
+            "with no killer, focus[1] is the nearest teammate, not a killer"
+        );
+
+        let all_three = moment(json!({
+            "victim": "1",
+            "killer": "2",
+            "nearest_teammate": "3",
+        }));
+        assert_eq!(
+            moment_focus(&all_three),
+            vec!["1".to_string(), "2".to_string(), "3".to_string()]
+        );
+    }
+
+    #[test]
+    fn moment_killer_reads_the_named_field_not_a_position() {
+        let with_killer = moment(json!({ "victim": "1", "killer": "2" }));
+        assert_eq!(moment_killer(&with_killer), Some("2".to_string()));
+
+        let without_killer = moment(json!({
+            "victim": "1",
+            "nearest_teammate": "3",
+        }));
+        assert_eq!(
+            moment_killer(&without_killer),
+            None,
+            "must not fall back to focus[1] (which would be \"3\" here)"
+        );
+    }
+
+    /// V1.2 final-review fix wave, finding #4: only a fact-less STANDALONE
+    /// flag moment is suppressed — other kinds ship even with empty facts
+    /// (e.g. an unobserved delta on a plant/defuse).
+    #[test]
+    fn suppresses_fact_less_flag_moments_only() {
+        assert!(should_suppress_flag_moment("flag", &[]));
+        assert!(!should_suppress_flag_moment(
+            "flag",
+            &["1 blinded: Alice".to_string()]
+        ));
+        assert!(!should_suppress_flag_moment("tracked_kill", &[]));
+        assert!(!should_suppress_flag_moment("plant", &[]));
+    }
 }

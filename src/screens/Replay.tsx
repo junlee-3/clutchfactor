@@ -390,8 +390,14 @@ function RoundPlayer({
 
   const annotation = useMemo(() => {
     if (!annotationMoment) return null;
-    const [victimId, killerId] = annotationMoment.focus;
-    return victimId ? { victimId, killerId: killerId ?? null } : null;
+    // `focus` is presence-ordered, not fixed-slot (victim, then killer,
+    // then nearest teammate, each only when known) — focus[1] is NOT
+    // reliably the killer (e.g. it's the nearest teammate when the killer
+    // is unknown). Read the killer off the explicit field instead.
+    const victimId = annotationMoment.focus[0];
+    return victimId
+      ? { victimId, killerId: annotationMoment.killer ?? null }
+      : null;
   }, [annotationMoment]);
 
   const getScene = useCallback(

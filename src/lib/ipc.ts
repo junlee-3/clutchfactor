@@ -228,7 +228,11 @@ export interface RailMomentDto {
   rule_id: string | null;
   delta_p: number | null;
   kind: string;
+  // Presence-ordered (victim, then killer, then nearest teammate — each
+  // only when known); never assume a fixed slot. Read `killer` below for
+  // the killer specifically, not focus[1].
   focus: string[];
+  killer: string | null;
 }
 
 export interface RoundReviewDto {

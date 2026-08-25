@@ -210,6 +210,12 @@ pub struct RoundReviewRow {
     pub pivotal_tick: i32,
     pub header_json: String,  // RoundHeader as JSON
     pub moments_json: String, // Vec<Moment> as JSON
+    /// `cf_analysis::round_review::cfg_fingerprint` at the time this row was
+    /// computed (migration 0007; V1.2 final-review fix wave, finding #5) —
+    /// the caller compares it against the current fingerprint and recomputes
+    /// on mismatch rather than serving a stale review. Existing pre-migration
+    /// rows backfill to `""`, which never matches a real fingerprint.
+    pub cfg_fingerprint: String,
 }
 
 /// One own match's trend point (Trends screen chart, PROMPT.md M6).
@@ -746,8 +752,9 @@ impl Store {
         {
             let mut st = tx.prepare(
                 "INSERT INTO round_review (match_id, round, impact, verdict, attention,
-                                           selected, pivotal_tick, header_json, moments_json)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                                           selected, pivotal_tick, header_json, moments_json,
+                                           cfg_fingerprint)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             )?;
             for r in rows {
                 st.execute(params![
@@ -760,6 +767,7 @@ impl Store {
                     r.pivotal_tick,
                     r.header_json,
                     r.moments_json,
+                    r.cfg_fingerprint,
                 ])?;
             }
         }
@@ -771,7 +779,7 @@ impl Store {
     pub fn load_round_reviews(&self, match_id: i64) -> Result<Vec<RoundReviewRow>, StoreError> {
         let mut st = self.conn.prepare(
             "SELECT round, impact, verdict, attention, selected, pivotal_tick,
-                    header_json, moments_json
+                    header_json, moments_json, cfg_fingerprint
              FROM round_review WHERE match_id = ?1 ORDER BY round",
         )?;
         let rows = st
@@ -785,6 +793,7 @@ impl Store {
                     pivotal_tick: r.get(5)?,
                     header_json: r.get(6)?,
                     moments_json: r.get(7)?,
+                    cfg_fingerprint: r.get(8)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1720,11 +1729,11 @@ mod tests {
         let path = dir.path().join("test.db");
         {
             let store = Store::open(&path).unwrap();
-            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 6);
+            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 7);
         }
         // Reopen: migrations must not re-apply / error.
         let store = Store::open(&path).unwrap();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 6);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 7);
     }
 
     #[test]
@@ -1907,7 +1916,7 @@ mod tests {
     fn cross_demo_queries_aggregate_flags_positions_and_rounds() {
         use cf_analysis::{AnalysisOutput, EvidenceRef, RuleFlag};
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 6);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 7);
         store.set_setting("tracked_steamid", "1").unwrap();
         let flag = |round: u32, tick: i32| RuleFlag {
             rule_id: "H2_ISOLATED_DEATH",
@@ -2130,7 +2139,7 @@ mod tests {
     #[test]
     fn migration_2_analysis_tables_and_rule_inputs_persist() {
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 6);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 7);
         let id = store
             .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
             .unwrap();
@@ -2700,6 +2709,8 @@ mod tests {
             .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
             .unwrap();
 
+        let fp =
+            cf_analysis::round_review::cfg_fingerprint(&cf_analysis::config::RbrCfg::default());
         let row = |round: u32, verdict: &str| RoundReviewRow {
             round,
             impact: 0.25,
@@ -2716,6 +2727,7 @@ mod tests {
                 "delta_p": 0.1, "facts": {}
             }])
             .to_string(),
+            cfg_fingerprint: fp.clone(),
         };
 
         store
@@ -2725,6 +2737,10 @@ mod tests {
         assert_eq!(loaded.len(), 2);
         assert_eq!(loaded[0].round, 1, "ordered by round");
         assert_eq!(loaded[0].verdict, "won_it");
+        assert_eq!(
+            loaded[0].cfg_fingerprint, fp,
+            "the fingerprint must round-trip through save/load"
+        );
         assert_eq!(loaded[1].round, 2);
         assert_eq!(loaded[1].verdict, "cost_you");
         assert_eq!(loaded, vec![row(1, "won_it"), row(2, "cost_you")]);
@@ -2741,5 +2757,48 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM round_review", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 0, "delete_match must cascade into round_review");
+    }
+
+    /// Store-level slice of Fix #5's mismatch path: a row saved under a
+    /// stale fingerprint reads back with that stale value intact — this is
+    /// the signal `commands::get_round_review` compares against the current
+    /// fingerprint to decide whether to recompute. The recompute call itself
+    /// lives in `commands.rs` (needs `AppState`/Tauri wiring this crate
+    /// doesn't have); exercised here at the store boundary only.
+    #[test]
+    fn round_review_stale_fingerprint_is_visible_at_load() {
+        let (_dir, mut store) = open_tmp();
+        let m1 = store
+            .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
+            .unwrap();
+
+        let stale = RoundReviewRow {
+            round: 1,
+            impact: 0.25,
+            verdict: "won_it".to_string(),
+            attention: "bright".to_string(),
+            selected: true,
+            pivotal_tick: 1200,
+            header_json: serde_json::json!({
+                "side": "CT", "won": true, "kills": 1, "deaths": 0, "man_context": "5v5"
+            })
+            .to_string(),
+            moments_json: "[]".to_string(),
+            cfg_fingerprint: "rbr-v0|stale".to_string(),
+        };
+        store.save_round_reviews(m1, &[stale]).unwrap();
+
+        let loaded = store.load_round_reviews(m1).unwrap();
+        let current =
+            cf_analysis::round_review::cfg_fingerprint(&cf_analysis::config::RbrCfg::default());
+        assert_eq!(
+            loaded[0].cfg_fingerprint, "rbr-v0|stale",
+            "the stale fingerprint must round-trip unchanged"
+        );
+        assert_ne!(
+            loaded[0].cfg_fingerprint, current,
+            "a row saved under an old fingerprint must read back mismatched \
+             against the current one"
+        );
     }
 }

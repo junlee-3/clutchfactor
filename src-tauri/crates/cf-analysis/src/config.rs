@@ -247,7 +247,12 @@ pub struct RbrCfg {
     pub exculpatory_rules: Vec<String>,
 }
 fn d_rbr_attention_p() -> f32 {
-    0.18
+    // Calibrated 2026-08-22 (V1.2 §12 hand-verification): 0.18 saturated the
+    // 6-round cap on all 5 owner demos (11-15 candidates each — see
+    // ADR-0008's "Calibration" amendment). 0.25 sits in a real gap in the
+    // observed real-match impact distribution, just above the single-
+    // early-duel band (~0.16-0.24), and de-saturates 4/5 matches.
+    0.25
 }
 fn d_rbr_pivotal_p() -> f32 {
     0.35
@@ -506,7 +511,9 @@ mod tests {
         assert_eq!(c.habit.min_matches, 3);
         assert_eq!(c.habit.hotspot_radius_u, 250.0);
         // V1.2 RBR round selection & attention thresholds (issue #9).
-        assert_eq!(c.rbr.attention_threshold_p, 0.18);
+        // attention_threshold_p calibrated 0.18 -> 0.25 2026-08-22 (V1.2 §12
+        // hand-verification; ADR-0008 Calibration amendment).
+        assert_eq!(c.rbr.attention_threshold_p, 0.25);
         assert_eq!(c.rbr.pivotal_threshold_p, 0.35);
         assert_eq!(c.rbr.max_rounds, 6);
         assert_eq!(c.rbr.max_moments, 6);
@@ -523,7 +530,7 @@ mod tests {
         let c = DetectorConfig::from_yaml("rbr:\n  max_rounds: 3\n").unwrap();
         assert_eq!(c.rbr.max_rounds, 3);
         assert_eq!(
-            c.rbr.attention_threshold_p, 0.18,
+            c.rbr.attention_threshold_p, 0.25,
             "untouched fields keep defaults"
         );
         assert_eq!(c.rbr.pivotal_threshold_p, 0.35);
