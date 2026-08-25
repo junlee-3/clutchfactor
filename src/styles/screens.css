@@ -370,6 +370,11 @@
   gap: var(--s2);
 }
 
+.library-row-progress {
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Report (Report.tsx) — design-system.md §9, "the coach's write-up"       */
 /* ---------------------------------------------------------------------- */

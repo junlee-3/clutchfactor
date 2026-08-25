@@ -66,42 +66,31 @@ fn send(ch: &Channel<ProgressEvent>, stage: &str, pct: f32, detail: &str) {
     });
 }
 
-/// Hash → duplicate check → parse → save, shared by own and corpus imports.
-/// Returns the saved id, the parsed data (own imports analyze it next) and
-/// the derived score.
-async fn parse_and_save(
-    state: &State<'_, AppState>,
-    path: String,
-    on_progress: &Channel<ProgressEvent>,
-    kind: cf_store::store::MatchKind,
-) -> Result<(i64, cf_parser::model::MatchData, u32, u32), String> {
-    let file = PathBuf::from(&path);
-    let file_name = file
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .ok_or_else(|| "not a file path".to_string())?;
-
-    send(on_progress, "hashing", 0.0, "Hashing demo file");
-    let hash_path = file.clone();
-    let file_hash = tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
+/// Reads the whole file and SHA-256-hashes it off the async runtime. Shared
+/// by `parse_and_save` (import) and `re_analyze_match` (backfill), so both
+/// paths hash identically.
+async fn hash_demo(path: &std::path::Path) -> Result<String, String> {
+    let hash_path = path.to_path_buf();
+    tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
         let bytes = std::fs::read(&hash_path).map_err(|e| format!("cannot read demo: {e}"))?;
         Ok(format!("{:x}", Sha256::digest(&bytes)))
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?
+}
 
-    // Reject duplicates before the expensive parse (save_match re-checks).
-    {
-        let store = state.store.lock().map_err(|_| "store lock poisoned")?;
-        if store.has_file_hash(&file_hash).map_err(|e| e.to_string())? {
-            return Err(StoreError::DuplicateImport.to_string());
-        }
-    }
-
-    send(on_progress, "parsing", 0.05, "Parsing demo");
-    let parse_path = file.clone();
+/// Parses a demo off the async runtime, mapping `ImportStage` to progress
+/// events. Shared by `parse_and_save` (import) and `re_analyze_match`
+/// (backfill) so both paths report progress and word failures identically
+/// (§7 voice).
+async fn parse_demo(
+    path: &std::path::Path,
+    file_name: &str,
+    on_progress: &Channel<ProgressEvent>,
+) -> Result<cf_parser::model::MatchData, String> {
+    let parse_path = path.to_path_buf();
     let progress_channel = on_progress.clone();
-    let data = tauri::async_runtime::spawn_blocking(move || {
+    tauri::async_runtime::spawn_blocking(move || {
         let mut progress = |stage: ImportStage, pct: f32| {
             let (name, detail) = match stage {
                 ImportStage::Reading => ("reading", "Reading demo"),
@@ -132,7 +121,37 @@ async fn parse_and_save(
             "Couldn't parse {file_name}: {e}. If this demo is from a different \
              game or the download was cut short, re-download it and try again."
         )
-    })?;
+    })
+}
+
+/// Hash → duplicate check → parse → save, shared by own and corpus imports.
+/// Returns the saved id, the parsed data (own imports analyze it next) and
+/// the derived score.
+async fn parse_and_save(
+    state: &State<'_, AppState>,
+    path: String,
+    on_progress: &Channel<ProgressEvent>,
+    kind: cf_store::store::MatchKind,
+) -> Result<(i64, cf_parser::model::MatchData, u32, u32), String> {
+    let file = PathBuf::from(&path);
+    let file_name = file
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .ok_or_else(|| "not a file path".to_string())?;
+
+    send(on_progress, "hashing", 0.0, "Hashing demo file");
+    let file_hash = hash_demo(&file).await?;
+
+    // Reject duplicates before the expensive parse (save_match re-checks).
+    {
+        let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        if store.has_file_hash(&file_hash).map_err(|e| e.to_string())? {
+            return Err(StoreError::DuplicateImport.to_string());
+        }
+    }
+
+    send(on_progress, "parsing", 0.05, "Parsing demo");
+    let data = parse_demo(&file, &file_name, on_progress).await?;
 
     send(on_progress, "saving", 0.88, "Saving to library");
     let match_id = {
@@ -152,25 +171,23 @@ async fn parse_and_save(
     Ok((match_id, data, score_a, score_b))
 }
 
-#[tauri::command]
-pub async fn import_demo(
-    state: State<'_, AppState>,
-    path: String,
-    on_progress: Channel<ProgressEvent>,
-) -> Result<ImportResult, String> {
-    let (match_id, data, score_a, score_b) =
-        parse_and_save(&state, path, &on_progress, cf_store::store::MatchKind::Own).await?;
+/// Detectors → round review → (D6 when grids exist), persisted. Shared by
+/// `import_demo` and `re_analyze_match`. A no-op without a tracked player.
+async fn analyze_and_persist(
+    state: &State<'_, AppState>,
+    match_id: i64,
+    data: cf_parser::model::MatchData,
+    on_progress: &Channel<ProgressEvent>,
+) -> Result<(), String> {
     let map = data.map.clone();
-
     let tracked = {
         let store = state.store.lock().map_err(|_| "store lock poisoned")?;
         store.tracked_steamid().map_err(|e| e.to_string())?
     };
-
     // Analysis needs a tracked player; after save_match the modal fallback
     // always yields one for a non-empty library.
     if let Some(tracked) = tracked.and_then(|t| t.parse::<u64>().ok()) {
-        send(&on_progress, "analyzing", 0.92, "Running detectors");
+        send(on_progress, "analyzing", 0.92, "Running detectors");
         let cfg = detector_config();
         let analysis = tauri::async_runtime::spawn_blocking(move || {
             cf_analysis::analyze(&data, tracked, &cfg)
@@ -181,7 +198,7 @@ pub async fn import_demo(
         store
             .save_analysis(match_id, &analysis)
             .map_err(|e| e.to_string())?;
-        send(&on_progress, "analyzing", 0.95, "Scoring rounds");
+        send(on_progress, "analyzing", 0.95, "Scoring rounds");
         run_round_review(&mut store, match_id)?;
         // D6 runs outside analyze(): it needs the corpus grids, which only
         // exist once pro demos were imported and built for this map.
@@ -191,7 +208,7 @@ pub async fn import_demo(
             .is_empty();
         if has_grids {
             send(
-                &on_progress,
+                on_progress,
                 "analyzing",
                 0.97,
                 "Comparing positioning to corpus",
@@ -199,6 +216,19 @@ pub async fn import_demo(
             run_positioning(&mut store, match_id)?;
         }
     }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn import_demo(
+    state: State<'_, AppState>,
+    path: String,
+    on_progress: Channel<ProgressEvent>,
+) -> Result<ImportResult, String> {
+    let (match_id, data, score_a, score_b) =
+        parse_and_save(&state, path, &on_progress, cf_store::store::MatchKind::Own).await?;
+    let map = data.map.clone();
+    analyze_and_persist(&state, match_id, data, &on_progress).await?;
 
     send(&on_progress, "done", 1.0, "Import complete");
     Ok(ImportResult {
@@ -206,6 +236,78 @@ pub async fn import_demo(
         map,
         score_a,
         score_b,
+    })
+}
+
+#[derive(serde::Serialize)]
+pub struct ReAnalyzeResult {
+    /// True when no usable file was found: the UI must ask the user to pick
+    /// the demo and call again with `path`.
+    pub needs_file: bool,
+    pub file_name: String,
+    pub map: String,
+}
+
+/// Re-parses a match's demo and re-runs the whole pipeline in place (V1.2b
+/// spec §2 "Backfill"). Uses the recorded `source_path`, or `path` when
+/// given; the file's hash must equal the stored `file_hash` — a different
+/// file is refused rather than silently replacing the match.
+#[tauri::command]
+pub async fn re_analyze_match(
+    state: State<'_, AppState>,
+    match_id: i64,
+    path: Option<String>,
+    on_progress: Channel<ProgressEvent>,
+) -> Result<ReAnalyzeResult, String> {
+    let file = {
+        let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        store
+            .match_file(match_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "That match is no longer in the library.".to_string())?
+    };
+    let candidate = path
+        .or(file.source_path.clone())
+        .filter(|p| std::path::Path::new(p).is_file());
+    let Some(demo_path) = candidate else {
+        return Ok(ReAnalyzeResult {
+            needs_file: true,
+            file_name: file.file_name,
+            map: String::new(),
+        });
+    };
+
+    send(&on_progress, "hashing", 0.0, "Checking the demo file");
+    let hash_path = PathBuf::from(&demo_path);
+    let file_hash = hash_demo(&hash_path).await?;
+    if file_hash != file.file_hash {
+        return Err(format!(
+            "That file isn't {} — its contents don't match the imported demo. Pick the original file.",
+            file.file_name
+        ));
+    }
+
+    send(&on_progress, "parsing", 0.05, "Parsing demo");
+    let parse_path = PathBuf::from(&demo_path);
+    let data = parse_demo(&parse_path, &file.file_name, &on_progress).await?;
+
+    send(&on_progress, "saving", 0.88, "Replacing match data");
+    let map = data.map.clone();
+    {
+        let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        store
+            .replace_match_data(match_id, &data)
+            .map_err(|e| format!("failed to replace match data: {e}"))?;
+        store
+            .set_source_path(match_id, &demo_path)
+            .map_err(|e| e.to_string())?;
+    }
+    analyze_and_persist(&state, match_id, data, &on_progress).await?;
+    send(&on_progress, "done", 1.0, "Re-analyze complete");
+    Ok(ReAnalyzeResult {
+        needs_file: false,
+        file_name: file.file_name,
+        map,
     })
 }
 

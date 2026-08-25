@@ -394,172 +394,7 @@ impl Store {
         )?;
         let match_id = tx.last_insert_rowid();
 
-        {
-            let mut st =
-                tx.prepare("INSERT INTO players (match_id, steamid, name) VALUES (?1, ?2, ?3)")?;
-            for p in &data.players {
-                st.execute(params![match_id, p.steamid.to_string(), p.name])?;
-            }
-
-            let mut st = tx.prepare(
-                "INSERT INTO rounds (match_id, number, start_tick, freeze_end_tick, end_tick,
-                                     officially_ended_tick, winner, reason)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            )?;
-            let mut st_side = tx.prepare(
-                "INSERT INTO round_sides (match_id, number, steamid, side) VALUES (?1, ?2, ?3, ?4)",
-            )?;
-            for r in &data.rounds {
-                st.execute(params![
-                    match_id,
-                    r.number,
-                    r.start_tick,
-                    r.freeze_end_tick,
-                    r.end_tick,
-                    r.officially_ended_tick,
-                    side_str(r.winner),
-                    reason_str(&r.reason),
-                ])?;
-                for s in &r.ct_steamids {
-                    st_side.execute(params![match_id, r.number, s.to_string(), "CT"])?;
-                }
-                for s in &r.t_steamids {
-                    st_side.execute(params![match_id, r.number, s.to_string(), "T"])?;
-                }
-            }
-
-            let mut st = tx.prepare(
-                "INSERT INTO kills (match_id, round, tick, attacker, victim, assister, weapon,
-                                    headshot, penetrated, thru_smoke, attacker_blind, assistedflash)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            )?;
-            for k in &data.kills {
-                st.execute(params![
-                    match_id,
-                    k.round,
-                    k.tick,
-                    k.attacker.map(|a| a.to_string()),
-                    k.victim.to_string(),
-                    k.assister.map(|a| a.to_string()),
-                    k.weapon,
-                    k.headshot,
-                    k.penetrated,
-                    k.thru_smoke,
-                    k.attacker_blind,
-                    k.assistedflash,
-                ])?;
-            }
-
-            let mut st = tx.prepare(
-                "INSERT INTO blinds (match_id, tick, victim, attacker, duration)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-            )?;
-            for b in &data.blinds {
-                st.execute(params![
-                    match_id,
-                    b.tick,
-                    b.victim.to_string(),
-                    b.attacker.map(|a| a.to_string()),
-                    b.duration,
-                ])?;
-            }
-
-            let mut st = tx.prepare(
-                "INSERT INTO grenades (match_id, tick, kind, thrower, x, y, z)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            )?;
-            for g in &data.grenades {
-                st.execute(params![
-                    match_id,
-                    g.tick,
-                    g.kind,
-                    g.thrower.map(|t| t.to_string()),
-                    g.x,
-                    g.y,
-                    g.z,
-                ])?;
-            }
-
-            let mut st = tx.prepare(
-                "INSERT INTO bomb_events (match_id, tick, kind, player) VALUES (?1, ?2, ?3, ?4)",
-            )?;
-            for b in &data.bomb_events {
-                st.execute(params![
-                    match_id,
-                    b.tick,
-                    b.kind,
-                    b.player.map(|p| p.to_string())
-                ])?;
-            }
-
-            let mut st = tx.prepare(
-                "INSERT INTO tick_samples (match_id, steamid, tick, x, y, z, yaw, health,
-                                           is_alive, team_num, active_weapon, spotted, last_place,
-                                           is_scoped)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-            )?;
-            let t = &data.ticks;
-            for i in 0..t.len() {
-                st.execute(params![
-                    match_id,
-                    t.steamid[i].to_string(),
-                    t.tick[i],
-                    t.x[i],
-                    t.y[i],
-                    t.z[i],
-                    t.yaw[i],
-                    t.health[i],
-                    t.is_alive[i],
-                    t.team_num[i],
-                    t.active_weapon[i],
-                    t.spotted[i],
-                    t.last_place[i],
-                    t.is_scoped.get(i).copied(),
-                ])?;
-            }
-
-            let mut st = tx.prepare(
-                "INSERT INTO shots (match_id, tick, player, weapon) VALUES (?1, ?2, ?3, ?4)",
-            )?;
-            for s in &data.shots {
-                st.execute(params![match_id, s.tick, s.player.to_string(), s.weapon])?;
-            }
-
-            let mut st = tx.prepare(
-                "INSERT INTO hurts (match_id, tick, victim, attacker, dmg_health, weapon, hitgroup)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            )?;
-            for h in &data.hurts {
-                st.execute(params![
-                    match_id,
-                    h.tick,
-                    h.victim.to_string(),
-                    h.attacker.map(|a| a.to_string()),
-                    h.dmg_health,
-                    h.weapon,
-                    h.hitgroup,
-                ])?;
-            }
-
-            let mut st =
-                tx.prepare("INSERT INTO reloads (match_id, tick, player) VALUES (?1, ?2, ?3)")?;
-            for r in &data.reloads {
-                st.execute(params![match_id, r.tick, r.player.to_string()])?;
-            }
-
-            let mut st = tx.prepare(
-                "INSERT OR REPLACE INTO inventories (match_id, tick, steamid, items_json)
-                 VALUES (?1, ?2, ?3, ?4)",
-            )?;
-            for inv in &data.inventories {
-                st.execute(params![
-                    match_id,
-                    inv.tick,
-                    inv.steamid.to_string(),
-                    serde_json::to_string(&inv.items).expect("items json"),
-                ])?;
-            }
-        }
+        insert_match_children(&tx, match_id, data)?;
         tx.commit()?;
         Ok(match_id)
     }
@@ -1653,6 +1488,255 @@ impl Store {
     }
 }
 
+/// Every child-table insert for one match — shared by `save_match` and
+/// `replace_match_data` so a re-parse writes exactly what an import does.
+fn insert_match_children(
+    tx: &rusqlite::Transaction<'_>,
+    match_id: i64,
+    data: &MatchData,
+) -> Result<(), StoreError> {
+    let mut st = tx.prepare("INSERT INTO players (match_id, steamid, name) VALUES (?1, ?2, ?3)")?;
+    for p in &data.players {
+        st.execute(params![match_id, p.steamid.to_string(), p.name])?;
+    }
+
+    let mut st = tx.prepare(
+        "INSERT INTO rounds (match_id, number, start_tick, freeze_end_tick, end_tick,
+                             officially_ended_tick, winner, reason)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+    )?;
+    let mut st_side = tx.prepare(
+        "INSERT INTO round_sides (match_id, number, steamid, side) VALUES (?1, ?2, ?3, ?4)",
+    )?;
+    for r in &data.rounds {
+        st.execute(params![
+            match_id,
+            r.number,
+            r.start_tick,
+            r.freeze_end_tick,
+            r.end_tick,
+            r.officially_ended_tick,
+            side_str(r.winner),
+            reason_str(&r.reason),
+        ])?;
+        for s in &r.ct_steamids {
+            st_side.execute(params![match_id, r.number, s.to_string(), "CT"])?;
+        }
+        for s in &r.t_steamids {
+            st_side.execute(params![match_id, r.number, s.to_string(), "T"])?;
+        }
+    }
+
+    let mut st = tx.prepare(
+        "INSERT INTO kills (match_id, round, tick, attacker, victim, assister, weapon,
+                            headshot, penetrated, thru_smoke, attacker_blind, assistedflash)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+    )?;
+    for k in &data.kills {
+        st.execute(params![
+            match_id,
+            k.round,
+            k.tick,
+            k.attacker.map(|a| a.to_string()),
+            k.victim.to_string(),
+            k.assister.map(|a| a.to_string()),
+            k.weapon,
+            k.headshot,
+            k.penetrated,
+            k.thru_smoke,
+            k.attacker_blind,
+            k.assistedflash,
+        ])?;
+    }
+
+    let mut st = tx.prepare(
+        "INSERT INTO blinds (match_id, tick, victim, attacker, duration)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+    )?;
+    for b in &data.blinds {
+        st.execute(params![
+            match_id,
+            b.tick,
+            b.victim.to_string(),
+            b.attacker.map(|a| a.to_string()),
+            b.duration,
+        ])?;
+    }
+
+    let mut st = tx.prepare(
+        "INSERT INTO grenades (match_id, tick, kind, thrower, x, y, z)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+    )?;
+    for g in &data.grenades {
+        st.execute(params![
+            match_id,
+            g.tick,
+            g.kind,
+            g.thrower.map(|t| t.to_string()),
+            g.x,
+            g.y,
+            g.z,
+        ])?;
+    }
+
+    let mut st = tx.prepare(
+        "INSERT INTO bomb_events (match_id, tick, kind, player) VALUES (?1, ?2, ?3, ?4)",
+    )?;
+    for b in &data.bomb_events {
+        st.execute(params![
+            match_id,
+            b.tick,
+            b.kind,
+            b.player.map(|p| p.to_string())
+        ])?;
+    }
+
+    let mut st = tx.prepare(
+        "INSERT INTO tick_samples (match_id, steamid, tick, x, y, z, yaw, health,
+                                   is_alive, team_num, active_weapon, spotted, last_place,
+                                   is_scoped)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+    )?;
+    let t = &data.ticks;
+    for i in 0..t.len() {
+        st.execute(params![
+            match_id,
+            t.steamid[i].to_string(),
+            t.tick[i],
+            t.x[i],
+            t.y[i],
+            t.z[i],
+            t.yaw[i],
+            t.health[i],
+            t.is_alive[i],
+            t.team_num[i],
+            t.active_weapon[i],
+            t.spotted[i],
+            t.last_place[i],
+            t.is_scoped.get(i).copied(),
+        ])?;
+    }
+
+    let mut st =
+        tx.prepare("INSERT INTO shots (match_id, tick, player, weapon) VALUES (?1, ?2, ?3, ?4)")?;
+    for s in &data.shots {
+        st.execute(params![match_id, s.tick, s.player.to_string(), s.weapon])?;
+    }
+
+    let mut st = tx.prepare(
+        "INSERT INTO hurts (match_id, tick, victim, attacker, dmg_health, weapon, hitgroup)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+    )?;
+    for h in &data.hurts {
+        st.execute(params![
+            match_id,
+            h.tick,
+            h.victim.to_string(),
+            h.attacker.map(|a| a.to_string()),
+            h.dmg_health,
+            h.weapon,
+            h.hitgroup,
+        ])?;
+    }
+
+    let mut st = tx.prepare("INSERT INTO reloads (match_id, tick, player) VALUES (?1, ?2, ?3)")?;
+    for r in &data.reloads {
+        st.execute(params![match_id, r.tick, r.player.to_string()])?;
+    }
+
+    let mut st = tx.prepare(
+        "INSERT OR REPLACE INTO inventories (match_id, tick, steamid, items_json)
+         VALUES (?1, ?2, ?3, ?4)",
+    )?;
+    for inv in &data.inventories {
+        st.execute(params![
+            match_id,
+            inv.tick,
+            inv.steamid.to_string(),
+            serde_json::to_string(&inv.items).expect("items json"),
+        ])?;
+    }
+
+    Ok(())
+}
+
+/// Tables that hang off `matches(id)` and are rewritten by a re-parse.
+/// Analysis tables (rule_flags, insights, death_class, round_review,
+/// round_plays) are replaced by their own save_* calls afterwards.
+const MATCH_CHILD_TABLES: &[&str] = &[
+    "players",
+    "rounds",
+    "round_sides",
+    "kills",
+    "blinds",
+    "grenades",
+    "bomb_events",
+    "tick_samples",
+    "shots",
+    "hurts",
+    "reloads",
+    "inventories",
+];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchFile {
+    pub file_name: String,
+    pub file_hash: String,
+    pub source_path: Option<String>,
+}
+
+impl Store {
+    /// Re-parse support (V1.2b): replaces a match's parsed rows in place —
+    /// same `id`, so report/replay URLs and cross-match keys survive.
+    pub fn replace_match_data(&mut self, id: i64, data: &MatchData) -> Result<(), StoreError> {
+        let (roster_a, roster_b, wins_a, wins_b) = derive_score(&data.rounds);
+        let roster_json = |r: &[u64]| {
+            serde_json::to_string(&r.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+                .expect("roster json")
+        };
+        let tx = self.conn.transaction()?;
+        for table in MATCH_CHILD_TABLES {
+            tx.execute(&format!("DELETE FROM {table} WHERE match_id = ?1"), [id])?;
+        }
+        tx.execute(
+            "UPDATE matches SET map = ?2, tickrate = ?3, sample_every = ?4, score_a = ?5,
+                                score_b = ?6, roster_a_json = ?7, roster_b_json = ?8
+             WHERE id = ?1",
+            params![
+                id,
+                data.map,
+                data.tickrate,
+                data.ticks.sample_every,
+                wins_a,
+                wins_b,
+                roster_json(&roster_a),
+                roster_json(&roster_b),
+            ],
+        )?;
+        insert_match_children(&tx, id, data)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn match_file(&self, id: i64) -> Result<Option<MatchFile>, StoreError> {
+        let v = self
+            .conn
+            .query_row(
+                "SELECT file_name, file_hash, source_path FROM matches WHERE id = ?1",
+                [id],
+                |r| {
+                    Ok(MatchFile {
+                        file_name: r.get(0)?,
+                        file_hash: r.get(1)?,
+                        source_path: r.get(2)?,
+                    })
+                },
+            )
+            .optional()?;
+        Ok(v)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1902,6 +1986,47 @@ mod tests {
     fn match_detail_none_for_unknown_id() {
         let (_dir, store) = open_tmp();
         assert!(store.match_detail(999).unwrap().is_none());
+    }
+
+    #[test]
+    fn replace_match_data_keeps_the_id_and_swaps_every_child_row() {
+        let (_dir, mut store, match_id, mut data) = one_match();
+        let before = store.match_detail(match_id).unwrap().unwrap();
+        let before_hash: String = store
+            .conn
+            .query_row(
+                "SELECT file_hash FROM matches WHERE id = ?1",
+                [match_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        // A re-parse of the "same" demo with one extra kill.
+        data.kills.push(cf_parser::model::Kill {
+            tick: before.rounds[0].start_tick + 500,
+            round: 1,
+            attacker: None,
+            victim: 1,
+            assister: None,
+            weapon: "world".to_string(),
+            headshot: false,
+            penetrated: 0,
+            thru_smoke: false,
+            attacker_blind: false,
+            assistedflash: false,
+        });
+        store.replace_match_data(match_id, &data).unwrap();
+        let after = store.match_detail(match_id).unwrap().unwrap();
+        assert_eq!(after.id, match_id);
+        assert_eq!(after.kills.len(), before.kills.len() + 1);
+        assert_eq!(
+            after.rounds.len(),
+            before.rounds.len(),
+            "rounds re-inserted, not doubled"
+        );
+        assert_eq!(after.players.len(), before.players.len());
+        let f = store.match_file(match_id).unwrap().unwrap();
+        assert_eq!(f.file_hash, before_hash);
+        assert_eq!(f.source_path, None);
     }
 
     #[test]
