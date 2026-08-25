@@ -530,6 +530,199 @@ impl DetectorConfig {
     }
 }
 
+/// Every tunable threshold as (dotted config path, value, unit) rows — the
+/// same values `commands.rs`'s Settings table shows (moved here so
+/// `catalog::render_thresholds` can resolve `{trade.isolation_u}`-style
+/// placeholders against live config; `commands.rs::threshold_rows` will
+/// wrap these into `ThresholdRow`s). Names are the dotted config path so a
+/// catalog placeholder and a row name are always the same string; a row's
+/// unit is left empty when the catalog prose already supplies the unit
+/// word right after the placeholder (e.g. "{util.min_unused_nades}
+/// grenades", "{h4.crossfire_min_angle_deg}°").
+pub fn threshold_values(cfg: &DetectorConfig) -> Vec<(String, String, String)> {
+    let row = |name: &str, value: String, unit: &str| (name.to_string(), value, unit.to_string());
+    vec![
+        // Trade spacing (H2 / H11 reuse trade.distance_u).
+        row("trade.window_s", format!("{}", cfg.trade.window_s), "s"),
+        row("trade.distance_u", format!("{}", cfg.trade.distance_u), "u"),
+        row(
+            "trade.isolation_u",
+            format!("{}", cfg.trade.isolation_u),
+            "u",
+        ),
+        row(
+            "trade.commit_window_s",
+            format!("{}", cfg.trade.commit_window_s),
+            "s",
+        ),
+        // Flash effectiveness (H5 / H6 / D2).
+        row(
+            "flash.effective_s",
+            format!("{}", cfg.flash.effective_s),
+            "s",
+        ),
+        row(
+            "flash.conversion_window_s",
+            format!("{}", cfg.flash.conversion_window_s),
+            "s",
+        ),
+        // H3 utility vulnerability.
+        row(
+            "h3.switch_window_s",
+            format!("{}", cfg.h3.switch_window_s),
+            "s",
+        ),
+        row(
+            "h3.reload_window_s",
+            format!("{}", cfg.h3.reload_window_s),
+            "s",
+        ),
+        row(
+            "h3.scoped_close_u",
+            format!("{}", cfg.h3.scoped_close_u),
+            "u",
+        ),
+        // H4 exposure.
+        row(
+            "h4.contactless_window_s",
+            format!("{}", cfg.h4.contactless_window_s),
+            "s",
+        ),
+        row(
+            "h4.crossfire_engage_window_s",
+            format!("{}", cfg.h4.crossfire_engage_window_s),
+            "s",
+        ),
+        // Catalog prose already writes the ° right after the placeholder.
+        row(
+            "h4.crossfire_min_angle_deg",
+            format!("{}", cfg.h4.crossfire_min_angle_deg),
+            "",
+        ),
+        // H16 utility damage exposure.
+        row(
+            "h16.no_shot_window_s",
+            format!("{}", cfg.h16.no_shot_window_s),
+            "s",
+        ),
+        row(
+            "h16.no_contact_window_s",
+            format!("{}", cfg.h16.no_contact_window_s),
+            "s",
+        ),
+        // Catalog prose already writes "fire damage" after the placeholder.
+        row(
+            "h16.fire_linger_dmg",
+            format!("{}", cfg.h16.fire_linger_dmg),
+            "",
+        ),
+        row(
+            "h16.fire_linger_s",
+            format!("{}", cfg.h16.fire_linger_s),
+            "s",
+        ),
+        // Util (H6).
+        row(
+            "util.min_unused_nades",
+            format!("{}", cfg.util.min_unused_nades),
+            "",
+        ),
+        // Entry structure (H14 / D4).
+        row(
+            "entry.opening_window_s",
+            format!("{}", cfg.entry.opening_window_s),
+            "s",
+        ),
+        row(
+            "entry.support_distance_u",
+            format!("{}", cfg.entry.support_distance_u),
+            "u",
+        ),
+        // Timing (H11 / D5).
+        row(
+            "timing.early_aggression_s",
+            format!("{}", cfg.timing.early_aggression_s),
+            "s",
+        ),
+        row(
+            "timing.min_spawn_distance_u",
+            format!("{}", cfg.timing.min_spawn_distance_u),
+            "u",
+        ),
+        row(
+            "timing.rotate_radius_u",
+            format!("{}", cfg.timing.rotate_radius_u),
+            "u",
+        ),
+        row(
+            "timing.rotate_max_s",
+            format!("{}", cfg.timing.rotate_max_s),
+            "s",
+        ),
+        // Positioning corpus (D6). Prose supplies the unit words.
+        row(
+            "corpus.min_demos_per_map",
+            format!("{}", cfg.corpus.min_demos_per_map),
+            "",
+        ),
+        row(
+            "corpus.low_density_pct",
+            format!("{}", cfg.corpus.low_density_pct),
+            "",
+        ),
+        row(
+            "corpus.min_recurrences",
+            format!("{}", cfg.corpus.min_recurrences),
+            "",
+        ),
+        // Habit promotion, coach rail (RBR) — carried over from
+        // commands.rs's threshold_rows; no catalog placeholder references
+        // these yet, but the Settings table needs them too.
+        row(
+            "habit.min_matches",
+            format!("{}", cfg.habit.min_matches),
+            "",
+        ),
+        row(
+            "habit.window_matches",
+            format!("{}", cfg.habit.window_matches),
+            "matches",
+        ),
+        row(
+            "rbr.attention_threshold_p",
+            format!("{}", cfg.rbr.attention_threshold_p),
+            "win-prob Δp",
+        ),
+        row(
+            "rbr.max_rounds",
+            format!("{}", cfg.rbr.max_rounds),
+            "rounds",
+        ),
+        // V1.2b play ledger — carried over verbatim from commands.rs.
+        row("ledger.setup_s", format!("{}", cfg.ledger.setup_s), "s"),
+        row(
+            "ledger.he_window_s",
+            format!("{}", cfg.ledger.he_window_s),
+            "s",
+        ),
+        row(
+            "ledger.molotov_burn_s",
+            format!("{}", cfg.ledger.molotov_burn_s),
+            "s",
+        ),
+        row(
+            "ledger.flash_join_s",
+            format!("{}", cfg.ledger.flash_join_s),
+            "s",
+        ),
+        row(
+            "ledger.sample_step_s",
+            format!("{}", cfg.ledger.sample_step_s),
+            "s",
+        ),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

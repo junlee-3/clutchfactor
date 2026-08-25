@@ -5,6 +5,7 @@
 //! `RuleFlag`s + `Insight`s → `classify` assigns each tracked-player death
 //! exactly one taxonomy class by priority, with secondary tags.
 
+pub mod catalog;
 pub mod classify;
 pub mod config;
 pub mod context;
