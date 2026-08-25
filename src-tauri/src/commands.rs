@@ -1156,6 +1156,18 @@ fn moment_killer(m: &cf_analysis::round_review::Moment) -> Option<String> {
         .map(str::to_string)
 }
 
+/// A ledger play and a review moment describe the same event when their
+/// kinds correspond (the ledger says "kill", the review "tracked_kill").
+fn moment_kind_matches(moment_kind: &str, play_kind: &str) -> bool {
+    matches!(
+        (moment_kind, play_kind),
+        ("tracked_kill", "kill")
+            | ("tracked_death", "death")
+            | ("plant", "plant")
+            | ("defuse", "defuse")
+    )
+}
+
 /// Silence over a bare label (V1.2 final-review fix wave, finding #4): a
 /// standalone `flag` moment whose narrated facts came out empty carries no
 /// evidence for the rail to show — the CLAUDE.md evidence contract's
@@ -1183,6 +1195,31 @@ pub struct RailMomentDto {
 }
 
 #[derive(serde::Serialize)]
+pub struct PlayDto {
+    pub tick: i32,
+    pub kind: String,
+    pub phase: String,
+    pub headline: String,
+    pub facts: Vec<String>,
+    /// "good" | "bad" | "neutral" | null (spec §2: only when measured)
+    pub quality: Option<String>,
+    pub rule_id: Option<String>,
+    pub delta_p: Option<f32>,
+    pub focus: Vec<String>,
+    pub killer: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct TimelineDto {
+    pub tick: i32,
+    pub kind: String,
+    pub actor: Option<String>,   // display name
+    pub subject: Option<String>, // display name
+    pub side: Option<String>,
+    pub weapon: Option<String>,
+}
+
+#[derive(serde::Serialize)]
 pub struct RoundReviewDto {
     pub round: u32,
     pub impact: f32,
@@ -1197,6 +1234,8 @@ pub struct RoundReviewDto {
     pub deaths: u32,
     pub man_context: Option<String>,
     pub moments: Vec<RailMomentDto>,
+    pub plays: Vec<PlayDto>,
+    pub timeline: Vec<TimelineDto>,
     pub why_it_mattered: Option<String>,
     pub what_to_practise: Option<String>,
 }
@@ -1235,6 +1274,13 @@ pub fn get_round_review(
     let Some(MatchCtxBundle { ctx, .. }) = match_context(&store, match_id)? else {
         return Ok(vec![]);
     };
+
+    let ledger_by_round: std::collections::HashMap<u32, cf_store::store::RoundPlaysRow> = store
+        .load_round_plays(match_id)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|r| (r.round, r))
+        .collect();
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
@@ -1285,6 +1331,75 @@ pub fn get_round_review(
             })
             .collect();
 
+        let plays: Vec<PlayDto> = ledger_by_round
+            .get(&row.round)
+            .and_then(|r| {
+                serde_json::from_str::<Vec<cf_analysis::play_ledger::Play>>(&r.plays_json).ok()
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .map(|mut p| {
+                // delta_p comes from the ADR-0008 engine only: join by tick
+                // to this round's moments (kill/death/plant/defuse).
+                p.delta_p = moments
+                    .iter()
+                    .find(|m| m.tick == p.tick && moment_kind_matches(&m.kind, &p.kind))
+                    .and_then(|m| m.delta_p);
+                let t = cf_narrator::plays::narrate_play(&p, &ctx);
+                let killer = p
+                    .facts
+                    .get("killer")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                let focus = ["victim", "killer", "nearest_teammate", "teammate"]
+                    .iter()
+                    .filter_map(|k| p.facts.get(*k).and_then(|v| v.as_str()).map(str::to_string))
+                    .collect();
+                PlayDto {
+                    tick: p.tick,
+                    kind: p.kind.clone(),
+                    phase: p.phase.clone(),
+                    headline: t.headline,
+                    facts: t.facts,
+                    quality: p.quality.map(|q| match q {
+                        cf_analysis::play_ledger::Quality::Good => "good".to_string(),
+                        cf_analysis::play_ledger::Quality::Bad => "bad".to_string(),
+                        cf_analysis::play_ledger::Quality::Neutral => "neutral".to_string(),
+                    }),
+                    rule_id: p.rule_id.clone(),
+                    delta_p: p.delta_p,
+                    focus,
+                    killer,
+                }
+            })
+            .collect();
+        let name = |id: &Option<String>| -> Option<String> {
+            id.as_ref().map(|s| {
+                s.parse::<u64>()
+                    .map(|i| ctx.name(i))
+                    .unwrap_or_else(|_| s.clone())
+            })
+        };
+        let timeline: Vec<TimelineDto> = ledger_by_round
+            .get(&row.round)
+            .and_then(|r| {
+                serde_json::from_str::<Vec<cf_analysis::play_ledger::TimelineEvent>>(
+                    &r.timeline_json,
+                )
+                .ok()
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .map(|e| TimelineDto {
+                tick: e.tick,
+                kind: e.kind,
+                actor: name(&e.actor),
+                subject: name(&e.subject),
+                side: e.side,
+                weapon: e.weapon,
+            })
+            .collect();
+
         // Narration prose only for selected rounds: moments now exist for
         // every round (rbr-v2), so this gate is the only thing keeping an
         // unselected round's rail free of why/practise claims.
@@ -1311,6 +1426,8 @@ pub fn get_round_review(
             deaths: header.deaths,
             man_context: header.man_context,
             moments: rail_moments,
+            plays,
+            timeline,
             why_it_mattered,
             what_to_practise,
         });
@@ -1392,6 +1509,27 @@ fn threshold_rows(cfg: &cf_analysis::DetectorConfig) -> Vec<ThresholdRow> {
             "Coach rail max rounds",
             format!("{}", cfg.rbr.max_rounds),
             "rounds",
+        ),
+        row("ledger.setup_s", format!("{}", cfg.ledger.setup_s), "s"),
+        row(
+            "ledger.he_window_s",
+            format!("{}", cfg.ledger.he_window_s),
+            "s",
+        ),
+        row(
+            "ledger.molotov_burn_s",
+            format!("{}", cfg.ledger.molotov_burn_s),
+            "s",
+        ),
+        row(
+            "ledger.flash_join_s",
+            format!("{}", cfg.ledger.flash_join_s),
+            "s",
+        ),
+        row(
+            "ledger.sample_step_s",
+            format!("{}", cfg.ledger.sample_step_s),
+            "s",
         ),
     ]
 }

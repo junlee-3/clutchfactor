@@ -449,17 +449,17 @@ fn delta_only_facts(m: &Moment) -> Vec<String> {
 
 // ---- fact-value helpers ---------------------------------------------------
 
-fn num(facts: &serde_json::Value, key: &str) -> Option<f32> {
+pub(crate) fn num(facts: &serde_json::Value, key: &str) -> Option<f32> {
     facts.get(key)?.as_f64().map(|v| v as f32)
 }
 
-fn text(facts: &serde_json::Value, key: &str) -> Option<String> {
+pub(crate) fn text(facts: &serde_json::Value, key: &str) -> Option<String> {
     facts.get(key)?.as_str().map(str::to_string)
 }
 
 /// Resolve a facts steamid string (facts carry steamids as JSON strings) to
 /// a display name; falls back to the raw string if it isn't numeric.
-fn name_of(facts: &serde_json::Value, key: &str, ctx: &MatchContext) -> Option<String> {
+pub(crate) fn name_of(facts: &serde_json::Value, key: &str, ctx: &MatchContext) -> Option<String> {
     let raw = facts.get(key)?.as_str()?;
     Some(match raw.parse::<u64>() {
         Ok(id) => ctx.name(id),
@@ -468,7 +468,7 @@ fn name_of(facts: &serde_json::Value, key: &str, ctx: &MatchContext) -> Option<S
 }
 
 /// Thousands-separated distance: "1,223 u".
-fn fmt_units(v: f32) -> String {
+pub(crate) fn fmt_units(v: f32) -> String {
     format!("{} u", group_thousands(v.round() as i64))
 }
 
@@ -491,7 +491,7 @@ fn group_thousands(n: i64) -> String {
 }
 
 /// Signed whole percent: 0.19 -> "+19%", -0.23 -> "-23%".
-fn fmt_delta_pct(d: f32) -> String {
+pub(crate) fn fmt_delta_pct(d: f32) -> String {
     let pct = (d * 100.0).round() as i64;
     if pct >= 0 {
         format!("+{pct}%")
