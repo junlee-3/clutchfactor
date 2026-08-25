@@ -327,10 +327,27 @@ fn death_facts(m: &Moment, ctx: &MatchContext) -> Vec<String> {
         let secs = num(&m.facts, "round_end_delta_s")
             .map(|s| s.round() as i64)
             .unwrap_or(0);
-        out.push(if traded {
+        // Outcome-neutral on purpose: every round is narrated now, won ones
+        // included. A death in the post-decision tail carries `dead_time`
+        // (ledger + rbr-v3 reviews); rows persisted before the clamp still
+        // carry negative seconds, which mean the same thing. 0 s otherwise
+        // is the deciding death — the last one standing going down ends
+        // the round on that tick.
+        let dead_time = m
+            .facts
+            .get("dead_time")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+            || secs < 0;
+        let prefix = if traded { "Traded" } else { "Not traded" };
+        out.push(if dead_time {
+            format!("{prefix} — after the round was decided")
+        } else if secs == 0 {
+            format!("{prefix} — round ended with your death")
+        } else if traded {
             format!("Traded — round continued {secs} s after")
         } else {
-            format!("Not traded — round lost {secs} s later")
+            format!("Not traded — round ended {secs} s later")
         });
     }
     out
@@ -575,11 +592,67 @@ mod tests {
             vec![
                 "Nearest: Takenouchi".to_string(),
                 "1,223 u away at Catwalk".to_string(),
-                "Not traded — round lost 6 s later".to_string(),
+                "Not traded — round ended 6 s later".to_string(),
             ]
         );
         assert_eq!(t.clock_tick, 128_000);
         assert_eq!(t.rule_id.as_deref(), Some("H2_ISOLATED_DEATH"));
+    }
+
+    /// V1.2b final-review fix wave, #3/#5: the traded line is outcome-
+    /// neutral (it shows on won rounds too), a tail death reads "after the
+    /// round was decided" — via `dead_time`, or via the negative seconds a
+    /// pre-clamp stored row still carries — and the deciding death (0 s,
+    /// no `dead_time`) says so instead of "0 s later".
+    #[test]
+    fn traded_line_is_outcome_neutral_and_never_negative_seconds() {
+        let death = |facts: serde_json::Value| Moment {
+            tick: 64_000,
+            kind: "tracked_death".to_string(),
+            rule_id: None,
+            delta_p: None,
+            facts,
+        };
+        let line = |m: &Moment| narrate_moment(m, &ctx()).facts.last().cloned().unwrap();
+
+        assert_eq!(
+            line(&death(json!({ "traded": true, "round_end_delta_s": 12.4 }))),
+            "Traded — round continued 12 s after"
+        );
+        assert_eq!(
+            line(&death(json!({ "traded": false, "round_end_delta_s": 9.0 }))),
+            "Not traded — round ended 9 s later"
+        );
+        assert_eq!(
+            line(&death(
+                json!({ "traded": false, "round_end_delta_s": 0.0, "dead_time": true })
+            )),
+            "Not traded — after the round was decided"
+        );
+        assert_eq!(
+            line(&death(
+                json!({ "traded": true, "round_end_delta_s": 0.0, "dead_time": true })
+            )),
+            "Traded — after the round was decided"
+        );
+        assert_eq!(
+            line(&death(
+                json!({ "traded": false, "round_end_delta_s": -1.4 })
+            )),
+            "Not traded — after the round was decided",
+            "a row stored before the clamp must not read \"-1 s later\""
+        );
+        assert_eq!(
+            line(&death(
+                json!({ "traded": false, "round_end_delta_s": 0.0, "dead_time": false })
+            )),
+            "Not traded — round ended with your death"
+        );
+        assert_eq!(
+            line(&death(json!({ "traded": false, "round_end_delta_s": 0.0 }))),
+            "Not traded — round ended with your death",
+            "no dead_time key at all (older ledger rows) is the deciding death"
+        );
     }
 
     #[test]
@@ -877,7 +950,7 @@ mod tests {
             t.facts,
             vec![
                 "Takenouchi 1,850 u back when Kanae went down — never in trade range".to_string(),
-                "Not traded — round lost 9 s later".to_string(),
+                "Not traded — round ended 9 s later".to_string(),
             ]
         );
     }
