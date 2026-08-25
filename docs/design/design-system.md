@@ -195,7 +195,7 @@ One shell for every screen (`<AppShell>`): fixed left sidebar + content.
 
 - **Sidebar, 216px:** wordmark (display-sans, type-title) → nav (Library,
   Trends, Corpus, Settings — text-first, no icon library; active item
-  ink-bright with a 2px accent left edge) → footer: tracked-player chip
+  ink-bright with a 2px ink left edge) → footer: tracked-player chip
   (mono).
 - **Immersive screens (Replay, Report):** the sidebar collapses to a 56px
   rail (wordmark glyph "CF" + initials nav) so the tape stays hero; the
