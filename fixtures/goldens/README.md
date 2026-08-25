@@ -351,6 +351,18 @@ the debug loader resolves `<crate>/../env.local` = the *worktree* root, so a
 worktree run needs `ln -s <main checkout>/env.local <worktree>/env.local`
 (gitignored, removed afterwards).
 
+**Style-version note (fix round 1, 2026-08-26):** every coach read quoted or
+counted below was generated and cached under `STYLE_VERSION = "coach-v2"` —
+the fix that shipped `coach-v3` (tick labels confined to the `plays` array,
+place names never a map slug; `docs/adr/ADR-0010-coach-architecture.md`)
+landed in a follow-up commit after this verification session. The `v2`→`v3`
+bump changes the cache key, so every row here will regenerate fresh on the
+next open; the validator/grounding evidence below stands (it is about what
+the validator catches, not the prose style), but the exact wording quoted in
+§C — including the `[tick N]` labels and raw map ids called out as voice
+notes — will read differently once `coach-v3` rows replace them. See
+"Deviations" below for the R8/R10 vs. brief round swap.
+
 ### A. Byte-identical without a key (DoD)
 
 `mv env.local env.local.off`; `CLUTCHFACTOR_GEMINI_KEY` unset in the launching
@@ -403,12 +415,16 @@ per-request model fallback.
 "Match synthesis model", "Save models" → `settings` rows
 `coach_round_model` / `coach_synthesis_model` = `gemini-3.5-flash-lite`.
 **Test connection → "Connected — gemini-3.5-flash-lite answered in 1009 ms."**
-(toast on screen ~1.2 s after the press). Capture:
+(1009 ms is the app's own self-reported request latency, printed verbatim in
+the toast text — not this section's polling stopwatch; the toast itself
+appeared on screen ~1.2 s after the press, timed by that stopwatch). Capture:
 `walkthrough-v1.3/settings-coach.png` (the card + that toast). The dev DB is
 left on `gemini-3.5-flash-lite` so the owner sees exactly the reads checked
 below; switch back in Settings when 3.7-flash is healthy.
 
-**Report, mirage-tie (id 8), first open.** `coach_cache` rows for match 8:
+**Report, mirage-tie (id 8), first open.** `coach_cache` rows for match 8
+(all `t+` figures are this section's polling stopwatch — wall-clock from the
+Report's open to the row landing, `coach_cache` polled every second):
 6 at t+5.2 s, 12 at t+10.3 s, 18 at t+20.5 s, 24 at t+27.7 s, synthesis at
 **t+29.8 s** — 4 round batches of 6 + 1 synthesis = **5 requests** for a
 24-round match, exactly ⌈24/6⌉ + 1. The Report's "Coach's read ·
@@ -417,16 +433,25 @@ gemini-3.5-flash-lite" lead rendered with the opening + 3 work-on items
 
 **Replay id 8.** R8 (Won it): "Coach's read" + focus line, a comment under
 the kill play, coach "Why it mattered" replacing the template line;
-**Regenerate on R8: the R8 row was replaced 2.6 s after the press**
-(`created_at` 15:53:04 → 15:54:27 UTC, a different read; one request). R10
-(Cost you): read + a comment under the death play; `why_it_mattered` /
+**Regenerate on R8: the request took 2.6 s**, timed the same way as every
+other figure in this section — wall-clock from the button press to the new
+row landing in `coach_cache` (polled every second) — one request, a
+different read. Separately, the row's `created_at` moved from 15:53:04 to
+15:54:27 UTC, an 83 s gap; that gap is *not* the request latency and is not
+offered as one — R8's row at 15:53:04 was written during the match's initial
+5-request open (the "6 at t+5.2 s" batch above), well before Regenerate was
+pressed, so the 83 s mostly covers the idle time between that first open and
+whenever Regenerate was actually clicked, plus the 2.6 s request at the end
+of it. R10 (Cost you): read + a comment under the death play; `why_it_mattered` /
 `what_to_practise` / `focus` came back null so the template "Why it
 mattered" stayed. Capture: `walkthrough-v1.3/rail-coach.png` (R10).
 
-**Report, inferno-loss (id 3).** Rows: 6 at t+25.8 s (this batch carried the
-one rejected round, so it was one call + one retry), 12 at t+41.3 s, 16 at
-t+45.4 s, synthesis at **t+47.5 s** — 3 batches (6/6/4) + 1 retry + 1
-synthesis = 5 requests for 16 rounds. Opening + 2 work-on items rendered.
+**Report, inferno-loss (id 3).** Rows (same stopwatch as mirage-tie above —
+wall-clock from this Report's open, `coach_cache` polled every second): 6 at
+t+25.8 s (this batch carried the one rejected round, so it was one call + one
+retry), 12 at t+41.3 s, 16 at t+45.4 s, synthesis at **t+47.5 s** — 3 batches
+(6/6/4) + 1 retry + 1 synthesis = 5 requests for 16 rounds. Opening + 2
+work-on items rendered.
 
 **Cache / request accounting** (`SELECT match_id, kind, round, status, model,
 substr(violations_json,1,120) FROM coach_cache ORDER BY match_id, kind,
@@ -596,3 +621,16 @@ Graded against `docs/design/design-system.md` v2:
 
 Model label note: the Report eyebrow prints the model id in the micro-caps
 style ("GEMINI-3.5-FLASH-LITE") — consistent with the one label style, kept.
+
+### F. Deviations
+
+**Round swap, undisclosed at the time.** The dispatch (Task 11) named
+mirage-tie R6 (quiet) and R13 as the pair to hand-check in Replay; §B–§C
+above hand-check **R8 (Won it) and R10 (Cost you)** instead. The original
+task-11 report did not record why the swap was made. The reason is supplied
+here, in fix round 1, not carried over from that report: R8 (Won it) and R10
+(Cost you) give verdict diversity — a won round and a cost-you round — where
+the brief's R6/R13 pair (quiet and flagged) would not have. Mirage-tie R6
+and R13 were not hand-checked under the coach in this session; if the owner
+specifically wants those two, they can be regenerated and grounded the same
+way §C does for R8/R10.

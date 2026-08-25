@@ -24,7 +24,11 @@ trait; the coach needs the network, batching and a cache.
   the position samples' `last_place` — not a per-map list. Names and
   callouts match at word boundaries only ("CT spawn" never grounds "T
   spawn"). Reject → one retry with the violations listed → template
-  fallback for that round.
+  fallback for that round. Tick labels stay confined to the `plays` array's
+  `tick` field — prose (`read`, `why_it_mattered`, `what_to_practise`,
+  `focus`) refers to moments by clock time, never `[tick N]`, and to places
+  exactly as the facts write them, never a map slug or internal id
+  (`coach-v3`).
 - **Key.** `CLUTCHFACTOR_GEMINI_KEY` env var overrides the Settings value
   (`gemini_api_key` in the SQLite settings table — the charter's choice; the
   DB lives in the user's app-data dir). Debug builds seed the env var from
@@ -63,8 +67,3 @@ trait; the coach needs the network, batching and a cache.
   round read (a cite of the final score is rejected).
 - A future `ClaudeNarrator` reuses the pure half unchanged; only
   `gemini.rs` is provider-specific.
-- Tick labels are confined to the `plays` array's `tick` field — the prose
-  fields (`read`, `why_it_mattered`, `what_to_practise`, `focus`) refer to
-  moments by clock time or event, never `[tick N]`; place names are used
-  exactly as the facts write them, never a map slug or internal id. Style
-  `coach-v3`.

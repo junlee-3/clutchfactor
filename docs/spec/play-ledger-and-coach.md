@@ -185,7 +185,8 @@ invalid → templates, seamlessly.
 round and for synthesis (`gemini-3.5-flash-lite` the alternative), not a
 stronger synthesis tier; the callout set is the match's visited places
 (ledger ∪ position samples), not a per-map list; names and callouts match at
-word boundaries; the style version is `coach-v2`; the per-round grounding is
+word boundaries; the style version is `coach-v3` (tick labels confined to
+the `plays` array, place names never a map slug); the per-round grounding is
 the round block alone (the batch header does not ground a round read).
 
 ## 4. Milestones
