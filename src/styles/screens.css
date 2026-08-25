@@ -1680,6 +1680,19 @@
   color: var(--ink-dim);
 }
 
+.stg-coach-row,
+.stg-coach-models {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+
+.stg-coach-models .ui-input {
+  min-width: 0;
+  flex: 1;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Catch-all (App.tsx `*` route)                                           */
 /* ---------------------------------------------------------------------- */
