@@ -82,3 +82,17 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test:run
+
+  # No key material may ever be committed (PROMPT-V1 V1.3 DoD). Google API
+  # keys start with "AIza"; the owner's Gemini key family starts with "AQ.".
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: grep tracked files for API-key shapes
+        run: |
+          if git grep -nE 'AIza[0-9A-Za-z_-]{30,}|AQ\.[A-Za-z0-9_-]{30,}' -- . ':!pnpm-lock.yaml'; then
+            echo "::error::possible API key committed (see matches above)"; exit 1
+          fi
+          echo "no key material in tracked files"

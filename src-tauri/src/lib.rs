@@ -1,3 +1,4 @@
+pub mod coach;
 mod commands;
 
 use std::sync::Mutex;
@@ -12,6 +13,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            coach::key::load_dev_env_local();
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             let store = cf_store::Store::open(&data_dir.join("clutchfactor.db"))
