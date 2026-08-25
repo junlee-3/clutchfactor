@@ -137,12 +137,16 @@ async fn parse_and_save(
     send(on_progress, "saving", 0.88, "Saving to library");
     let match_id = {
         let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
-        store
+        let match_id = store
             .save_match(&file_name, &file_hash, kind, &data)
             .map_err(|e| match e {
                 StoreError::DuplicateImport => e.to_string(),
                 other => format!("failed to save match: {other}"),
-            })?
+            })?;
+        store
+            .set_source_path(match_id, &path)
+            .map_err(|e| format!("failed to record demo path: {e}"))?;
+        match_id
     };
     let (_, _, score_a, score_b) = cf_parser::extract::derive_score(&data.rounds);
     Ok((match_id, data, score_a, score_b))

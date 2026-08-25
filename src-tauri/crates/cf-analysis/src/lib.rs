@@ -59,9 +59,11 @@ pub fn analyze(data: &MatchData, tracked: u64, cfg: &DetectorConfig) -> Analysis
         flags.extend(f);
     }
     let death_classes = classify::classify_deaths(&ctx, cfg, &flags);
+    let ledger = play_ledger::build_ledger(&ctx, cfg, &flags);
     AnalysisOutput {
         flags,
         insights,
         death_classes,
+        ledger,
     }
 }

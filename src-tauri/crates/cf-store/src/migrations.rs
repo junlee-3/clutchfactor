@@ -14,6 +14,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
         7,
         include_str!("../migrations/0007_round_review_fingerprint.sql"),
     ),
+    (8, include_str!("../migrations/0008_round_plays.sql")),
 ];
 
 pub fn migrate(conn: &mut Connection) -> Result<(), rusqlite::Error> {
