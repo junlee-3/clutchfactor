@@ -107,7 +107,7 @@ export function CoachRail({
             <Skeleton kind="block" count={1} />
           </div>
         )}
-        {coach && (
+        {coach && !coachLoading && (
           <div className="rpl-coach-read">
             <div className="rpl-coach-read-head">
               <p className="type-micro rpl-rail-note-label">Coach's read</p>
@@ -116,6 +116,7 @@ export function CoachRail({
                   variant="ghost"
                   size="sm"
                   onClick={onRegenerate}
+                  disabled={coachLoading}
                   title="Ask the coach again (uses your Gemini key)"
                 >
                   Regenerate
