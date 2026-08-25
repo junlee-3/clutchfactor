@@ -6,7 +6,7 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "classN
   className?: string;
 }
 
-// Thin styled input (design-system.md §6): bg2, line border, r-sm, chalk
+// Thin styled input (design-system.md §6): bg2, line border, r-sm, ink
 // caret. Focus ring comes from the app's one :focus-visible treatment
 // (base.css) — nothing button/input-specific needed here.
 export function Input({ mono, className, ...rest }: InputProps) {

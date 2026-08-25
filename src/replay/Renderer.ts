@@ -45,7 +45,7 @@ export interface Scene {
   tickrate: number;
   focus: Set<string>; // empty = no dimming
   // Non-null only while playback sits inside a tracked_death moment's
-  // overlay window (Replay.tsx gates this) — the coach's chalk diagram for
+  // overlay window (Replay.tsx gates this) — the coach's ink diagram for
   // THAT death: dashed line to the nearest living teammate (with distance),
   // solid --loss line to the killer. null = no annotation drawn this frame.
   annotation: { victimId: string; killerId: string | null } | null;
@@ -105,12 +105,12 @@ function drawUtility(ctx: CanvasRenderingContext2D, scene: Scene): void {
       const r = 144 / scene.cal.scale;
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);
-      ctx.fillStyle = rgba("--chalk-dim", 0.35); // smoke stays neutral grey, chalk-derived
+      ctx.fillStyle = rgba("--ink-dim", 0.35); // smoke stays neutral grey, ink-derived
       ctx.fill();
       // remaining-life ring
       ctx.beginPath();
       ctx.arc(px, py, r, -Math.PI / 2, -Math.PI / 2 + life * Math.PI * 2);
-      ctx.strokeStyle = rgba("--chalk", 0.7);
+      ctx.strokeStyle = rgba("--ink", 0.7);
       ctx.lineWidth = 2;
       ctx.stroke();
     } else if (u.kind === "molly") {
@@ -237,7 +237,7 @@ function annotationGeometry(scene: Scene): AnnotationGeometry | null {
   return { victim, killer, teammate };
 }
 
-/** The two annotation lines — dashed chalk to the nearest living teammate,
+/** The two annotation lines — dashed ink to the nearest living teammate,
  *  solid --loss to the killer. Drawn under the player dots. Restraint: no
  *  glow, no arrowheads (issue #9 §5). */
 function drawAnnotation(ctx: CanvasRenderingContext2D, scene: Scene): void {
@@ -246,7 +246,7 @@ function drawAnnotation(ctx: CanvasRenderingContext2D, scene: Scene): void {
 
   if (geo.teammate) {
     ctx.setLineDash([4, 3]);
-    ctx.strokeStyle = rgba("--chalk", 0.9);
+    ctx.strokeStyle = rgba("--ink", 0.9);
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(geo.victim.u, geo.victim.v);
@@ -266,7 +266,7 @@ function drawAnnotation(ctx: CanvasRenderingContext2D, scene: Scene): void {
 }
 
 /** The teammate-distance tag: rounded --bg-tape chip, bold 8px
- *  ui-monospace (the bomb-text convention), --chalk-bright text. Drawn
+ *  ui-monospace (the bomb-text convention), --ink-bright text. Drawn
  *  after the player dots so it's never occluded by them. */
 function drawAnnotationTag(ctx: CanvasRenderingContext2D, scene: Scene): void {
   const geo = annotationGeometry(scene);
@@ -290,7 +290,7 @@ function drawAnnotationTag(ctx: CanvasRenderingContext2D, scene: Scene): void {
   ctx.roundRect(midX - w / 2, midY - h / 2, w, h, 3);
   ctx.fill();
 
-  ctx.fillStyle = rgba("--chalk-bright", 1);
+  ctx.fillStyle = rgba("--ink-bright", 1);
   ctx.fillText(label, midX, midY);
 }
 
@@ -337,7 +337,7 @@ function drawPlayers(
       ctx.font = "10px -apple-system, system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      ctx.fillStyle = rgba("--chalk", 0.9);
+      ctx.fillStyle = rgba("--ink", 0.9);
       ctx.fillText(name, px, py + 9);
     }
     ctx.globalAlpha = 1;

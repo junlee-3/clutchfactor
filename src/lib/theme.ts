@@ -11,21 +11,23 @@ export type TokenName =
   | "--bg0"
   | "--bg-tape"
   | "--line"
-  | "--chalk"
-  | "--chalk-bright"
-  | "--chalk-dim"
+  | "--ink"
+  | "--ink-bright"
+  | "--ink-dim"
+  | "--accent"
   | "--ct"
   | "--t"
   | "--win"
   | "--loss";
 
 export const FALLBACK: Record<TokenName, string> = {
-  "--bg0": "#131110",
-  "--bg-tape": "#0d0c0b",
-  "--line": "#2a251f",
-  "--chalk": "#eae4d6",
-  "--chalk-bright": "#f7f2e6",
-  "--chalk-dim": "#a89f90",
+  "--bg0": "#0e1116",
+  "--bg-tape": "#0b0d11",
+  "--line": "#232b36",
+  "--ink": "#dfe5ec",
+  "--ink-bright": "#f2f5f8",
+  "--ink-dim": "#8a94a3",
+  "--accent": "#4aa3ff",
   "--ct": "#4aa3ff",
   "--t": "#f5b83d",
   "--win": "#5dbb7a",

@@ -11,10 +11,10 @@ interface Props {
 /** Horizontal bar list ranked by count (dataviz pass): single baseline,
  *  4px rounded data-end / square at the baseline, count labeled directly at
  *  the tip — no ring, no donut, no rainbow. Color is a status signal on a
- *  neutral scale, not a categorical palette: chalk for the ordinary
+ *  neutral scale, not a categorical palette: ink for the ordinary
  *  preventable classes, win-green reserved ONLY for class 13 (the one
  *  "good news" status: a fair duel lost on mechanics, not a mistake), and
- *  chalk-faint for the two hygiene/unclassified classes so they read as
+ *  ink-faint for the two hygiene/unclassified classes so they read as
  *  quieter without drawing a border around them (a border-as-separator is
  *  a dataviz anti-pattern — the legacy .cb-hygiene did exactly this).
  *  Every bar keeps its label and count in text, so color is never the only

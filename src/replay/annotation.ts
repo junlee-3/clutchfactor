@@ -1,5 +1,5 @@
 // Pure helpers for the replay canvas's tracked-death annotation (issue #9
-// §5, Task 9): the dashed chalk line from the victim to their nearest living
+// §5, Task 9): the dashed ink line from the victim to their nearest living
 // teammate, distance labelled, plus a solid line to the killer. No I/O, no
 // canvas — Renderer.ts (drawAnnotation/drawAnnotationTag) draws with these.
 

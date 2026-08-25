@@ -81,9 +81,9 @@ export function Report() {
         <div className="rpt-feed">
           {r.summary && (
             // The editorial lead (design-system.md §9): the coach's write-up
-            // in its own voice, the one place the serif speaks at length. A
-            // solid 2px chalk edge, not dashed — this isn't evidence, it's
-            // furniture around a quote.
+            // in its own voice, the one place the display-sans font speaks
+            // at length. A solid 2px ink edge, not dashed — this isn't
+            // evidence, it's furniture around a quote.
             <blockquote className="report-lead">
               <p className="report-lead-title type-title">{r.summary.title}</p>
               <p className="report-lead-body">{r.summary.body}</p>

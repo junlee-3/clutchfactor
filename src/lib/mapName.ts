@@ -1,5 +1,5 @@
 // Display-name prettifier for map slugs ("de_mirage" -> "Mirage"), used by
-// MatchHeader (design-system.md §8) for the Fraunces map-name moment.
+// MatchHeader (design-system.md §8) for the display-sans map-name moment.
 //
 // MIRROR: ported 1:1 from cf-narrator's map_name — keep both in sync:
 //   src-tauri/crates/cf-narrator/src/templates.rs (fn map_name, ~:1165)

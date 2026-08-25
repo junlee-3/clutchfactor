@@ -1,33 +1,40 @@
-/* ClutchFactor design system — the contract.
-   Every custom property here is copied verbatim from
-   docs/design/design-system.md §2-§4 (color, type, space/radius/motion).
+/* ClutchFactor design system — the contract (v2, docs/design/design-system.md
+   §2-§4). Every custom property here is copied verbatim from that document.
    Canvas/TS code reads these same values via src/lib/theme.ts — no second
    color system. This file loads first (see src/main.tsx import order);
-   base.css, components.css and screens.css all build on these tokens. */
+   base.css, components.css and screens.css all build on these tokens.
+   History: v1 ("The Film Room", warm graphite + serif) was reverted to the
+   v0 navy palette and system fonts by owner decision — ADR-0009. */
 
 :root {
   color-scheme: dark; /* native controls render dark */
 
-  /* Neutrals — warm graphite ("the studio"). No blue cast anywhere. */
-  --bg0:   #131110;   /* app canvas */
-  --bg1:   #1a1715;   /* card / row surface */
-  --bg2:   #221e1a;   /* hover / inset / track */
-  --bg-tape: #0d0c0b; /* radar & heatmap wells — darker, lets the map glow */
-  --line:  #2a251f;   /* hairline borders, dividers */
-  --line-strong: #3a332a; /* emphasized borders (active card edge) */
+  /* Neutrals — cool navy (the v0 palette). */
+  --bg0:   #0e1116;   /* app canvas */
+  --bg1:   #151a21;   /* card / row surface */
+  --bg2:   #1d242e;   /* hover / inset / track */
+  --bg-tape: #0b0d11; /* radar & heatmap wells — a touch darker than bg0 */
+  --line:  #232b36;   /* hairline borders, dividers */
+  --line-strong: #2f3944; /* emphasized borders (active card edge) */
 
-  /* Chalk — ink AND interaction. Brightness is the accent, not hue. */
-  --chalk:      #eae4d6;  /* primary ink */
-  --chalk-bright: #f7f2e6; /* interactive/hover ink, focus ring, active nav */
-  --chalk-dim:  #a89f90;  /* secondary ink */
-  --chalk-faint:#6e675c;  /* tertiary: timestamps, placeholders, disabled */
+  /* Ink — text. Brightness carries hierarchy; --accent carries interaction. */
+  --ink:      #dfe5ec;  /* primary ink */
+  --ink-bright: #f2f5f8; /* interactive/hover ink, active nav */
+  --ink-dim:  #8a94a3;  /* secondary ink */
+  --ink-faint:#5c6672;  /* tertiary: timestamps, placeholders, disabled */
+
+  /* Accent — the app's ONE interaction hue: primary buttons, focus ring,
+     progress fills. Shares --ct's value on purpose (v0 did too); a separate
+     token so side identity stays explicit in code. */
+  --accent:   #4aa3ff;
+  --accent-bright: #6db6ff; /* hover on accent fills */
 
   /* Game hues — reserved. Never used for chrome, brand, or emphasis. */
   --ct:   #4aa3ff;    /* CT side identity only */
   --t:    #f5b83d;    /* T side identity only */
-  --win:  #5dbb7a;    /* round/match won, good-news class 13 */
-  --loss: #d16a5f;    /* round/match lost, severity, errors */
-  --tie:  #a89f90;    /* = chalk-dim */
+  --win:  #5dbb7a;    /* round/match won, good-news class 13, good plays */
+  --loss: #d16a5f;    /* round/match lost, severity, errors, bad plays */
+  --tie:  #8a94a3;    /* = ink-dim */
 
   /* Derived, defined once (no ad-hoc color-mix in component CSS) */
   --surface-win:  color-mix(in srgb, var(--win) 12%, var(--bg1));
@@ -35,20 +42,20 @@
   --border-win:   color-mix(in srgb, var(--win) 35%, var(--line));
   --border-loss:  color-mix(in srgb, var(--loss) 35%, var(--line));
 
-  /* Type — three faces, three jobs (all SIL OFL, bundled — ADR-0007) */
-  --font-display: "Fraunces", ui-serif, Georgia, serif;
-  --font-sans:    "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
-  --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* Type — system stacks (v0 verbatim; nothing bundled — ADR-0009) */
+  --font-sans:    -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono:    ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --font-display: var(--font-sans);
 
   /* Scale (tokens, px @ base 14 — the whole app stays on these eight) */
-  --text-display: 26px/1.15 var(--font-display);   /* screen title; weight 560, optical size high */
+  --text-display: 26px/1.15 var(--font-display);   /* screen title; weight 600 */
   --text-stat:    24px/1.2  var(--font-mono);      /* headline stat (display-data role) */
-  --text-title:   19px/1.2  var(--font-display);   /* card/section feature moments; weight 540 */
+  --text-title:   19px/1.2  var(--font-display);   /* card/section feature moments; weight 600 */
   --text-heading: 15px/1.35 var(--font-sans);      /* section heads; weight 600 */
   --text-body:    14px/1.55 var(--font-sans);      /* prose */
   --text-ui:      13px/1.4  var(--font-sans);      /* buttons, nav, inputs */
   --text-data:    12.5px/1.4 var(--font-mono);     /* stats, tables, chips */
-  --text-micro:   10.5px/1.3 var(--font-mono);     /* eyebrows: uppercase, letter-spacing .14em, chalk-dim */
+  --text-micro:   10.5px/1.3 var(--font-mono);     /* eyebrows: uppercase, letter-spacing .14em, ink-dim */
 
   /* 4px base — the only spacing values allowed */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px;

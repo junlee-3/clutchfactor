@@ -71,7 +71,7 @@ export function overlayWindow(
  *  annotation always reflects the death actually unfolding right now, not
  *  a stale earlier one whose +2s post-roll simply hasn't expired yet.
  *  Non-`tracked_death` moments (e.g. utility/positioning notes) are never
- *  candidates — the canvas overlay only ever draws a death's chalk lines. */
+ *  candidates — the canvas overlay only ever draws a death's ink lines. */
 export function annotationMomentIndex(
   moments: { tick: number; kind: string }[],
   displayTick: number,

@@ -41,7 +41,7 @@ function quietSummary(r: RoundReviewDto): string {
 // (canvas overlay, Task 9) — this only names it: round header, a moment list
 // where the timestamp is mono and the numbers are the content, why/practise
 // as micro-eyebrow sections, prev/next flagged-round nav. The active moment
-// carries the §5 dashed-chalk left stripe — the one signature device, spent
+// carries the §5 dashed left stripe — the one signature device, spent
 // here, nowhere else in this component.
 export function CoachRail({
   reviews,
