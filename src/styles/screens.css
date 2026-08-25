@@ -235,14 +235,14 @@
 /* Skeleton sized + spaced to match the actual Card row (§10: no layout
    shift on data arrival) — a bare .ui-skel-row (40px, s2 gap) is tuned for
    a dense table row, not this screen's taller Card rows, so both are
-   overridden here to the real row's dimensions. Height: 32px padding
-   (2×s4) + 2px Card border (1px ×2) + ~28.2px button content ≈ 62px. */
+   overridden here to the real row's dimensions. Height: 56px radar thumb
+   + 32px padding (2×s4) + 2px Card border (1px ×2) = 90px. */
 .library-loading .ui-skel-group {
   gap: var(--s3);
 }
 
 .library-row-skeleton {
-  height: 62px;
+  height: 90px;
 }
 
 /* Each match is a Card (design-system.md §6) laid out as [open][actions] —
@@ -271,7 +271,7 @@
    instead of the row overlapping the delete buttons. */
 .library-row-open {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 104px 64px 60px 76px 152px;
+  grid-template-columns: 56px minmax(0, 1fr) 104px 64px 60px 76px 152px;
   align-items: center;
   column-gap: var(--s4);
   flex: 1;
@@ -284,6 +284,31 @@
   text-align: left;
   cursor: pointer;
   overflow: hidden;
+}
+
+/* Radar thumbnail (spec §1): cover-fit, hairline, dimmed until the row is
+   hovered/focused so the map reads as furniture, not a photo strip. */
+.library-row-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--bg-tape);
+  object-fit: cover;
+  opacity: 0.8;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.library-row-open:hover .library-row-thumb,
+.library-row-open:focus-visible .library-row-thumb {
+  opacity: 1;
+}
+
+.library-row-thumb-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-dim);
 }
 
 /* The map name's display-sans title moment (design-system.md §9). */

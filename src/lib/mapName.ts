@@ -15,3 +15,10 @@ export function mapName(map: string): string {
   const stripped = raw.replace(PREFIX_RE, "").replace(/_/g, " ");
   return stripped.charAt(0).toUpperCase() + stripped.slice(1);
 }
+
+/** Two-letter fallback tile for a map with no radar image ("de_mirage" ->
+ *  "MI"); "??" when the slug is empty. */
+export function mapInitials(map: string): string {
+  const letters = mapName(map).replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase();
+  return letters.length === 2 ? letters : "??";
+}
