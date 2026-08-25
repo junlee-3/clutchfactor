@@ -137,12 +137,16 @@ async fn parse_and_save(
     send(on_progress, "saving", 0.88, "Saving to library");
     let match_id = {
         let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
-        store
+        let match_id = store
             .save_match(&file_name, &file_hash, kind, &data)
             .map_err(|e| match e {
                 StoreError::DuplicateImport => e.to_string(),
                 other => format!("failed to save match: {other}"),
-            })?
+            })?;
+        store
+            .set_source_path(match_id, &path)
+            .map_err(|e| format!("failed to record demo path: {e}"))?;
+        match_id
     };
     let (_, _, score_a, score_b) = cf_parser::extract::derive_score(&data.rounds);
     Ok((match_id, data, score_a, score_b))
@@ -1152,6 +1156,82 @@ fn moment_killer(m: &cf_analysis::round_review::Moment) -> Option<String> {
         .map(str::to_string)
 }
 
+/// A ledger play and a review moment describe the same event when their
+/// kinds correspond (the ledger says "kill", the review "tracked_kill").
+fn moment_kind_matches(moment_kind: &str, play_kind: &str) -> bool {
+    matches!(
+        (moment_kind, play_kind),
+        ("tracked_kill", "kill")
+            | ("tracked_death", "death")
+            | ("plant", "plant")
+            | ("defuse", "defuse")
+    )
+}
+
+/// One ledger play, narrated into its DTO. `delta_p` comes from the
+/// ADR-0008 engine only: joined here by tick to this round's review
+/// moments (kill/death/plant/defuse) via `moment_kind_matches` — never
+/// computed by this function.
+fn play_dto(
+    mut p: cf_analysis::play_ledger::Play,
+    moments: &[cf_analysis::round_review::Moment],
+    ctx: &cf_narrator::MatchContext,
+) -> PlayDto {
+    p.delta_p = moments
+        .iter()
+        .find(|m| m.tick == p.tick && moment_kind_matches(&m.kind, &p.kind))
+        .and_then(|m| m.delta_p);
+    let t = cf_narrator::plays::narrate_play(&p, ctx);
+    let killer = p
+        .facts
+        .get("killer")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let focus = ["victim", "killer", "nearest_teammate", "teammate"]
+        .iter()
+        .filter_map(|k| p.facts.get(*k).and_then(|v| v.as_str()).map(str::to_string))
+        .collect();
+    PlayDto {
+        tick: p.tick,
+        kind: p.kind.clone(),
+        phase: p.phase.clone(),
+        headline: t.headline,
+        facts: t.facts,
+        quality: p.quality.map(|q| match q {
+            cf_analysis::play_ledger::Quality::Good => "good".to_string(),
+            cf_analysis::play_ledger::Quality::Bad => "bad".to_string(),
+            cf_analysis::play_ledger::Quality::Neutral => "neutral".to_string(),
+        }),
+        rule_id: p.rule_id.clone(),
+        delta_p: p.delta_p,
+        focus,
+        killer,
+    }
+}
+
+/// One ledger timeline event, with `actor`/`subject` steamids resolved to
+/// display names (falling back to the raw string if it isn't numeric).
+fn timeline_dto(
+    e: cf_analysis::play_ledger::TimelineEvent,
+    ctx: &cf_narrator::MatchContext,
+) -> TimelineDto {
+    let name = |id: &Option<String>| -> Option<String> {
+        id.as_ref().map(|s| {
+            s.parse::<u64>()
+                .map(|i| ctx.name(i))
+                .unwrap_or_else(|_| s.clone())
+        })
+    };
+    TimelineDto {
+        tick: e.tick,
+        kind: e.kind,
+        actor: name(&e.actor),
+        subject: name(&e.subject),
+        side: e.side,
+        weapon: e.weapon,
+    }
+}
+
 /// Silence over a bare label (V1.2 final-review fix wave, finding #4): a
 /// standalone `flag` moment whose narrated facts came out empty carries no
 /// evidence for the rail to show — the CLAUDE.md evidence contract's
@@ -1179,6 +1259,31 @@ pub struct RailMomentDto {
 }
 
 #[derive(serde::Serialize)]
+pub struct PlayDto {
+    pub tick: i32,
+    pub kind: String,
+    pub phase: String,
+    pub headline: String,
+    pub facts: Vec<String>,
+    /// "good" | "bad" | "neutral" | null (spec §2: only when measured)
+    pub quality: Option<String>,
+    pub rule_id: Option<String>,
+    pub delta_p: Option<f32>,
+    pub focus: Vec<String>,
+    pub killer: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct TimelineDto {
+    pub tick: i32,
+    pub kind: String,
+    pub actor: Option<String>,   // display name
+    pub subject: Option<String>, // display name
+    pub side: Option<String>,
+    pub weapon: Option<String>,
+}
+
+#[derive(serde::Serialize)]
 pub struct RoundReviewDto {
     pub round: u32,
     pub impact: f32,
@@ -1193,6 +1298,8 @@ pub struct RoundReviewDto {
     pub deaths: u32,
     pub man_context: Option<String>,
     pub moments: Vec<RailMomentDto>,
+    pub plays: Vec<PlayDto>,
+    pub timeline: Vec<TimelineDto>,
     pub why_it_mattered: Option<String>,
     pub what_to_practise: Option<String>,
 }
@@ -1231,6 +1338,13 @@ pub fn get_round_review(
     let Some(MatchCtxBundle { ctx, .. }) = match_context(&store, match_id)? else {
         return Ok(vec![]);
     };
+
+    let ledger_by_round: std::collections::HashMap<u32, cf_store::store::RoundPlaysRow> = store
+        .load_round_plays(match_id)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|r| (r.round, r))
+        .collect();
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
@@ -1281,14 +1395,31 @@ pub fn get_round_review(
             })
             .collect();
 
-        // Narration only for selected rounds: an unselected round's
-        // `moments` is already empty, but `why_it_mattered`'s `WonIt` arm
-        // doesn't strictly require a moment to produce a line (its "no
-        // named victim" fallback fires even with zero moments) — without
-        // this gate, an unselected `WonIt` round cut by the selection cap
-        // could still render rail prose despite carrying no dot and no
-        // moments (V1.2 final-review fix wave: "no dot without rail
-        // content" extended to the narration, not just the moment list).
+        let plays: Vec<PlayDto> = ledger_by_round
+            .get(&row.round)
+            .and_then(|r| {
+                serde_json::from_str::<Vec<cf_analysis::play_ledger::Play>>(&r.plays_json).ok()
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .map(|p| play_dto(p, &moments, &ctx))
+            .collect();
+        let timeline: Vec<TimelineDto> = ledger_by_round
+            .get(&row.round)
+            .and_then(|r| {
+                serde_json::from_str::<Vec<cf_analysis::play_ledger::TimelineEvent>>(
+                    &r.timeline_json,
+                )
+                .ok()
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .map(|e| timeline_dto(e, &ctx))
+            .collect();
+
+        // Narration prose only for selected rounds: moments now exist for
+        // every round (rbr-v2), so this gate is the only thing keeping an
+        // unselected round's rail free of why/practise claims.
         let (why_it_mattered, what_to_practise) = if row.selected {
             (
                 rail::why_it_mattered(&review, &ctx),
@@ -1312,6 +1443,8 @@ pub fn get_round_review(
             deaths: header.deaths,
             man_context: header.man_context,
             moments: rail_moments,
+            plays,
+            timeline,
             why_it_mattered,
             what_to_practise,
         });
@@ -1393,6 +1526,27 @@ fn threshold_rows(cfg: &cf_analysis::DetectorConfig) -> Vec<ThresholdRow> {
             "Coach rail max rounds",
             format!("{}", cfg.rbr.max_rounds),
             "rounds",
+        ),
+        row("ledger.setup_s", format!("{}", cfg.ledger.setup_s), "s"),
+        row(
+            "ledger.he_window_s",
+            format!("{}", cfg.ledger.he_window_s),
+            "s",
+        ),
+        row(
+            "ledger.molotov_burn_s",
+            format!("{}", cfg.ledger.molotov_burn_s),
+            "s",
+        ),
+        row(
+            "ledger.flash_join_s",
+            format!("{}", cfg.ledger.flash_join_s),
+            "s",
+        ),
+        row(
+            "ledger.sample_step_s",
+            format!("{}", cfg.ledger.sample_step_s),
+            "s",
         ),
     ]
 }
@@ -1536,5 +1690,144 @@ mod tests {
         ));
         assert!(!should_suppress_flag_moment("tracked_kill", &[]));
         assert!(!should_suppress_flag_moment("plant", &[]));
+    }
+
+    // ---- play_dto / timeline_dto (task-11 review finding #2) --------------
+
+    fn narrator_ctx() -> cf_narrator::MatchContext {
+        cf_narrator::MatchContext {
+            map: "de_mirage".to_string(),
+            tracked: 1,
+            names: std::collections::HashMap::from([
+                (1, "me".to_string()),
+                (2, "Sam".to_string()),
+                (9, "Kit".to_string()),
+            ]),
+            score: (13, 9),
+            tracked_result: Some("win".to_string()),
+            total_deaths: 10,
+            class_13_share_pct: 20.0,
+        }
+    }
+
+    fn play(
+        tick: i32,
+        kind: &str,
+        facts: serde_json::Value,
+        quality: Option<cf_analysis::play_ledger::Quality>,
+    ) -> cf_analysis::play_ledger::Play {
+        cf_analysis::play_ledger::Play {
+            tick,
+            phase: "mid".to_string(),
+            kind: kind.to_string(),
+            facts,
+            quality,
+            rule_id: None,
+            delta_p: None,
+        }
+    }
+
+    fn rr_moment(tick: i32, kind: &str, delta_p: Option<f32>) -> cf_analysis::round_review::Moment {
+        cf_analysis::round_review::Moment {
+            tick,
+            kind: kind.to_string(),
+            rule_id: None,
+            delta_p,
+            facts: json!({}),
+        }
+    }
+
+    #[test]
+    fn play_dto_joins_delta_p_from_the_matching_moment_only() {
+        let death = play(500, "death", json!({"victim": "1", "killer": "9"}), None);
+
+        let matching = [rr_moment(500, "tracked_death", Some(-0.23))];
+        assert_eq!(
+            play_dto(death.clone(), &matching, &narrator_ctx()).delta_p,
+            Some(-0.23)
+        );
+
+        // Same tick, but the only moment there is a tracked_kill, not a
+        // tracked_death — kind must match too, not just the tick.
+        let wrong_kind = [rr_moment(500, "tracked_kill", Some(0.5))];
+        assert_eq!(
+            play_dto(death.clone(), &wrong_kind, &narrator_ctx()).delta_p,
+            None
+        );
+
+        // No moment shares the tick at all.
+        let no_match = [rr_moment(600, "tracked_death", Some(-0.9))];
+        assert_eq!(play_dto(death, &no_match, &narrator_ctx()).delta_p, None);
+    }
+
+    #[test]
+    fn play_dto_focus_is_presence_ordered_and_killer_is_explicit() {
+        let death = play(
+            100,
+            "death",
+            json!({"victim": "1", "killer": "9", "nearest_teammate": "2"}),
+            None,
+        );
+        let dto = play_dto(death, &[], &narrator_ctx());
+        assert_eq!(
+            dto.focus,
+            vec!["1".to_string(), "9".to_string(), "2".to_string()]
+        );
+        assert_eq!(dto.killer, Some("9".to_string()));
+
+        let trade = play(100, "trade", json!({"teammate": "2", "killer": "9"}), None);
+        let dto2 = play_dto(trade, &[], &narrator_ctx());
+        assert_eq!(dto2.focus, vec!["9".to_string(), "2".to_string()]);
+        assert_eq!(dto2.killer, Some("9".to_string()));
+    }
+
+    #[test]
+    fn play_dto_quality_maps_to_the_wire_strings() {
+        use cf_analysis::play_ledger::Quality;
+        let good = play(100, "flash", json!({}), Some(Quality::Good));
+        assert_eq!(
+            play_dto(good, &[], &narrator_ctx()).quality,
+            Some("good".to_string())
+        );
+        let bad = play(100, "flash", json!({}), Some(Quality::Bad));
+        assert_eq!(
+            play_dto(bad, &[], &narrator_ctx()).quality,
+            Some("bad".to_string())
+        );
+        let neutral = play(100, "flash", json!({}), Some(Quality::Neutral));
+        assert_eq!(
+            play_dto(neutral, &[], &narrator_ctx()).quality,
+            Some("neutral".to_string())
+        );
+        let none = play(100, "flash", json!({}), None);
+        assert_eq!(play_dto(none, &[], &narrator_ctx()).quality, None);
+    }
+
+    #[test]
+    fn timeline_dto_resolves_known_names_and_keeps_unknown_ids_raw() {
+        let known = cf_analysis::play_ledger::TimelineEvent {
+            tick: 100,
+            kind: "kill".to_string(),
+            actor: Some("2".to_string()),
+            subject: Some("9".to_string()),
+            side: Some("CT".to_string()),
+            weapon: Some("ak47".to_string()),
+        };
+        let dto = timeline_dto(known, &narrator_ctx());
+        assert_eq!(dto.actor, Some("Sam".to_string()));
+        assert_eq!(dto.subject, Some("Kit".to_string()));
+        assert_eq!(dto.side, Some("CT".to_string()));
+
+        let unknown = cf_analysis::play_ledger::TimelineEvent {
+            tick: 100,
+            kind: "kill".to_string(),
+            actor: Some("999999999".to_string()),
+            subject: None,
+            side: None,
+            weapon: None,
+        };
+        let dto2 = timeline_dto(unknown, &narrator_ctx());
+        assert_eq!(dto2.actor, Some("999999999".to_string()));
+        assert_eq!(dto2.subject, None);
     }
 }

@@ -55,8 +55,9 @@
 //!      pivotal_threshold_p`
 //!    - `CostYou`: `impact ≤ −attention_threshold_p`
 //!    - `Quiet`: otherwise
-//! 8. **Moments (selected rounds only; unselected rounds get `moments:
-//!    vec![]`):** one per tracked kill / tracked death / tracked plant /
+//! 8. **Moments (every round, V1.2b/`rbr-v2` — `selected` no longer gates
+//!    this; it now only gates the rail's why/practise prose and attention
+//!    dots):** one per tracked kill / tracked death / tracked plant /
 //!    tracked defuse (with `delta_p`), plus one `"flag"` moment per
 //!    tracked-player flag in the round whose tick doesn't already have a
 //!    moment (dedup by tick: a death moment absorbs its death-anchored
@@ -934,19 +935,18 @@ pub fn review_rounds(input: &RoundReviewInput, cfg: &DetectorConfig) -> Vec<Roun
                 .get(&a.round)
                 .map(|s| (s.selected, s.attention))
                 .unwrap_or((false, Attention::None));
-            let moments = if selected {
-                build_moments(
-                    input.tracked,
-                    &a.core.events,
-                    &a.flags,
-                    &a.core.tracked_death,
-                    a.core.end_tick,
-                    input.tickrate,
-                    cfg.rbr.max_moments,
-                )
-            } else {
-                vec![]
-            };
+            // V1.2b: every round narrated (spec §2) — moments are built for
+            // every round; `selected` now only gates the rail's why/practise
+            // prose and the attention dots.
+            let moments = build_moments(
+                input.tracked,
+                &a.core.events,
+                &a.flags,
+                &a.core.tracked_death,
+                a.core.end_tick,
+                input.tickrate,
+                cfg.rbr.max_moments,
+            );
             RoundReview {
                 round: a.round,
                 impact: a.core.impact,
@@ -966,7 +966,8 @@ pub fn review_rounds(input: &RoundReviewInput, cfg: &DetectorConfig) -> Vec<Roun
 /// change to the moments schema, a scoring-model fix like this file's own
 /// V1.2 final-review fix wave) — independent of `RbrCfg`'s tunable
 /// thresholds, which `cfg_fingerprint` below covers separately.
-pub const ENGINE_VERSION: &str = "rbr-v1";
+/// `rbr-v2` (V1.2b): moments for every round.
+pub const ENGINE_VERSION: &str = "rbr-v2";
 
 /// A stable fingerprint of the engine version plus every `RbrCfg` field that
 /// participates in `review_rounds`' output. Stored alongside each
@@ -1320,8 +1321,8 @@ mod tests {
         );
         assert_eq!(r1.attention, Attention::None, "no dot without rail content");
         assert!(
-            r1.moments.is_empty(),
-            "an unselected round carries no moments"
+            !r1.moments.is_empty(),
+            "every round keeps its moments (V1.2b: every round narrated)"
         );
     }
 

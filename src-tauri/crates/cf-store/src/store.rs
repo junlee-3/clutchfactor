@@ -8,7 +8,7 @@ use cf_parser::extract::derive_score;
 #[cfg(test)]
 use cf_parser::model::{Hurt, InventorySample, Reload, Shot};
 use cf_parser::model::{MatchData, RoundEndReason, Side};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -216,6 +216,14 @@ pub struct RoundReviewRow {
     /// on mismatch rather than serving a stale review. Existing pre-migration
     /// rows backfill to `""`, which never matches a real fingerprint.
     pub cfg_fingerprint: String,
+}
+
+/// One round's play ledger, as stored (structured JSON, narrated at serve time).
+#[derive(Debug, Clone)]
+pub struct RoundPlaysRow {
+    pub round: u32,
+    pub plays_json: String,
+    pub timeline_json: String,
 }
 
 /// One own match's trend point (Trends screen chart, PROMPT.md M6).
@@ -655,6 +663,7 @@ impl Store {
         tx.execute("DELETE FROM rule_flags WHERE match_id = ?1", [match_id])?;
         tx.execute("DELETE FROM insights WHERE match_id = ?1", [match_id])?;
         tx.execute("DELETE FROM death_class WHERE match_id = ?1", [match_id])?;
+        tx.execute("DELETE FROM round_plays WHERE match_id = ?1", [match_id])?;
         {
             let mut st = tx.prepare(
                 "INSERT INTO rule_flags (match_id, rule_id, round, tick, steamid, confidence,
@@ -708,6 +717,18 @@ impl Store {
                     d.class_source,
                     serde_json::to_string(&d.secondary_tags).expect("tags json"),
                     d.confidence,
+                ])?;
+            }
+            let mut st = tx.prepare(
+                "INSERT INTO round_plays (match_id, round, plays_json, timeline_json)
+                 VALUES (?1, ?2, ?3, ?4)",
+            )?;
+            for r in &out.ledger {
+                st.execute(params![
+                    match_id,
+                    r.round,
+                    serde_json::to_string(&r.plays).expect("plays json"),
+                    serde_json::to_string(&r.timeline).expect("timeline json"),
                 ])?;
             }
         }
@@ -798,6 +819,44 @@ impl Store {
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    /// A match's stored play ledger, ordered by round (empty for imports
+    /// that predate V1.2b — `re_analyze_match` fills it).
+    pub fn load_round_plays(&self, match_id: i64) -> Result<Vec<RoundPlaysRow>, StoreError> {
+        let mut st = self.conn.prepare(
+            "SELECT round, plays_json, timeline_json FROM round_plays
+             WHERE match_id = ?1 ORDER BY round",
+        )?;
+        let rows = st
+            .query_map([match_id], |r| {
+                Ok(RoundPlaysRow {
+                    round: r.get(0)?,
+                    plays_json: r.get(1)?,
+                    timeline_json: r.get(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Records where a demo was imported from (V1.2b re-analyze input).
+    pub fn set_source_path(&mut self, id: i64, path: &str) -> Result<(), StoreError> {
+        self.conn.execute(
+            "UPDATE matches SET source_path = ?2 WHERE id = ?1",
+            params![id, path],
+        )?;
+        Ok(())
+    }
+
+    pub fn source_path(&self, id: i64) -> Result<Option<String>, StoreError> {
+        let v = self
+            .conn
+            .query_row("SELECT source_path FROM matches WHERE id = ?1", [id], |r| {
+                r.get::<_, Option<String>>(0)
+            })
+            .optional()?;
+        Ok(v.flatten())
     }
 
     /// Per-match flag counts for one rule for the tracked player, newest
@@ -1723,17 +1782,30 @@ mod tests {
         (dir, store)
     }
 
+    /// One saved match, for tests that don't care about its contents beyond
+    /// having a valid `match_id` to hang analysis/ledger rows off of. Returns
+    /// the `TempDir` guard first so it drops last (fields drop in reverse
+    /// declaration order), same as `open_tmp()`'s callers.
+    fn one_match() -> (tempfile::TempDir, Store, i64, MatchData) {
+        let (dir, mut store) = open_tmp();
+        let data = sample_match();
+        let id = store
+            .save_match("m1.dem", "h1", MatchKind::Own, &data)
+            .unwrap();
+        (dir, store, id, data)
+    }
+
     #[test]
     fn migrations_apply_fresh_and_are_idempotent_on_reopen() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.db");
         {
             let store = Store::open(&path).unwrap();
-            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 7);
+            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 8);
         }
         // Reopen: migrations must not re-apply / error.
         let store = Store::open(&path).unwrap();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 7);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 8);
     }
 
     #[test]
@@ -1897,6 +1969,7 @@ mod tests {
                 secondary_tags: vec!["H3_WASTED_UTILITY".into()],
                 confidence: 0.75,
             }],
+            ledger: vec![],
         };
         store.save_analysis(id, &out).unwrap();
         let insights = store.insights_for_match(id).unwrap();
@@ -1916,7 +1989,7 @@ mod tests {
     fn cross_demo_queries_aggregate_flags_positions_and_rounds() {
         use cf_analysis::{AnalysisOutput, EvidenceRef, RuleFlag};
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 7);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 8);
         store.set_setting("tracked_steamid", "1").unwrap();
         let flag = |round: u32, tick: i32| RuleFlag {
             rule_id: "H2_ISOLATED_DEATH",
@@ -2124,6 +2197,7 @@ mod tests {
             ],
             insights: vec![],
             death_classes: vec![],
+            ledger: vec![],
         };
         store.save_analysis(id, &out).unwrap();
 
@@ -2139,7 +2213,7 @@ mod tests {
     #[test]
     fn migration_2_analysis_tables_and_rule_inputs_persist() {
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 7);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 8);
         let id = store
             .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
             .unwrap();
@@ -2799,6 +2873,46 @@ mod tests {
             loaded[0].cfg_fingerprint, current,
             "a row saved under an old fingerprint must read back mismatched \
              against the current one"
+        );
+    }
+
+    #[test]
+    fn save_analysis_persists_the_play_ledger_and_source_path_round_trips() {
+        let (_dir, mut store, match_id, _data) = one_match();
+        let ledger = vec![cf_analysis::play_ledger::RoundLedger {
+            round: 1,
+            plays: vec![cf_analysis::play_ledger::Play {
+                tick: 1320,
+                phase: "opening".to_string(),
+                kind: "setup".to_string(),
+                facts: serde_json::json!({"place": "BombsiteA"}),
+                quality: None,
+                rule_id: None,
+                delta_p: None,
+            }],
+            timeline: vec![],
+        }];
+        let out = cf_analysis::AnalysisOutput {
+            ledger,
+            ..Default::default()
+        };
+        store.save_analysis(match_id, &out).unwrap();
+        let rows = store.load_round_plays(match_id).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].round, 1);
+        assert!(rows[0].plays_json.contains("\"kind\":\"setup\""));
+        assert_eq!(rows[0].timeline_json, "[]");
+        // Replace semantics: a second save with an empty ledger clears it.
+        store
+            .save_analysis(match_id, &cf_analysis::AnalysisOutput::default())
+            .unwrap();
+        assert!(store.load_round_plays(match_id).unwrap().is_empty());
+
+        assert_eq!(store.source_path(match_id).unwrap(), None);
+        store.set_source_path(match_id, "/demos/a.dem").unwrap();
+        assert_eq!(
+            store.source_path(match_id).unwrap().as_deref(),
+            Some("/demos/a.dem")
         );
     }
 }

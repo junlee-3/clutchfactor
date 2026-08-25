@@ -11,6 +11,7 @@ pub mod context;
 pub mod corpus;
 pub mod families;
 pub mod habits;
+pub mod play_ledger;
 pub mod round_review;
 pub mod scenario;
 pub mod types;
@@ -58,9 +59,11 @@ pub fn analyze(data: &MatchData, tracked: u64, cfg: &DetectorConfig) -> Analysis
         flags.extend(f);
     }
     let death_classes = classify::classify_deaths(&ctx, cfg, &flags);
+    let ledger = play_ledger::build_ledger(&ctx, cfg, &flags);
     AnalysisOutput {
         flags,
         insights,
         death_classes,
+        ledger,
     }
 }

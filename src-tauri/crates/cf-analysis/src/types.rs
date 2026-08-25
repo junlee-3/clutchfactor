@@ -91,6 +91,9 @@ pub struct AnalysisOutput {
     pub flags: Vec<RuleFlag>,
     pub insights: Vec<Insight>,
     pub death_classes: Vec<DeathClassRow>,
+    /// V1.2b play ledger, one entry per round the tracked player played.
+    /// Not part of `AnalysisGolden` (goldens stay byte-identical).
+    pub ledger: Vec<crate::play_ledger::RoundLedger>,
 }
 
 /// Compact snapshot for golden tests (PROMPT.md §10.2): per-rule flag counts,

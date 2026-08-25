@@ -12,7 +12,7 @@
 //                  <- src-tauri/src/commands.rs + cf-store store.rs
 //   HabitReport (+ HabitEvidence) <- src-tauri/src/commands.rs
 //   EvidenceRefDto <- EvidenceRef, src-tauri/crates/cf-analysis/src/types.rs
-//   RoundReviewDto (+ RailMomentDto) <- src-tauri/src/commands.rs
+//   RoundReviewDto (+ RailMomentDto/PlayDto/TimelineDto) <- src-tauri/src/commands.rs
 //   GridDto (src/replay/heatmap.ts) <- GridRow, src-tauri/crates/cf-store/src/store.rs
 //   GridStatus/CorpusMapCount <- src-tauri/crates/cf-store/src/store.rs
 //   CorpusStatus   <- src-tauri/src/commands.rs
@@ -235,6 +235,28 @@ export interface RailMomentDto {
   killer: string | null;
 }
 
+export interface PlayDto {
+  tick: number;
+  kind: string;
+  phase: string;
+  headline: string;
+  facts: string[];
+  quality: "good" | "bad" | "neutral" | null;
+  rule_id: string | null;
+  delta_p: number | null;
+  focus: string[];
+  killer: string | null;
+}
+
+export interface TimelineDto {
+  tick: number;
+  kind: string;
+  actor: string | null;
+  subject: string | null;
+  side: "CT" | "T" | null;
+  weapon: string | null;
+}
+
 export interface RoundReviewDto {
   round: number;
   impact: number;
@@ -249,6 +271,8 @@ export interface RoundReviewDto {
   deaths: number;
   man_context: string | null;
   moments: RailMomentDto[];
+  plays: PlayDto[];
+  timeline: TimelineDto[];
   why_it_mattered: string | null;
   what_to_practise: string | null;
 }

@@ -102,7 +102,7 @@ impl Detector for H2TradeSpacing {
 }
 
 /// Was `sid` killed by anyone within [t0, t1]?
-fn killed_in(ctx: &AnalysisContext, sid: u64, t0: i32, t1: i32) -> bool {
+pub(crate) fn killed_in(ctx: &AnalysisContext, sid: u64, t0: i32, t1: i32) -> bool {
     ctx.data()
         .kills
         .iter()
@@ -110,7 +110,7 @@ fn killed_in(ctx: &AnalysisContext, sid: u64, t0: i32, t1: i32) -> bool {
 }
 
 /// Did `sid` commit within [t0, t1] — fired any shot, or damaged the killer?
-fn committed(ctx: &AnalysisContext, sid: u64, killer: u64, t0: i32, t1: i32) -> bool {
+pub(crate) fn committed(ctx: &AnalysisContext, sid: u64, killer: u64, t0: i32, t1: i32) -> bool {
     !ctx.shots_by_in(sid, t0, t1).is_empty()
         || ctx
             .hurts_dealt_in(sid, t0, t1)
