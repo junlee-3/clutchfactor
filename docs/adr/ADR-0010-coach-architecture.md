@@ -19,8 +19,12 @@ trait; the coach needs the network, batching and a cache.
 - **Grounding.** The validator builds its allowed sets from exactly the text
   the model was shown (`render_round_block`), so anything citable must be
   rendered and nothing rendered may be a guess. Numbers, roster names, known
-  callouts, round numbers, ticks; opinions are free. Reject → one retry with
-  the violations listed → template fallback for that round.
+  callouts, round numbers, ticks; opinions are free. The known-callout set
+  is every callout anyone stood in during the match — the ledger's places ∪
+  the position samples' `last_place` — not a per-map list. Names and
+  callouts match at word boundaries only ("CT spawn" never grounds "T
+  spawn"). Reject → one retry with the violations listed → template
+  fallback for that round.
 - **Key.** `CLUTCHFACTOR_GEMINI_KEY` env var overrides the Settings value
   (`gemini_api_key` in the SQLite settings table — the charter's choice; the
   DB lives in the user's app-data dir). Debug builds seed the env var from

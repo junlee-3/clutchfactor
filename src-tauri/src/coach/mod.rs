@@ -200,12 +200,22 @@ pub fn build_round_inputs(
     out
 }
 
-/// Every callout the match's raw ledger mentions, prettified and deduped —
-/// the validator's "known callouts" set (a callout the coach names that the
-/// round's facts don't contain is an invention).
-pub fn known_callouts(plays_jsons: &[String]) -> Vec<String> {
+/// The validator's "known callouts" set: every callout anyone stood in
+/// during the match — the raw ledger's places ∪ the position samples'
+/// distinct `last_place` (`Store::distinct_places`) — prettified and
+/// deduped, ledger-derived first. A callout the coach names that the
+/// round's facts don't contain is an invention; before the position
+/// samples were unioned in (V1.3 final-review fix #3) "hold Jungle" passed
+/// on Mirage whenever the ledger happened not to mention Jungle.
+pub fn known_callouts(plays_jsons: &[String], raw_places: &[String]) -> Vec<String> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut out = vec![];
+    let mut push = |raw: &str| {
+        let pretty = cf_narrator::callouts::callout_name(raw);
+        if !pretty.is_empty() && seen.insert(pretty.clone()) {
+            out.push(pretty);
+        }
+    };
     for json in plays_jsons {
         let Ok(plays) = serde_json::from_str::<Vec<serde_json::Value>>(json) else {
             continue;
@@ -213,13 +223,13 @@ pub fn known_callouts(plays_jsons: &[String]) -> Vec<String> {
         for p in plays {
             for key in ["place", "victim_place", "killer_place", "place_at_plant"] {
                 if let Some(raw) = p["facts"][key].as_str() {
-                    let pretty = cf_narrator::callouts::callout_name(raw);
-                    if seen.insert(pretty.clone()) {
-                        out.push(pretty);
-                    }
+                    push(raw);
                 }
             }
         }
+    }
+    for raw in raw_places {
+        push(raw);
     }
     out
 }
@@ -342,7 +352,8 @@ fn open_round_session(store: &mut Store, match_id: i64) -> Result<Option<RoundSe
         .into_iter()
         .map(|r| r.plays_json)
         .collect();
-    let known = known_callouts(&plays_jsons);
+    let places = store.distinct_places(match_id).map_err(|e| e.to_string())?;
+    let known = known_callouts(&plays_jsons, &places);
     let mut cached = vec![];
     for (round, _, _) in &blocks {
         if let Some(row) = store
@@ -601,6 +612,7 @@ pub async fn synthesis(
             .into_iter()
             .map(|r| r.plays_json)
             .collect();
+        let places = store.distinct_places(match_id).map_err(|e| e.to_string())?;
         (
             GeminiClient::new(key).map_err(|e| e.to_string())?,
             model,
@@ -608,7 +620,7 @@ pub async fn synthesis(
             prompt,
             hash,
             cached,
-            known_callouts(&plays_jsons),
+            known_callouts(&plays_jsons, &places),
         )
     };
     let (client, model, si, prompt, hash, cached, known) = prep;
@@ -803,13 +815,34 @@ mod tests {
     #[test]
     fn known_callouts_come_from_raw_place_keys_prettified_and_deduped() {
         let plays_json = r#"[{"kind":"death","facts":{"place":"BombsiteB","killer_place":"BombsiteB","weapon":"awp"}},{"kind":"rotation","facts":{"place_at_plant":"CTSpawn"}},{"kind":"kill","facts":{"victim_place":null}}]"#;
-        let c = known_callouts(&[plays_json.to_string()]);
+        let c = known_callouts(&[plays_json.to_string()], &[]);
         assert_eq!(
             c,
             vec![
                 cf_narrator::callouts::callout_name("BombsiteB"),
                 cf_narrator::callouts::callout_name("CTSpawn")
             ]
+        );
+    }
+
+    /// V1.3 final-review fix #3: the set is everywhere anyone stood this
+    /// match, not just the places the ledger happened to mention.
+    #[test]
+    fn known_callouts_union_the_visited_places_and_keep_the_ledger_ones() {
+        let plays_json =
+            r#"[{"kind":"death","facts":{"place":"BombsiteB","killer_place":"Jungle"}}]"#;
+        let visited: Vec<String> = vec![
+            "BombsiteB".into(), // already in the ledger — deduped
+            "TopofMid".into(),
+            "CTSpawn".into(),
+            String::new(), // a blank sample never becomes a callout
+        ];
+        let c = known_callouts(&[plays_json.to_string()], &visited);
+        assert_eq!(c, vec!["B site", "Jungle", "Top of Mid", "CT spawn"]);
+        // No ledger at all (pre-V1.2b import): the visited places alone.
+        assert_eq!(
+            known_callouts(&[], &["Connector".to_string()]),
+            vec!["Connector".to_string()]
         );
     }
 
