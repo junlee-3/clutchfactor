@@ -28,7 +28,7 @@ impl GeminiClient {
         let http = reqwest::Client::builder()
             .timeout(TIMEOUT)
             .build()
-            .map_err(|e| CoachError::Offline(e.to_string()))?;
+            .map_err(|e| CoachError::Offline(short(&e.to_string())))?;
         Ok(GeminiClient { http, key })
     }
 
@@ -205,5 +205,15 @@ mod tests {
             extract_text(&json!({})),
             Err(CoachError::BadResponse(_))
         ));
+    }
+
+    #[test]
+    fn short_does_not_redact_a_realistic_google_error_line() {
+        let msg = short("error sending request for url (https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent)");
+        assert!(msg.contains("generativelanguage.googleapis.com"));
+        assert_eq!(
+            short("token AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA end"),
+            "token [redacted] end"
+        );
     }
 }

@@ -2,6 +2,7 @@
 //! caching and fallback. The pure half — prompts, schemas, the grounding
 //! validator, parsing — lives in `cf_narrator::coach` and is what the
 //! adversarial tests exercise.
+#![allow(dead_code)] // V1.3 Task 4: consumed by the orchestrator in Task 6 — remove this allow there.
 
 pub mod gemini;
 pub mod key;

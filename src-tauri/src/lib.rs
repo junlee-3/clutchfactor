@@ -1,4 +1,4 @@
-pub mod coach;
+mod coach;
 mod commands;
 
 use std::sync::Mutex;
