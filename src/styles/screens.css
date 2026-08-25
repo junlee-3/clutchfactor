@@ -992,18 +992,26 @@
   color: var(--loss);
 }
 
-/* Verdict chip tints — the two measured-impact verdicts only, via the §2
-   derived surface tokens (no fresh color-mix here). "Not on you"/"Traded"/
-   "Quiet" stay the Chip default (bg2/ink-dim): the verdict is named, not
-   graded. */
+/* Verdict chips — outlined per the owner's mockup (spec §1). The Chip base
+   has no border; these add a 1px outline in the verdict's hue and keep the
+   fill transparent. "Not on you"/"Traded"/"Quiet" = neutral outline: the
+   verdict is named, not graded. */
 .rpl-rail-verdict-won {
-  background: var(--surface-win);
+  background: transparent;
+  border: 1px solid var(--border-win);
   color: var(--win);
 }
 
 .rpl-rail-verdict-loss {
-  background: var(--surface-loss);
+  background: transparent;
+  border: 1px solid var(--border-loss);
   color: var(--loss);
+}
+
+.rpl-rail-verdict-neutral {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-dim);
 }
 
 .rpl-rail-moments {
@@ -1024,7 +1032,7 @@
   padding: var(--s2);
   background: none;
   /* Reserve the stripe's width on every row (transparent) so the active
-     row's dashed stripe never nudges the text (§10: no layout shift). */
+     row's tone edge never nudges the text (§10: no layout shift). */
   border: none;
   border-left: 2px solid transparent;
   border-radius: var(--r-sm);
@@ -1059,15 +1067,20 @@
   color: var(--ink-dim);
 }
 
-/* The §5 signature grammar: dashed ink marks the moment the tape is
-   currently at. The one dashed stripe this component spends. */
+/* The active row's tone edge (spec §1): solid, 2px, colored by what the
+   play measured — loss / win / neutral. Dashed is reserved for evidence
+   (chips, the canvas teammate line); this edge is a state, not evidence. */
 .rpl-rail-moment-active {
-  border-left: 2px dashed var(--ink);
+  border-left: 2px solid var(--ink-dim);
   background: var(--bg2);
 }
 
-.rpl-rail-moment-active:hover {
-  border-left-color: var(--ink-bright);
+.rpl-rail-moment-active.rpl-rail-tone-loss {
+  border-left-color: var(--loss);
+}
+
+.rpl-rail-moment-active.rpl-rail-tone-win {
+  border-left-color: var(--win);
 }
 
 .rpl-rail-note {
