@@ -29,6 +29,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+# Already in the tree via Tauri; `sync` for the coach's per-match generation lock.
+tokio = { version = "1", features = ["sync"] }
 cf-analysis = { path = "crates/cf-analysis" }
 cf-narrator = { path = "crates/cf-narrator" }
 cf-parser = { path = "crates/cf-parser" }

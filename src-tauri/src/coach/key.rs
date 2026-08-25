@@ -49,6 +49,8 @@ pub fn coach_enabled(store: &Store) -> Result<bool, String> {
 
 /// The value of a `GEMINI_API_KEY=…` line (optionally quoted), if present
 /// and non-empty. Only that key is read — nothing else in the file matters.
+/// Only the debug-build loader (and the tests) call it.
+#[cfg_attr(not(debug_assertions), allow(dead_code))]
 pub fn parse_env_local(text: &str) -> Option<String> {
     text.lines().find_map(|line| {
         let line = line.trim().trim_start_matches("export ").trim();

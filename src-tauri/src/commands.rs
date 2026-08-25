@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use cf_analysis::corpus::{self, Phase, PhaseSample, TrackedMoment};
 use cf_parser::extract::{parse_match, ImportStage};
@@ -39,8 +39,17 @@ fn detector_config() -> cf_analysis::DetectorConfig {
     cf_analysis::DetectorConfig::default()
 }
 
+/// One async mutex per match id, created on first use (`coach::match_lock`).
+/// The outer std lock guards only the map lookup and is never held across
+/// an await.
+pub type CoachLocks = Mutex<HashMap<i64, Arc<tokio::sync::Mutex<()>>>>;
+
 pub struct AppState {
     pub store: Mutex<Store>,
+    /// The coach generates a match's commentary under this lock so the two
+    /// queries a first open fires (rounds, synthesis) can't both pay for
+    /// the same rounds (V1.3 final-review fix #5).
+    pub coach_locks: CoachLocks,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -464,7 +473,16 @@ pub fn set_gemini_key(state: State<'_, AppState>, key: Option<String>) -> Result
     }
 }
 
-/// Empty → default model (the setting is deleted).
+/// A Gemini model id as we accept it: letters, digits, dots and dashes.
+pub fn is_model_id(v: &str) -> bool {
+    !v.is_empty()
+        && v.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
+}
+
+/// Empty → default model (the setting is deleted). Both ids are validated
+/// before either is written, so a bad synthesis id never leaves a half-saved
+/// pair behind.
 #[tauri::command]
 pub fn set_coach_models(
     state: State<'_, AppState>,
@@ -472,21 +490,21 @@ pub fn set_coach_models(
     synthesis_model: String,
 ) -> Result<(), String> {
     use crate::coach::key::{SETTING_ROUND_MODEL, SETTING_SYNTHESIS_MODEL};
-    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
-    for (k, v) in [
-        (SETTING_ROUND_MODEL, round_model),
-        (SETTING_SYNTHESIS_MODEL, synthesis_model),
-    ] {
-        let v = v.trim();
-        if v.is_empty() {
-            store.delete_setting(k).map_err(|e| e.to_string())?;
-        } else if !v
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
-        {
+    let pairs = [
+        (SETTING_ROUND_MODEL, round_model.trim()),
+        (SETTING_SYNTHESIS_MODEL, synthesis_model.trim()),
+    ];
+    for (_, v) in &pairs {
+        if !v.is_empty() && !is_model_id(v) {
             return Err(format!(
                 "\"{v}\" is not a model id (letters, digits, dots and dashes only)."
             ));
+        }
+    }
+    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    for (k, v) in pairs {
+        if v.is_empty() {
+            store.delete_setting(k).map_err(|e| e.to_string())?;
         } else {
             store.set_setting(k, v).map_err(|e| e.to_string())?;
         }
