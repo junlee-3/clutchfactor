@@ -174,8 +174,9 @@ surfaces, 3 focus treatments, 6 badge one-offs — all collapse into these.)
 - **Card** — `--bg1`, `--line`, `--r-md`, padding `--s4`; optional eyebrow
   slot; optional `edge` prop (win/loss/severity left edge, 2px).
 - **Chip / Badge** — mono `--text-data`, `--r-sm`; variants: default,
-  evidence (dashed underline — see §5), outlined (verdict chips), side-ct/
-  side-t, count.
+  evidence (dashed underline — see §5), side-ct/side-t, count. The rail's
+  verdict chips are `count` chips styled through `className` (loss/win/
+  neutral outline — spec §1); there is no outlined variant.
 - **Table** — the one table style (mono data cells, sans header eyebrows,
   hairline rows); replaces `.grid-table` + match-list grid.
 - **Input / Select** — dark, `--r-sm`, ink caret, accent-bright focus ring.
@@ -248,8 +249,8 @@ screen's code; screenshot + self-critique against this doc before done.**
 
 ## 10. Accessibility & quality floor
 
-WCAG AA contrast on every token pair used (ink on bg0 ≈ 12.9:1, ink-dim on
-bg1 ≥ 4.6:1 — verify pairs when finalizing values; ink-faint is decorative
+WCAG AA contrast on every token pair used (ink on bg0 ≈ 14.9:1, ink-dim on
+bg1 ≈ 5.7:1 — computed from the v2 values above; ink-faint is decorative
 only, never for essential text). One focus treatment everywhere. Keyboard:
 existing replay bindings stay; sidebar and all controls tabbable. No layout
 shift on data arrival (skeletons at final size). Dark only, done impeccably

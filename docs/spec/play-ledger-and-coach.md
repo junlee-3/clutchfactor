@@ -23,7 +23,7 @@ and the chalk-era names are renamed to neutral ink names in one mechanical pass:
 | `--bg-tape` | `#0b0d11` | radar & heatmap wells (a touch darker than bg0) |
 | `--line` / `--line-strong` | `#232b36` / `#2f3944` | hairlines / emphasized |
 | `--ink` / `--ink-bright` / `--ink-dim` / `--ink-faint` | `#dfe5ec` / `#f2f5f8` / `#8a94a3` / `#5c6672` | primary / interactive / secondary / tertiary ink (renamed from `--chalk*`) |
-| `--accent` | `#4aa3ff` | the app accent — buttons, focus ring, progress, links (v0 used CT blue for this; restored) |
+| `--accent` | `#4aa3ff` | the app accent — buttons, focus ring, progress fills (v0 used CT blue for this; restored; the app chrome has no links) |
 | `--ct` / `--t` / `--win` / `--loss` / `--tie` | `#4aa3ff` / `#f5b83d` / `#5dbb7a` / `#d16a5f` / `#8a94a3` | unchanged game/outcome hues |
 
 `--accent` and `--ct` share a value but stay separate tokens so side identity
@@ -47,8 +47,9 @@ edge (`--loss` mixed by the moment's |Δp| or rule severity, `--win` for
 positive plays), replacing the dashed-chalk stripe (design-system §5 updated:
 dashed = evidence chips only; solid severity edge = the current moment).
 Verdict chip: `cost_you` = loss outline + loss text, `won_it` = win outline,
-`not_on_you`/`traded`/`quiet` = neutral outline. Header/context lines in sans
-as in the mockup; timestamps mono.
+`not_on_you`/`traded`/`quiet` = neutral outline. The rail header (round
+number, verdict chip) is sans as in the mockup; the context line and the
+timestamps are mono (what shipped).
 
 **Library thumbnails.** Each match row shows the map's radar image
 (`radarImageUrl(map, "upper")`, the vendored `assets/maps/<map>.png`) as a
@@ -78,7 +79,7 @@ RoundLedger { round, plays: Vec<Play>, timeline: Vec<TimelineEvent> }
 Play {
   tick, phase: RoundPhase,
   kind: setup | flash | smoke | he | molotov | rush | rotation |
-        kill | death | assist | trade | missed_trade | plant | defuse | outcome,
+        kill | death | assist | trade | missed_trade | plant | defuse | flag | outcome,
   facts: Value,            // numbers + RAW callouts + steamid strings (as today)
   quality: Option<Quality>,// Good | Bad | Neutral — ONLY when a measure backs it
   rule_id: Option<String>, // when an existing rule fired on this tick
@@ -99,10 +100,11 @@ Play definitions (thresholds in `DetectorConfig::ledger`, seconds/units):
 | he / molotov | each tracked detonate/inferno | enemy damage, team damage, victims | Bad if team damage; else none (damage stands alone) |
 | rush | tracked beyond `timing.min_spawn_distance_u` within `timing.early_aggression_s` with no teammate within `trade.distance_u` | distance, seconds, nearest teammate | Bad if died in that window (H11); else Neutral, labeled "no support" |
 | rotation | bomb planted | tracked at planted site? time-to-site if arrived | Bad if H11_SLOW_ROTATION fired; else none |
-| kill / death | each tracked kill / death | victim/killer, place, distance, headshot, traded, isolated, man context before; death adds `round_end_delta_s` (clamped at 0) + `dead_time` (died after the round was decided); merged flag details, plus the additive `exculpatory: true` marker when any `rbr.exculpatory_rules` flag merged in (no seen-first metric — the parser's `spotted` flag is per-player, not pairwise, so it stays silent) | death: Bad when an H2/H3/H4/H6/H11/H16 rule fired; Neutral when traded or when ANY exculpatory flag merged in, whichever rule won `rule_id` (ADR-0008 "Not on you"); none for fair duels |
+| kill / death | each tracked kill / death | victim/killer, place, distance, headshot, traded, isolated, man context before; death adds `round_end_delta_s` (clamped at 0) + `dead_time` (died after the round was decided); merged flag details, plus the additive `exculpatory: true` marker when any `rbr.exculpatory_rules` flag merged in (no seen-first metric — the parser's `spotted` flag is per-player, not pairwise, so it stays silent) | death, in precedence order: (1) ANY exculpatory flag merged in (`exculpatory: true`) → Neutral, whichever rule won `rule_id` (ADR-0008 "Not on you"); (2) else any non-exculpatory rule fired (`rule_id` set — H2/H3/H4/H6/H11/H16) → Bad, regardless of `traded`; (3) else `traded` → Neutral; (4) else none (a fair duel). `traded` only matters when no rule fired |
 | assist | tracked assist | victim, teammate | none |
 | trade / missed_trade | a teammate died within `trade.distance_u` of tracked | teammate, killer, tracked committed within `trade.commit_window_s`? | Good (trade) / Bad (missed, H2_FAILED_TRADE) |
 | plant / defuse | tracked plants/defuses | delta_p | none |
+| flag | a tracked-player rule fired on a tick that carries no play of the tracked player's (a bare flag; a flag on a play's tick merges into that play instead) | the rule's own `details` | Bad; Neutral when the rule is in `rbr.exculpatory_rules` |
 | outcome | round end | won, survived, my-vs-their alive at end, reason | none |
 
 Silence bias holds: a play with no computable number is not emitted; a quality
