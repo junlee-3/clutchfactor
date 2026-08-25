@@ -25,6 +25,8 @@ use crate::types::{Category, Insight, RuleFlag};
 use crate::{evidence_around, Detector};
 use cf_parser::model::Side;
 
+use super::h2::committed;
+
 pub struct H14EntryStructure;
 
 const UNSUPPORTED: &str = "H14_UNSUPPORTED_ENTRY";
@@ -231,17 +233,6 @@ fn round_entries(ctx: &AnalysisContext, cfg: &DetectorConfig) -> Vec<EntryInfo> 
         });
     }
     out
-}
-
-/// Did `sid` commit against `killer` within [t0, t1] — fired any shot, or
-/// damaged `killer`? (mirrors h2's `committed`, kept local: families don't
-/// see each other's internals.)
-fn committed(ctx: &AnalysisContext, sid: u64, killer: u64, t0: i32, t1: i32) -> bool {
-    !ctx.shots_by_in(sid, t0, t1).is_empty()
-        || ctx
-            .hurts_dealt_in(sid, t0, t1)
-            .iter()
-            .any(|h| h.victim == killer)
 }
 
 #[cfg(test)]

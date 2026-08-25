@@ -7,6 +7,10 @@
 //! are one flashbang. A flash that blinded nobody produces no blind events
 //! and is therefore invisible here (deliberate: we group blinds, not
 //! detonates — bias to silence).
+//!
+//! `flash_groups`/`round_containing`/`is_utility_weapon` are `pub(crate)`
+//! because the play ledger (`crate::play_ledger`) reuses them — the ledger
+//! and the detectors must never drift.
 
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -33,36 +37,36 @@ const RULE_IDS: &[&str] = &[
 const UTILITY_WEAPONS: &[&str] = &["hegrenade", "inferno", "molotov", "incgrenade"];
 
 /// One flashbang thrown by the tracked player (grouped blind events).
-struct FlashGroup {
-    tick: i32,
-    round: u32,
+pub(crate) struct FlashGroup {
+    pub(crate) tick: i32,
+    pub(crate) round: u32,
     /// Enemy victims blinded ≥ effective_s.
-    enemies_effective: Vec<u64>,
+    pub(crate) enemies_effective: Vec<u64>,
     /// Teammate victims blinded ≥ effective_s (self excluded).
-    teammates_blinded: Vec<u64>,
+    pub(crate) teammates_blinded: Vec<u64>,
     /// Tracked player blinded themselves ≥ effective_s.
-    self_blind: bool,
+    pub(crate) self_blind: bool,
     /// An enemy blinded by this flash died to the tracked player's side (or
     /// with a flash assist credited to the tracked player) within the
     /// conversion window.
-    converted: bool,
+    pub(crate) converted: bool,
 }
 
 /// The round whose [start_tick, officially_ended_tick] range contains `tick`.
 /// Falls back to end_tick when officially_ended is missing (old import) —
 /// which silences dead-time detection for that round, per bias-to-silence.
-fn round_containing(data: &MatchData, tick: i32) -> Option<&Round> {
+pub(crate) fn round_containing(data: &MatchData, tick: i32) -> Option<&Round> {
     data.rounds
         .iter()
         .find(|r| r.start_tick <= tick && tick <= r.officially_ended_tick.unwrap_or(r.end_tick))
 }
 
-fn is_utility_weapon(weapon: &str, cfg: &DetectorConfig) -> bool {
+pub(crate) fn is_utility_weapon(weapon: &str, cfg: &DetectorConfig) -> bool {
     UTILITY_WEAPONS.contains(&weapon) || cfg.util.utility_kill_weapons.iter().any(|w| w == weapon)
 }
 
 /// Group the tracked player's blind events by tick: one group per flashbang.
-fn flash_groups(ctx: &AnalysisContext, cfg: &DetectorConfig) -> Vec<FlashGroup> {
+pub(crate) fn flash_groups(ctx: &AnalysisContext, cfg: &DetectorConfig) -> Vec<FlashGroup> {
     let tracked = ctx.tracked();
     let data = ctx.data();
     let mut by_tick: BTreeMap<i32, Vec<&cf_parser::model::Blind>> = BTreeMap::new();
