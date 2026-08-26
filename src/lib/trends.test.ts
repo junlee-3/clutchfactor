@@ -126,4 +126,10 @@ describe("sparkSegments", () => {
     expect(s.paths).toHaveLength(1);
     expect(s.last).toMatchObject({ v: 3 });
   });
+
+  it("reports the min and max value's coordinates at their first occurrence", () => {
+    const s = sparkSegments([1, 2, null, 4, 5], 100, 20, 0);
+    expect(s.minPoint?.v).toBe(1);
+    expect(s.maxPoint?.v).toBe(5);
+  });
 });

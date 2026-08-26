@@ -97,6 +97,12 @@ export interface SparkSegments {
   paths: string[];
   last: SparkSegmentPoint | null;
   extrema: SparkSegmentExtrema | null;
+  /** Coordinates of the min/max value's first occurrence (extrema()'s own
+   *  earliest-occurrence tie-break) — only present when there is at least
+   *  one real value. Callers place on-chart min/max labels from these
+   *  directly instead of re-deriving the series' scaling a second time. */
+  minPoint?: SparkSegmentPoint;
+  maxPoint?: SparkSegmentPoint;
 }
 
 /** Sparkline segments for a series with holes (matches analyzed before a
@@ -118,6 +124,8 @@ export function sparkSegments(
   const paths: string[] = [];
   let run: string[] = [];
   let last: SparkSegmentPoint | null = null;
+  let minPoint: SparkSegmentPoint | undefined;
+  let maxPoint: SparkSegmentPoint | undefined;
   values.forEach((v, i) => {
     if (v === null) {
       if (run.length) paths.push(run.join(" "));
@@ -129,7 +137,9 @@ export function sparkSegments(
     run.push(`${run.length ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`);
     if (run.length === 1) run.push(`L${px.toFixed(1)},${py.toFixed(1)}`);
     last = { x: px, y: py, v };
+    if (minPoint === undefined && v === min) minPoint = { x: px, y: py, v };
+    if (maxPoint === undefined && v === max) maxPoint = { x: px, y: py, v };
   });
   if (run.length) paths.push(run.join(" "));
-  return { paths, last, extrema: { min, max } };
+  return { paths, last, extrema: { min, max }, minPoint, maxPoint };
 }

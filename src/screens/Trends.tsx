@@ -52,26 +52,16 @@ function filterIndexes(data: TrendsDto, map: string | null): number[] {
     .map(({ i }) => i);
 }
 
-/** value + unit for the readout beside a stat sparkline — kd two decimals,
- *  a "%" series drops the trailing .0, anything else (dmg/round) gets one
- *  decimal and the unit spelled out. */
-function formatSeriesValue(unit: string, v: number): string {
+/** kd two decimals, a "%" series drops a redundant trailing .0, anything
+ *  else (dmg/round) gets one decimal. `withUnit` spells the unit out for the
+ *  readout beside the chart; the on-chart min/max/spark labels (box is
+ *  220x26) pass `withUnit: false` since that readout already names it once. */
+function formatStatValue(unit: string, v: number, withUnit: boolean): string {
   if (unit === "%") {
     const rounded = Math.round(v * 10) / 10;
     return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}%`;
   }
-  if (unit) return `${v.toFixed(1)} ${unit}`;
-  return v.toFixed(2);
-}
-
-/** Compact form for the on-chart min/max labels — same rounding, but the
- *  unit is dropped for a long unit string (dmg/round): the box is 220x26,
- *  and the readout beside the chart already spells the unit out once. */
-function formatSparkLabel(unit: string, v: number): string {
-  if (unit === "%") {
-    return `${Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1)}%`;
-  }
-  if (unit) return v.toFixed(1);
+  if (unit) return withUnit ? `${v.toFixed(1)} ${unit}` : v.toFixed(1);
   return v.toFixed(2);
 }
 
@@ -87,27 +77,6 @@ function sparkLabelPos(
   if (x < 20) return { x: x + 3, y: y + dy, anchor: "start" };
   if (x > w - 20) return { x: x - 3, y: y + dy, anchor: "end" };
   return { x, y: y + dy, anchor: "middle" };
-}
-
-/** Recomputes one point's coordinates using sparkSegments' own scaling —
- *  needed only to place a min/max label: sparkSegments reports the extreme
- *  VALUES, not which index produced them. Finds the first index carrying
- *  that value, matching extrema()'s earliest-occurrence tie-break. */
-function pointForValue(
-  values: (number | null)[],
-  target: number,
-  w: number,
-  h: number,
-  min: number,
-  max: number,
-  p = 2,
-): SparkSegmentPoint | null {
-  const n = values.length;
-  const i = values.findIndex((v) => v === target);
-  if (i === -1) return null;
-  const x = n === 1 ? w / 2 : p + (i * (w - 2 * p)) / (n - 1);
-  const y = max === min ? h / 2 : p + ((max - target) * (h - 2 * p)) / (max - min);
-  return { x, y, v: target };
 }
 
 export function Trends() {
@@ -415,12 +384,8 @@ function StatCell({ series }: { series: StatSeries }) {
   }
 
   const { min, max } = seg.extrema;
-  const minPoint =
-    min !== last.v ? pointForValue(series.values, min, SPARK_W, SPARK_H, min, max) : null;
-  const maxPoint =
-    max !== last.v && max !== min
-      ? pointForValue(series.values, max, SPARK_W, SPARK_H, min, max)
-      : null;
+  const minPoint = min !== last.v ? seg.minPoint : undefined;
+  const maxPoint = max !== last.v && max !== min ? seg.maxPoint : undefined;
 
   return (
     <div className="trd-stat-cell">
@@ -437,7 +402,9 @@ function StatCell({ series }: { series: StatSeries }) {
             .join(", ")}`}
         >
           <title>
-            {series.values.map((v) => (v === null ? "—" : formatSparkLabel(series.unit, v))).join(" · ")}
+            {series.values
+              .map((v) => (v === null ? "—" : formatStatValue(series.unit, v, false)))
+              .join(" · ")}
           </title>
           {seg.paths.map((d, i) => (
             <path
@@ -456,7 +423,7 @@ function StatCell({ series }: { series: StatSeries }) {
               point={minPoint}
               w={SPARK_W}
               h={SPARK_H}
-              text={formatSparkLabel(series.unit, min)}
+              text={formatStatValue(series.unit, min, false)}
             />
           )}
           {maxPoint && (
@@ -464,12 +431,12 @@ function StatCell({ series }: { series: StatSeries }) {
               point={maxPoint}
               w={SPARK_W}
               h={SPARK_H}
-              text={formatSparkLabel(series.unit, max)}
+              text={formatStatValue(series.unit, max, false)}
             />
           )}
         </svg>
       </div>
-      <span className="type-data trd-stat-value">{formatSeriesValue(series.unit, last.v)}</span>
+      <span className="type-data trd-stat-value">{formatStatValue(series.unit, last.v, true)}</span>
     </div>
   );
 }
