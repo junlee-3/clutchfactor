@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useDetectorCatalog } from "../lib/queries";
 import { STAT_KEYS, STAT_TITLES, type StatKey } from "../lib/statFormat";
 import { Card } from "../components/ui/Card";
+import { Chip } from "../components/ui/Chip";
 import { DataTable } from "../components/ui/DataTable";
 import { Segmented } from "../components/ui/Segmented";
 import { Skeleton } from "../components/ui/Skeleton";
@@ -66,16 +67,19 @@ export function Watches() {
         )}
       </div>
       {families.map((fam) => (
-        <Card key={fam} eyebrow={fam}>
+        <Card key={fam}>
+          <h2 className="type-micro wat-family">{fam}</h2>
           <ul className="wat-list">
             {entries
               .filter((e) => e.family === fam)
               .map((e) => (
                 <li key={e.id} id={e.id} className="wat-entry">
                   <div className="wat-entry-head">
-                    <span className="type-title">{e.title}</span>
+                    <h3 className="type-heading">{e.title}</h3>
                     <code className="type-micro wat-id">{e.id}</code>
-                    {e.class_id !== null && <span className="wat-class">class {e.class_id}</span>}
+                    {e.class_id !== null && (
+                      <Chip className="wat-class">class {e.class_id}</Chip>
+                    )}
                   </div>
                   <p className="type-body">{e.watches_for}</p>
                   <p className="type-body wat-thresholds">
@@ -104,7 +108,8 @@ export function Watches() {
       )}
       {!stat && (
         <>
-          <Card eyebrow="Death classes">
+          <Card>
+            <h2 className="type-micro wat-family">Death classes</h2>
             <DataTable
               head={["#", "class", "source", "built"]}
               rows={cat.data.classes.map((c) => [
@@ -120,7 +125,8 @@ export function Watches() {
               rowKey={(i) => String(cat.data!.classes[i].id)}
             />
           </Card>
-          <Card eyebrow="What the engine cannot see">
+          <Card>
+            <h2 className="type-micro wat-family">What the engine cannot see</h2>
             <ul className="wat-cannot">
               {cat.data.cannot_see.map(([t, s]) => (
                 <li key={t}>
