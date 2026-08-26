@@ -13,8 +13,8 @@ describe("placeLabels", () => {
 describe("labelFontPx", () => {
   it("renders 11 css px regardless of the canvas scale and hides below the floor", () => {
     expect(labelFontPx(1024, 1024)).toBe(11);
-    expect(labelFontPx(1024, CALLOUT_MIN_CSS_PX)).toBe(19); // exactly at the floor is visible
+    expect(labelFontPx(1024, CALLOUT_MIN_CSS_PX)).toBe(20); // exactly at the floor is visible (11 * 1024 / 560 = 20.1)
     expect(labelFontPx(1024, 660)).toBe(17);
-    expect(labelFontPx(1024, 599)).toBe(null);
+    expect(labelFontPx(1024, 559)).toBe(null);
   });
 });

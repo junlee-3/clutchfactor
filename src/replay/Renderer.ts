@@ -18,6 +18,12 @@ import type { UtilityWindow } from "./utility";
 // literal constant here (like the bomb/annotation-tag font strings below).
 const MONO_STACK = "ui-monospace, SFMono-Regular, Menlo, monospace";
 
+// The renderer's logical drawing resolution — the context is always
+// dpr-scaled (ReplayCanvas.tsx) to this square, so every draw call and every
+// font-size computation that must stay a fixed on-screen CSS size (labelFontPx)
+// works from this constant, never from ctx.canvas.width (which includes dpr).
+export const LOGICAL_W = 1024;
+
 // Snapshotted once at module import — fine for the dark-only theme (no
 // runtime theme switch exists); a future light/dark toggle would need these
 // re-read (or converted to getToken() calls at each use) instead.
@@ -63,9 +69,11 @@ export interface Scene {
   callouts?: { name: string; x: number; y: number }[];
   // Current CSS width of the canvas element (ReplayCanvas reads
   // `canvas.clientWidth` once per frame) — callouts.ts's labelFontPx uses it
-  // (with canvas.width, the backing-store pixel size) to hide labels below
-  // CALLOUT_MIN_CSS_PX and to size the font so it reads the same physical
-  // size regardless of DPR/window scale.
+  // (with LOGICAL_W, the fixed logical drawing resolution — NOT
+  // ctx.canvas.width, which includes devicePixelRatio and would make the
+  // computed font scale with DPR instead of staying pinned at a constant
+  // on-screen CSS size) to hide labels below CALLOUT_MIN_CSS_PX and to keep
+  // the label the same physical size regardless of window/DPR scale.
   cssWidth: number;
 }
 
@@ -90,12 +98,12 @@ export function activeLayer(scene: Scene): "upper" | "lower" {
 export function draw(ctx: CanvasRenderingContext2D, scene: Scene): void {
   const layer = activeLayer(scene);
   const img = layer === "lower" ? scene.lowerImage : scene.upperImage;
-  ctx.clearRect(0, 0, 1024, 1024);
+  ctx.clearRect(0, 0, LOGICAL_W, LOGICAL_W);
   ctx.fillStyle = getToken("--bg-tape");
-  ctx.fillRect(0, 0, 1024, 1024);
+  ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_W);
   if (img && img.complete && img.naturalWidth > 0) {
     ctx.globalAlpha = 0.9;
-    ctx.drawImage(img, 0, 0, 1024, 1024);
+    ctx.drawImage(img, 0, 0, LOGICAL_W, LOGICAL_W);
     ctx.globalAlpha = 1;
   }
 
@@ -127,7 +135,7 @@ function drawCallouts(
   layer: "upper" | "lower",
 ): void {
   if (layer !== "upper") return;
-  const px = labelFontPx(ctx.canvas.width, scene.cssWidth);
+  const px = labelFontPx(LOGICAL_W, scene.cssWidth);
   if (!px || !scene.callouts?.length) return;
 
   ctx.font = `${px}px ${MONO_STACK}`;

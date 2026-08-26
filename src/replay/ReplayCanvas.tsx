@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { draw } from "./Renderer";
+import { draw, LOGICAL_W } from "./Renderer";
 import type { Scene } from "./Renderer";
 
 interface Props {
@@ -13,8 +13,6 @@ interface Props {
   onFps?: (fps: number) => void;
 }
 
-const LOGICAL = 1024;
-
 export function ReplayCanvas({ getScene, onFrame, onFps }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Latest callbacks without re-arming the rAF loop.
@@ -27,8 +25,8 @@ export function ReplayCanvas({ getScene, onFrame, onFps }: Props) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = LOGICAL * dpr;
-    canvas.height = LOGICAL * dpr;
+    canvas.width = LOGICAL_W * dpr;
+    canvas.height = LOGICAL_W * dpr;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.scale(dpr, dpr);

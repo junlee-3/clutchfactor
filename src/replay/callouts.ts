@@ -1,7 +1,14 @@
 /** Callout labels: drawn only when the radar is wide enough to read them,
  *  at a constant 11 css px, with greedy overlap removal so a crowded map
  *  shows its biggest places first (input order = priority). */
-export const CALLOUT_MIN_CSS_PX = 600;
+// 560, not 600: this floor exists to guard label density at very small
+// radar sizes, not to gate the common case — 600 hid labels at this app's
+// own default windowed radar size on a standard laptop display (measured
+// ~596 css px at the OS's max windowed height), defeating the feature for
+// most users. placeLabels() already drops overlapping labels, so a lower
+// floor doesn't risk a crowded/illegible radar; it just widens when the
+// feature turns on (Task 10 fix round 1).
+export const CALLOUT_MIN_CSS_PX = 560;
 export const CALLOUT_CSS_FONT_PX = 11;
 
 export function labelFontPx(canvasPx: number, cssPx: number): number | null {
