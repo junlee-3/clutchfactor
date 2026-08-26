@@ -194,7 +194,7 @@ export function Trends() {
                     <StatCell
                       key={s.key}
                       series={s}
-                      emptyNote={anyValues ? "nothing to count yet" : "after a re-analyze"}
+                      emptyNote="nothing to count yet"
                     />
                   ))}
                 </div>
