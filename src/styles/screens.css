@@ -208,6 +208,62 @@
 }
 
 /* ---------------------------------------------------------------------- */
+/* StatsStrip (StatsStrip.tsx) — V1.4, the MatchHeader's `strip` slot.      */
+/* Every chip is a Link to its coaching (Watches, Task 9); ink only — no    */
+/* color for magnitude (dataviz skill, design-system.md §2).                */
+/* ---------------------------------------------------------------------- */
+
+.stats-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  min-height: 26px;
+}
+
+.stats-strip-skeleton {
+  /* Overrides Skeleton's default row height (components.css) so the
+     loading state doesn't shift when the real 26px-tall strip lands. */
+  height: 26px;
+  width: 320px;
+}
+
+.stats-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s1);
+  padding: 2px var(--s2);
+  border: 1px solid var(--ink-faint);
+  border-radius: var(--r-sm);
+  text-decoration: none;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+
+a.stats-chip:hover {
+  border-color: var(--ink-dim);
+}
+
+.stats-chip-label {
+  /* .type-micro already sets ink-dim + tracked caps; no override needed. */
+  color: var(--ink-dim);
+}
+
+.stats-chip-value {
+  color: var(--ink-bright);
+}
+
+/* Placeholder chips (no match_stats row yet): dashed border is the app's
+   "evidence pending" idiom (design-system.md §5) — these seven numbers
+   exist once the match is re-analyzed, they're just not there yet. */
+.stats-chip-empty {
+  border-style: dashed;
+}
+
+.stats-strip-empty .stats-chip-empty .stats-chip-value {
+  color: var(--ink-faint);
+}
+
+/* ---------------------------------------------------------------------- */
 /* Library (Library.tsx) — design-system.md §9, "the shelf of tapes"       */
 /* ---------------------------------------------------------------------- */
 
@@ -544,6 +600,96 @@
 
 .report-round-cell-lost:hover {
   border-color: var(--loss);
+}
+
+/* V1.4: the strip is a selector, not a navigation control — the currently
+   selected round (the one the Scoreboard below is showing) gets a solid
+   ink-bright outline on top of whatever win/loss tint it already carries. */
+.report-round-cell-selected {
+  outline: 2px solid var(--ink-bright);
+  outline-offset: 1px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Scoreboard (Scoreboard.tsx) — V1.4, sits directly under the round strip  */
+/* ---------------------------------------------------------------------- */
+
+.sb {
+  margin-bottom: var(--s6);
+}
+
+.sb-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+.sb-title {
+  margin: 0;
+  color: var(--ink-bright);
+}
+
+.sb-watch-link {
+  font: var(--text-ui);
+  color: var(--ink-dim);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.sb-watch-link:hover {
+  color: var(--ink-bright);
+}
+
+.sb .ui-seg {
+  margin-bottom: var(--s3);
+}
+
+.sb-loading,
+.sb-empty {
+  margin-top: var(--s3);
+}
+
+/* Player cell: the outlined side chip + name, side-by-side. The 2px
+   transparent border-left reserves the tracked row's tone-edge width on
+   EVERY row (design-system.md §10: no layout shift) — box-shadow on a
+   <tr>/<td> doesn't reliably paint under WebKit's table layout, so the edge
+   lives on this plain inline-flex span instead, where a border always
+   renders. */
+.sb-player {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+  padding-left: var(--s2);
+  border-left: 2px solid transparent;
+}
+
+/* Outlined CT/T chip (design-system.md §5: side hues, side identity only) —
+   layers a currentColor border onto the Chip base's colored-text-only
+   side-ct/side-t variant, so the outline always matches the text hue. */
+.sb-side-chip {
+  border: 1px solid currentColor;
+  flex-shrink: 0;
+}
+
+.sb-player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tracked row: a solid tone edge (design-system.md §5) — a state, not
+   evidence, so it's never dashed. Neutral ink-bright: this marks identity
+   ("this is you"), not an outcome, so it stays off the win/loss palette. */
+.sb-row-tracked .sb-player {
+  border-left-color: var(--ink-bright);
+}
+
+.sb-row-tracked .sb-player-name {
+  color: var(--ink-bright);
 }
 
 /* Insight feed — one Card per insight (InsightCard.tsx), grouped by
@@ -1312,6 +1458,10 @@
   height: 26px;
 }
 
+.trd-stat-skeleton {
+  height: 120px;
+}
+
 .trends-line-skeleton {
   height: 168px;
 }
@@ -1357,6 +1507,88 @@
 .trends-ribbon-note {
   color: var(--ink-dim);
   margin-left: var(--s2);
+}
+
+/* ---- "Your numbers": one sparkline per stat series (Task 8) ----
+   trd- prefix (not trends-) for the same reason as the ribbon/line/rule
+   sections above: fresh names so nothing collides with the deleted legacy
+   stylesheet's classes. Ink-only lines, endpoint + extreme labels, no
+   color for magnitude (dataviz skill, design-system.md §2). */
+
+.trd-stat-card {
+  margin-bottom: var(--s7);
+}
+
+.trd-stat-empty {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
+.trd-stat-empty-link {
+  color: var(--ink-dim);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.trd-stat-empty-link:hover {
+  color: var(--ink-bright);
+}
+
+.trd-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--s5) var(--s4);
+}
+
+.trd-stat-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+}
+
+.trd-stat-title {
+  color: var(--ink-dim);
+  text-decoration: none;
+  align-self: flex-start;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.trd-stat-title:hover {
+  color: var(--ink-bright);
+}
+
+/* Fixed-height slot so a cell with no data (a bare dash) sits at the same
+   baseline as a cell with a chart — rows in the grid line up either way. */
+.trd-stat-spark-slot {
+  display: flex;
+  align-items: center;
+  height: 26px;
+}
+
+.trd-stat-spark {
+  display: block;
+  width: 100%;
+  height: 26px;
+}
+
+.trd-stat-value {
+  color: var(--ink-bright);
+}
+
+.trd-stat-value-empty {
+  color: var(--ink-faint);
+}
+
+/* why-it-matters line under the value (spec §3), and the note in an empty
+   cell — dim so the number stays the cell's subject. */
+.trd-stat-note {
+  /* A sentence, not an eyebrow: micro size in sentence case (type-micro's
+     uppercase tracking is for labels). */
+  margin: 0;
+  font: var(--text-micro);
+  color: var(--ink-dim);
+  text-wrap: pretty;
 }
 
 /* ---- Big line panel (Card) ---- */
@@ -1773,6 +2005,152 @@
 .stg-coach-models .ui-input {
   min-width: 0;
   flex: 1;
+}
+
+.stg-hint-link {
+  color: var(--ink-dim);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.stg-hint-link:hover {
+  color: var(--ink-bright);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Watches (Watches.tsx) — design-system.md §9, the honesty screen         */
+/* ---------------------------------------------------------------------- */
+
+/* No dedicated rule for `.wat-shell` itself (the `.stg-shell` idiom: a
+   plain content wrapper, sized by `.shell-content`) — only the child
+   combinator below, so every top-level Card gets even vertical rhythm
+   without the JSX needing its own spacing wrapper div. */
+.wat-shell > .ui-card {
+  margin-bottom: var(--s5);
+}
+
+.wat-head {
+  margin-bottom: var(--s6);
+}
+
+.wat-intro {
+  max-width: 70ch;
+  margin: var(--s2) 0 var(--s4);
+  color: var(--ink-dim);
+}
+
+.wat-filter {
+  margin: var(--s3) 0 0;
+  color: var(--ink-dim);
+}
+
+.wat-filter a {
+  color: var(--ink-dim);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.wat-filter a:hover {
+  color: var(--ink-bright);
+}
+
+/* A real heading (h2) for the family label / "Death classes" / "cannot
+   see" section names (a11y fix: repeated card sections need a heading
+   below the page h1, not just the eyebrow paragraph) — kept the eyebrow's
+   exact look (mono, tracked caps, ink-dim, s2 gap to the body below). */
+.wat-family {
+  margin: 0 0 var(--s2);
+}
+
+.wat-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+/* Bordered rows (spec: 12px padding). `:target` — a rule linked to directly
+   (`/watches#H2_ISOLATED_DEATH`) — gets the solid tone edge (design-system.md
+   §5: solid = state, dashed stays reserved for evidence); the box-shadow
+   inset matches Card's own edge variants, so nothing shifts on arrival. */
+.wat-entry {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  scroll-margin-top: var(--s4);
+}
+
+.wat-entry:target {
+  border-color: var(--line-strong);
+  background: var(--bg2);
+  box-shadow: inset 2px 0 0 0 var(--ink-dim);
+}
+
+.wat-entry-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+/* Rule ids are already ALL_CAPS_WITH_UNDERSCORES — type-micro's uppercase
+   transform and .14em tracking add nothing but width, so this un-does both
+   while keeping the mono/ink-dim it inherits. */
+.wat-id {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* The shared Chip (default variant) already gives this mono/r-sm/ink-dim —
+   outlined per the neutral verdict-chip idiom (rpl-rail-verdict-neutral):
+   the class number is named, not graded, so only the fill→outline delta
+   lives here (never a color for magnitude). */
+.wat-class {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+}
+
+.wat-thresholds,
+.wat-example {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: 0;
+}
+
+.wat-links {
+  margin: var(--s1) 0 0;
+}
+
+.wat-notbuilt {
+  color: var(--ink-dim);
+  cursor: help;
+}
+
+.wat-cannot {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.wat-empty {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
+.wat-empty a {
+  color: var(--ink-dim);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.wat-empty a:hover {
+  color: var(--ink-bright);
 }
 
 /* ---------------------------------------------------------------------- */

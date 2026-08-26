@@ -5,6 +5,10 @@ interface DataTableProps {
   rows: ReactNode[][];
   rowKey: (rowIndex: number) => string;
   onRowClick?: (rowIndex: number) => void;
+  /** Extra class(es) for one row — the scoreboard's `sb-row-tracked` solid
+   *  tone edge (design-system.md §5) is the first caller. Returning
+   *  undefined leaves the row's class list untouched. */
+  rowClassName?: (rowIndex: number) => string | undefined;
 }
 
 // The one table style (design-system.md §6): sans header eyebrows, mono
@@ -12,7 +16,7 @@ interface DataTableProps {
 // first cell renders as a <button> (not the whole <tr>, which isn't a valid
 // interactive element) so the row stays a single, real, keyboard-focusable
 // control per a11y.
-export function DataTable({ head, rows, rowKey, onRowClick }: DataTableProps) {
+export function DataTable({ head, rows, rowKey, onRowClick, rowClassName }: DataTableProps) {
   return (
     <table className="ui-table">
       <thead>
@@ -26,7 +30,7 @@ export function DataTable({ head, rows, rowKey, onRowClick }: DataTableProps) {
       </thead>
       <tbody>
         {rows.map((cells, rowIndex) => (
-          <tr key={rowKey(rowIndex)}>
+          <tr key={rowKey(rowIndex)} className={rowClassName?.(rowIndex)}>
             {cells.map((cell, cellIndex) =>
               onRowClick && cellIndex === 0 ? (
                 <td key={cellIndex}>

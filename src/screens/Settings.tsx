@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import {
   useAppSettings,
   useSetTrackedOverride,
@@ -157,8 +158,11 @@ export function Settings() {
               rowKey={(i) => s.thresholds[i].name}
             />
             <p className="type-body stg-hint">
-              v0 ships these fixed defaults — tuned against real demos, not
-              editable yet.
+              v0 ships these fixed defaults — see what each one means on{" "}
+              <Link to="/watches" className="stg-hint-link">
+                Watches
+              </Link>
+              .
             </p>
           </Card>
 

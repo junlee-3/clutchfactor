@@ -1,16 +1,17 @@
 import { useEffect, useRef } from "react";
-import { draw } from "./Renderer";
+import { draw, LOGICAL_W } from "./Renderer";
 import type { Scene } from "./Renderer";
 
 interface Props {
-  /** Called each frame to obtain the current scene (reads live tick refs). */
-  getScene: () => Scene;
+  /** Called each frame to obtain the current scene (reads live tick refs).
+   *  `cssWidth` is the canvas's current `clientWidth` — ReplayCanvas reads it
+   *  once per frame (cheap: a layout read already cached by the browser
+   *  between resizes) so Scene.cssWidth stays live without a ResizeObserver. */
+  getScene: (cssWidth: number) => Scene;
   /** Called each frame with dt (seconds) so the parent can advance time. */
   onFrame: (dtSeconds: number) => void;
   onFps?: (fps: number) => void;
 }
-
-const LOGICAL = 1024;
 
 export function ReplayCanvas({ getScene, onFrame, onFps }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -24,8 +25,8 @@ export function ReplayCanvas({ getScene, onFrame, onFps }: Props) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = LOGICAL * dpr;
-    canvas.height = LOGICAL * dpr;
+    canvas.width = LOGICAL_W * dpr;
+    canvas.height = LOGICAL_W * dpr;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.scale(dpr, dpr);
@@ -40,7 +41,7 @@ export function ReplayCanvas({ getScene, onFrame, onFps }: Props) {
       const dt = Math.min((now - last) / 1000, 0.25);
       last = now;
       onFrame(dt);
-      draw(ctx, getScene());
+      draw(ctx, getScene(canvas.clientWidth));
 
       frames++;
       if (now - fpsWindowStart >= 1000) {

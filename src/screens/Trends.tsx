@@ -1,10 +1,17 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import type { TrendsDto } from "../lib/ipc";
+import { Link, useNavigate } from "react-router-dom";
+import type { StatSeries, TrendsDto } from "../lib/ipc";
 import { mapName } from "../lib/mapName";
 import { useMatches, useTrends } from "../lib/queries";
+import { STAT_WHY, type StatKey } from "../lib/statFormat";
 import { getToken } from "../lib/theme";
-import { extrema, sparkPoints, streakCallout } from "../lib/trends";
+import {
+  extrema,
+  sparkPoints,
+  sparkSegments,
+  streakCallout,
+  type SparkSegmentPoint,
+} from "../lib/trends";
 import { Card } from "../components/ui/Card";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Segmented } from "../components/ui/Segmented";
@@ -45,6 +52,33 @@ function filterIndexes(data: TrendsDto, map: string | null): number[] {
     .map(({ i }) => i);
 }
 
+/** kd two decimals, a "%" series drops a redundant trailing .0, anything
+ *  else (dmg/round) gets one decimal. `withUnit` spells the unit out for the
+ *  readout beside the chart; the on-chart min/max/spark labels (box is
+ *  220x26) pass `withUnit: false` since that readout already names it once. */
+function formatStatValue(unit: string, v: number, withUnit: boolean): string {
+  if (unit === "%") {
+    const rounded = Math.round(v * 10) / 10;
+    return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}%`;
+  }
+  if (unit) return withUnit ? `${v.toFixed(1)} ${unit}` : v.toFixed(1);
+  return v.toFixed(2);
+}
+
+/** Same idea as annotationPos, scaled down for the compact per-stat
+ *  sparklines (SPARK_W x SPARK_H, not the big line's LINE_W x LINE_H). */
+function sparkLabelPos(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): { x: number; y: number; anchor: "start" | "middle" | "end" } {
+  const dy = y < h / 2 ? 9 : -6;
+  if (x < 20) return { x: x + 3, y: y + dy, anchor: "start" };
+  if (x > w - 20) return { x: x - 3, y: y + dy, anchor: "end" };
+  return { x, y: y + dy, anchor: "middle" };
+}
+
 export function Trends() {
   const navigate = useNavigate();
   const trends = useTrends();
@@ -70,12 +104,25 @@ export function Trends() {
           counts: idx.map((i) => r.counts[i]),
         }))
         .filter((r) => r.counts.some((c) => c > 0)),
+      stats: data.stats.map((s) => ({
+        ...s,
+        values: idx.map((i) => s.values[i]),
+      })),
     };
   }, [data, mapFilter]);
 
   const maps = useMemo(
     () => [...new Set((data?.matches ?? []).map((m) => m.map))],
     [data],
+  );
+
+  // A null value is either "no stats row yet" (a pre-V1.4 import — a
+  // re-analyze fixes it) or "the ratio is undefined" (no clutch attempts, no
+  // entries, no kills), which no re-analyze changes. One real value anywhere
+  // in the section settles which of the two an empty cell is.
+  const anyValues = useMemo(
+    () => (view?.stats ?? []).some((s) => s.values.some((v) => v !== null)),
+    [view],
   );
 
   const isLoading = trends.isLoading;
@@ -101,6 +148,7 @@ export function Trends() {
       {isLoading ? (
         <div className="trends-loading" role="status" aria-label="Loading trends">
           <Skeleton kind="rows" count={1} className="trends-ribbon-skeleton" />
+          <Skeleton kind="block" className="trd-stat-skeleton" />
           <Skeleton kind="block" className="trends-line-skeleton" />
           <Skeleton kind="rows" count={3} className="trends-rule-skeleton" />
         </div>
@@ -130,6 +178,28 @@ export function Trends() {
                 {view.matches.length} matches, oldest → newest
               </span>
             </div>
+
+            <Card eyebrow="Your numbers" className="trd-stat-card">
+              {!anyValues ? (
+                <p className="type-body trd-stat-empty">
+                  Your numbers appear once a match is analyzed with V1.4 —{" "}
+                  <Link to="/" className="trd-stat-empty-link">
+                    Library → Re-analyze
+                  </Link>
+                  .
+                </p>
+              ) : (
+                <div className="trd-stat-grid">
+                  {view.stats.map((s) => (
+                    <StatCell
+                      key={s.key}
+                      series={s}
+                      emptyNote="nothing to count yet"
+                    />
+                  ))}
+                </div>
+              )}
+            </Card>
 
             <Card eyebrow="Pure aim duels" className="trends-line-card">
               <div className="trends-line-head">
@@ -178,7 +248,7 @@ export function Trends() {
                             strokeLinecap="round"
                             strokeLinejoin="round"
                           />
-                          <EndDot values={r.counts} w={SPARK_W} h={SPARK_H} />
+                          <EndDot point={lastSparkPoint(r.counts, SPARK_W, SPARK_H)} />
                         </svg>
                         <span className="type-data trends-rule-count">{last}</span>
                         <span
@@ -256,17 +326,134 @@ function ClassLine({ values }: { values: number[] }) {
   );
 }
 
-/** The "current period" dot on a de-emphasized rule sparkline (dataviz stat-
- *  tile figure spec: line in the de-emphasis hue, current point in the
- *  accent) — ties the row's mono count to its place on the line. */
-function EndDot({ values, w, h }: { values: number[]; w: number; h: number }) {
+/** Last point of a hole-free series, for EndDot — small wrapper so call
+ *  sites don't reach into sparkPoints' array shape directly. */
+function lastSparkPoint(values: number[], w: number, h: number): { x: number; y: number } | null {
   const points = sparkPoints(values, w, h);
-  if (points.length === 0) return null;
-  const last = points[points.length - 1];
+  return points.length === 0 ? null : points[points.length - 1];
+}
+
+/** The "current period" dot on a sparkline (dataviz stat-tile figure spec:
+ *  current point in the accent) — ties the row's mono count/value to its
+ *  place on the line. Takes the point directly (rather than re-deriving it
+ *  from values/w/h) so it works equally for a hole-free rule series
+ *  (lastSparkPoint) and a StatSeries' sparkSegments-computed `last`. */
+function EndDot({ point }: { point: { x: number; y: number } | null }) {
+  if (!point) return null;
   return (
     <g>
-      <circle cx={last.x} cy={last.y} r={4} className="trends-spark-dot-ring" />
-      <circle cx={last.x} cy={last.y} r={3} className="trends-spark-dot" />
+      <circle cx={point.x} cy={point.y} r={4} className="trends-spark-dot-ring" />
+      <circle cx={point.x} cy={point.y} r={3} className="trends-spark-dot" />
     </g>
+  );
+}
+
+/** A min/max label on a per-stat sparkline — same treatment as the big
+ *  ClassLine's on-chart annotations (trends-line-annotation), positioned
+ *  with sparkLabelPos instead of annotationPos since this chart is much
+ *  smaller (SPARK_W x SPARK_H, not LINE_W x LINE_H). */
+function SparkLabel({
+  point,
+  w,
+  h,
+  text,
+}: {
+  point: SparkSegmentPoint;
+  w: number;
+  h: number;
+  text: string;
+}) {
+  const pos = sparkLabelPos(point.x, point.y, w, h);
+  return (
+    <text x={pos.x} y={pos.y} textAnchor={pos.anchor} className="trends-line-annotation">
+      {text}
+    </text>
+  );
+}
+
+/** One "Your numbers" cell (spec Task 8): a Link to the coaching behind the
+ *  stat (Watches, Task 9), a full-weight ink sparkline with holes where a
+ *  match predates V1.4's stats engine, and the last value + unit. Min/max
+ *  labels only render when they differ from the last value (dataviz:
+ *  never a number on every point) — a lone real value or a flat series
+ *  reports nothing beyond the line itself. */
+function StatCell({ series, emptyNote }: { series: StatSeries; emptyNote: string }) {
+  // The Rust series title ("Deaths traded", "Entry wins") — the strip's
+  // short labels ("Trades", "Entry") leave the percentages ambiguous here.
+  const title = series.title;
+  const why = STAT_WHY[series.key as StatKey];
+  const seg = sparkSegments(series.values, SPARK_W, SPARK_H);
+  const last = seg.last;
+
+  if (!last || !seg.extrema) {
+    return (
+      <div className="trd-stat-cell">
+        <Link to={`/watches?stat=${series.key}`} className="type-ui trd-stat-title">
+          {title}
+        </Link>
+        <div className="trd-stat-spark-slot">
+          <span className="type-data trd-stat-value trd-stat-value-empty">—</span>
+        </div>
+        <span className="trd-stat-note">{emptyNote}</span>
+      </div>
+    );
+  }
+
+  const { min, max } = seg.extrema;
+  const minPoint = min !== last.v ? seg.minPoint : undefined;
+  const maxPoint = max !== last.v && max !== min ? seg.maxPoint : undefined;
+
+  return (
+    <div className="trd-stat-cell">
+      <Link to={`/watches?stat=${series.key}`} className="type-ui trd-stat-title">
+        {title}
+      </Link>
+      <div className="trd-stat-spark-slot">
+        <svg
+          className="trd-stat-spark"
+          viewBox={`0 0 ${SPARK_W} ${SPARK_H}`}
+          role="img"
+          aria-label={`${title}: ${series.values
+            .map((v) => (v === null ? "no data" : v))
+            .join(", ")}`}
+        >
+          <title>
+            {series.values
+              .map((v) => (v === null ? "—" : formatStatValue(series.unit, v, false)))
+              .join(" · ")}
+          </title>
+          {seg.paths.map((d, i) => (
+            <path
+              key={i}
+              d={d}
+              fill="none"
+              stroke={getToken("--ink")}
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
+          <EndDot point={last} />
+          {minPoint && (
+            <SparkLabel
+              point={minPoint}
+              w={SPARK_W}
+              h={SPARK_H}
+              text={formatStatValue(series.unit, min, false)}
+            />
+          )}
+          {maxPoint && (
+            <SparkLabel
+              point={maxPoint}
+              w={SPARK_W}
+              h={SPARK_H}
+              text={formatStatValue(series.unit, max, false)}
+            />
+          )}
+        </svg>
+      </div>
+      <span className="type-data trd-stat-value">{formatStatValue(series.unit, last.v, true)}</span>
+      {why && <span className="trd-stat-note">{why}</span>}
+    </div>
   );
 }

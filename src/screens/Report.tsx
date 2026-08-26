@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ClassBreakdown } from "../components/ClassBreakdown";
 import { HabitCard } from "../components/HabitCard";
 import { InsightCard } from "../components/InsightCard";
 import { RoundStripReport } from "../components/RoundStripReport";
+import { Scoreboard } from "../components/Scoreboard";
+import { StatsStrip } from "../components/StatsStrip";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { MatchHeader } from "../components/ui/MatchHeader";
@@ -38,6 +41,10 @@ export function Report() {
   const regen = useRegenerateCoachSynthesis();
   const toast = useToast();
   const coachLoading = coachOn && (synthesis.isLoading || regen.isPending);
+  // The round strip is a selector (V1.4): `null` until the coach (or the
+  // effective-round fallback below) picks one — never reset once the user
+  // has clicked a cell, even if that round's data hasn't loaded yet.
+  const [round, setRound] = useState<number | null>(null);
 
   if (report.isLoading) {
     // Skeletons at (approximately) final layout size, per §10 — no bare
@@ -70,6 +77,10 @@ export function Report() {
   }
 
   const groups = groupInsights(r.insights);
+  // Initial selection = the first round (charter ruling) — derived rather
+  // than set via effect, so a user's explicit click always wins even before
+  // that round's own data has finished loading.
+  const effectiveRound = round ?? r.per_round[0]?.number ?? null;
 
   return (
     <div className="rpt-shell">
@@ -78,16 +89,7 @@ export function Report() {
         score={{ a: r.score_a, b: r.score_b }}
         result={r.tracked_result}
         date={summary?.imported_at ?? null}
-        stats={{
-          kd:
-            summary?.tracked_kills != null && summary?.tracked_deaths != null
-              ? `${summary.tracked_kills}-${summary.tracked_deaths}`
-              : null,
-          hsPct:
-            summary?.tracked_hs_pct != null
-              ? `${Math.round(summary.tracked_hs_pct)}%`
-              : null,
-        }}
+        strip={<StatsStrip matchId={matchId} />}
         back={{ to: "/", label: "← Library" }}
         crossLink={{ to: `/replay/${matchId}`, label: "Watch replay →" }}
       />
@@ -158,7 +160,13 @@ export function Report() {
             </blockquote>
           )}
 
-          <RoundStripReport matchId={matchId} rounds={r.per_round} />
+          <RoundStripReport
+            rounds={r.per_round}
+            selected={effectiveRound}
+            onSelect={setRound}
+          />
+
+          <Scoreboard matchId={matchId} round={effectiveRound} />
 
           {groups.length === 0 && (
             <EmptyState

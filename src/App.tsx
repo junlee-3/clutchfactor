@@ -7,6 +7,7 @@ import { Replay } from "./screens/Replay";
 import { Report } from "./screens/Report";
 import { Settings } from "./screens/Settings";
 import { Trends } from "./screens/Trends";
+import { Watches } from "./screens/Watches";
 
 function NotFound() {
   const navigate = useNavigate();
@@ -27,6 +28,7 @@ export default function App() {
       <Route element={<AppShell />}>
         <Route path="/" element={<Library />} />
         <Route path="/trends" element={<Trends />} />
+        <Route path="/watches" element={<Watches />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/corpus" element={<Corpus />} />
         <Route path="/report/:matchId" element={<Report />} />

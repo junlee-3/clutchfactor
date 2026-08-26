@@ -602,6 +602,8 @@ export interface CalloutDto {
   name: string;
   x: number;
   y: number;
+  /** Median height of the place's samples — picks the label's radar layer. */
+  z: number;
   samples: number;
 }
 

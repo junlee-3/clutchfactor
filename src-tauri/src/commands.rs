@@ -2076,6 +2076,8 @@ pub struct CalloutDto {
     pub name: String,
     pub x: f32,
     pub y: f32,
+    /// Median height — the replay picks the label's radar layer from it.
+    pub z: f32,
     pub samples: u32,
 }
 
@@ -2219,28 +2221,36 @@ pub fn get_detector_catalog() -> CatalogDto {
 /// Per-place median of the raw positions; places with fewer than
 /// `min_samples` rows are dropped (a label for a spot nobody stood in is
 /// noise). Even-length medians take the lower middle (a real sample, so the
-/// label sits on the map).
+/// label sits on the map). z is taken the same way — the label's layer.
 pub fn callout_medians(
-    positions: &[(String, f32, f32)],
+    positions: &[(String, f32, f32, f32)],
     min_samples: u32,
 ) -> Vec<cf_store::store::MapCalloutRow> {
-    let mut by_place: HashMap<&str, (Vec<f32>, Vec<f32>)> = HashMap::new();
-    for (p, x, y) in positions {
+    /// One place's x, y and z samples.
+    type PlaceSamples = (Vec<f32>, Vec<f32>, Vec<f32>);
+    let mut by_place: HashMap<&str, PlaceSamples> = HashMap::new();
+    for (p, x, y, z) in positions {
         let e = by_place.entry(p.as_str()).or_default();
         e.0.push(*x);
         e.1.push(*y);
+        e.2.push(*z);
     }
     let mut out: Vec<cf_store::store::MapCalloutRow> = by_place
         .into_iter()
-        .filter(|(_, (xs, _))| xs.len() as u32 >= min_samples)
-        .map(|(place, (mut xs, mut ys))| {
-            xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            ys.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        .filter(|(_, (xs, _, _))| xs.len() as u32 >= min_samples)
+        .map(|(place, (mut xs, mut ys, mut zs))| {
+            let sort = |v: &mut Vec<f32>| {
+                v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            };
+            sort(&mut xs);
+            sort(&mut ys);
+            sort(&mut zs);
             let mid = (xs.len() - 1) / 2;
             cf_store::store::MapCalloutRow {
                 place: place.to_string(),
                 x: xs[mid],
                 y: ys[mid],
+                z: zs[mid],
                 samples: xs.len() as u32,
             }
         })
@@ -2267,7 +2277,21 @@ pub fn get_map_callouts(
     state: State<'_, AppState>,
     map: String,
 ) -> Result<Vec<CalloutDto>, String> {
-    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    // Callouts are written after an import or a re-analyze, so a map whose
+    // matches were all analyzed before V1.4 has none. Fill it in on first
+    // ask (measured 0.05-0.09 s over a map's 1 Hz samples) rather than
+    // showing a Callouts toggle that does nothing.
+    let missing = store
+        .load_map_callouts(&map)
+        .map_err(|e| e.to_string())?
+        .is_empty();
+    if missing && store.match_count_for_map(&map).map_err(|e| e.to_string())? > 0 {
+        if let Err(e) = refresh_map_callouts(&mut store, &map) {
+            eprintln!("callout refresh for {map} failed: {e}");
+            return Ok(vec![]);
+        }
+    }
     let mut out: Vec<CalloutDto> = store
         .load_map_callouts(&map)
         .map_err(|e| e.to_string())?
@@ -2277,6 +2301,7 @@ pub fn get_map_callouts(
             place: r.place,
             x: r.x,
             y: r.y,
+            z: r.z,
             samples: r.samples,
         })
         .collect();
@@ -2624,11 +2649,11 @@ mod tests {
 
     #[test]
     fn callout_medians_take_the_per_place_median_and_drop_thin_places() {
-        let pos: Vec<(String, f32, f32)> = vec![
-            ("BombsiteA".into(), -300.0, -1900.0),
-            ("BombsiteA".into(), -400.0, -1800.0),
-            ("BombsiteA".into(), -380.0, -1890.0),
-            ("Ladder".into(), 100.0, 100.0),
+        let pos: Vec<(String, f32, f32, f32)> = vec![
+            ("BombsiteA".into(), -300.0, -1900.0, -400.0),
+            ("BombsiteA".into(), -400.0, -1800.0, -420.0),
+            ("BombsiteA".into(), -380.0, -1890.0, -410.0),
+            ("Ladder".into(), 100.0, 100.0, 0.0),
         ];
         let rows = callout_medians(&pos, 3);
         assert_eq!(rows.len(), 1);
@@ -2643,16 +2668,30 @@ mod tests {
         );
     }
 
+    /// Nuke's lower level: the label has to carry a z of its own or the
+    /// renderer draws "B site" on top of "A site" on the upper radar.
+    #[test]
+    fn callout_medians_take_the_z_median_so_labels_know_their_layer() {
+        let pos: Vec<(String, f32, f32, f32)> = vec![
+            ("BombsiteB".into(), 0.0, 0.0, -700.0),
+            ("BombsiteB".into(), 10.0, 10.0, -780.0),
+            ("BombsiteB".into(), 20.0, 20.0, -728.0),
+        ];
+        let rows = callout_medians(&pos, 3);
+        // Sorted z: -780, -728, -700 -> the middle sample is -728.
+        assert_eq!(rows[0].z, -728.0);
+    }
+
     /// A `len / 2` regression would pick the UPPER middle (-350) here; the
     /// documented behaviour is the lower middle (-380) — a real sample, not
     /// an average of two.
     #[test]
     fn callout_medians_take_the_lower_middle_of_an_even_length_group() {
-        let pos: Vec<(String, f32, f32)> = vec![
-            ("Mid".into(), -300.0, 0.0),
-            ("Mid".into(), -400.0, 0.0),
-            ("Mid".into(), -350.0, 0.0),
-            ("Mid".into(), -380.0, 0.0),
+        let pos: Vec<(String, f32, f32, f32)> = vec![
+            ("Mid".into(), -300.0, 0.0, 0.0),
+            ("Mid".into(), -400.0, 0.0, 0.0),
+            ("Mid".into(), -350.0, 0.0, 0.0),
+            ("Mid".into(), -380.0, 0.0, 0.0),
         ];
         let rows = callout_medians(&pos, 4);
         assert_eq!(rows.len(), 1);

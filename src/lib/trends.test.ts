@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extrema, sparkPoints, streak, streakCallout } from "./trends";
+import { extrema, sparkPoints, sparkSegments, streak, streakCallout } from "./trends";
 
 describe("sparkPoints", () => {
   it("returns [] for an empty series", () => {
@@ -108,5 +108,28 @@ describe("streakCallout", () => {
 
   it("returns null for an empty series", () => {
     expect(streakCallout("Isolated deaths", [])).toBeNull();
+  });
+});
+
+describe("sparkSegments", () => {
+  it("breaks the line at holes and reports the last real point", () => {
+    const s = sparkSegments([1, 2, null, 4, 5], 100, 20, 0);
+    expect(s.paths).toHaveLength(2);
+    expect(s.last?.v).toBe(5);
+    expect(s.extrema).toEqual({ min: 1, max: 5 });
+  });
+  it("is empty for an all-null series", () => {
+    expect(sparkSegments([null, null], 100, 20)).toEqual({ paths: [], last: null, extrema: null });
+  });
+  it("draws a lone point as a zero-length segment", () => {
+    const s = sparkSegments([null, 3, null], 100, 20, 0);
+    expect(s.paths).toHaveLength(1);
+    expect(s.last).toMatchObject({ v: 3 });
+  });
+
+  it("reports the min and max value's coordinates at their first occurrence", () => {
+    const s = sparkSegments([1, 2, null, 4, 5], 100, 20, 0);
+    expect(s.minPoint?.v).toBe(1);
+    expect(s.maxPoint?.v).toBe(5);
   });
 });
