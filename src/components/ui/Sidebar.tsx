@@ -16,6 +16,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Library", short: "Li", end: true },
   { to: "/trends", label: "Trends", short: "Tr" },
+  { to: "/watches", label: "Watches", short: "Wa" },
   { to: "/corpus", label: "Corpus", short: "Co" },
   { to: "/settings", label: "Settings", short: "Se" },
 ];

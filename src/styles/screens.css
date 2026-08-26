@@ -2000,6 +2000,149 @@ a.stats-chip:hover {
   flex: 1;
 }
 
+.stg-hint-link {
+  color: var(--ink-dim);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.stg-hint-link:hover {
+  color: var(--ink-bright);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Watches (Watches.tsx) — design-system.md §9, the honesty screen         */
+/* ---------------------------------------------------------------------- */
+
+/* No dedicated rule for `.wat-shell` itself (the `.stg-shell` idiom: a
+   plain content wrapper, sized by `.shell-content`) — only the child
+   combinator below, so every top-level Card gets even vertical rhythm
+   without the JSX needing its own spacing wrapper div. */
+.wat-shell > .ui-card {
+  margin-bottom: var(--s5);
+}
+
+.wat-head {
+  margin-bottom: var(--s6);
+}
+
+.wat-intro {
+  max-width: 70ch;
+  margin: var(--s2) 0 var(--s4);
+  color: var(--ink-dim);
+}
+
+.wat-filter {
+  margin: var(--s3) 0 0;
+  color: var(--ink-dim);
+}
+
+.wat-filter a {
+  color: var(--ink-dim);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.wat-filter a:hover {
+  color: var(--ink-bright);
+}
+
+.wat-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+/* Bordered rows (spec: 12px padding). `:target` — a rule linked to directly
+   (`/watches#H2_ISOLATED_DEATH`) — gets the solid tone edge (design-system.md
+   §5: solid = state, dashed stays reserved for evidence); the box-shadow
+   inset matches Card's own edge variants, so nothing shifts on arrival. */
+.wat-entry {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  scroll-margin-top: var(--s4);
+}
+
+.wat-entry:target {
+  border-color: var(--line-strong);
+  background: var(--bg2);
+  box-shadow: inset 2px 0 0 0 var(--ink-dim);
+}
+
+.wat-entry-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+/* Rule ids are already ALL_CAPS_WITH_UNDERSCORES — type-micro's uppercase
+   transform and .14em tracking add nothing but width, so this un-does both
+   while keeping the mono/ink-dim it inherits. */
+.wat-id {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Outlined per the neutral verdict-chip idiom (rpl-rail-verdict-neutral):
+   the class number is named, not graded — never a color for magnitude. */
+.wat-class {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--ink-dim);
+  font: var(--text-data);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.wat-thresholds,
+.wat-example {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: 0;
+}
+
+.wat-links {
+  margin: var(--s1) 0 0;
+}
+
+.wat-notbuilt {
+  color: var(--ink-dim);
+  cursor: help;
+}
+
+.wat-cannot {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.wat-empty {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
+.wat-empty a {
+  color: var(--ink-dim);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.wat-empty a:hover {
+  color: var(--ink-bright);
+}
+
 /* ---------------------------------------------------------------------- */
 /* Catch-all (App.tsx `*` route)                                           */
 /* ---------------------------------------------------------------------- */
