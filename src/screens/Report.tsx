@@ -3,6 +3,7 @@ import { ClassBreakdown } from "../components/ClassBreakdown";
 import { HabitCard } from "../components/HabitCard";
 import { InsightCard } from "../components/InsightCard";
 import { RoundStripReport } from "../components/RoundStripReport";
+import { StatsStrip } from "../components/StatsStrip";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { MatchHeader } from "../components/ui/MatchHeader";
@@ -78,16 +79,7 @@ export function Report() {
         score={{ a: r.score_a, b: r.score_b }}
         result={r.tracked_result}
         date={summary?.imported_at ?? null}
-        stats={{
-          kd:
-            summary?.tracked_kills != null && summary?.tracked_deaths != null
-              ? `${summary.tracked_kills}-${summary.tracked_deaths}`
-              : null,
-          hsPct:
-            summary?.tracked_hs_pct != null
-              ? `${Math.round(summary.tracked_hs_pct)}%`
-              : null,
-        }}
+        strip={<StatsStrip matchId={matchId} />}
         back={{ to: "/", label: "← Library" }}
         crossLink={{ to: `/replay/${matchId}`, label: "Watch replay →" }}
       />

@@ -5,6 +5,7 @@ import { CoachRail } from "../components/CoachRail";
 import { KillFeed } from "../components/KillFeed";
 import { RosterPanel } from "../components/RosterPanel";
 import { Scrubber } from "../components/Scrubber";
+import { StatsStrip } from "../components/StatsStrip";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { MatchHeader } from "../components/ui/MatchHeader";
@@ -162,16 +163,7 @@ export function Replay() {
         score={{ a: d.score_a, b: d.score_b }}
         result={summary?.tracked_result ?? null}
         date={summary?.imported_at ?? null}
-        stats={{
-          kd:
-            summary?.tracked_kills != null && summary?.tracked_deaths != null
-              ? `${summary.tracked_kills}-${summary.tracked_deaths}`
-              : null,
-          hsPct:
-            summary?.tracked_hs_pct != null
-              ? `${Math.round(summary.tracked_hs_pct)}%`
-              : null,
-        }}
+        strip={<StatsStrip matchId={matchId} />}
         back={{ to: "/", label: "← Library" }}
         crossLink={{ to: `/report/${matchId}`, label: "Read report →" }}
       />

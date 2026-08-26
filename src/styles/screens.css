@@ -208,6 +208,62 @@
 }
 
 /* ---------------------------------------------------------------------- */
+/* StatsStrip (StatsStrip.tsx) — V1.4, the MatchHeader's `strip` slot.      */
+/* Every chip is a Link to its coaching (Watches, Task 9); ink only — no    */
+/* color for magnitude (dataviz skill, design-system.md §2).                */
+/* ---------------------------------------------------------------------- */
+
+.stats-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 26px;
+}
+
+.stats-strip-skeleton {
+  /* Overrides Skeleton's default row height (components.css) so the
+     loading state doesn't shift when the real 26px-tall strip lands. */
+  height: 26px;
+  width: 320px;
+}
+
+.stats-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s1);
+  padding: 2px var(--s2);
+  border: 1px solid var(--ink-faint);
+  border-radius: var(--r-sm);
+  text-decoration: none;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+
+a.stats-chip:hover {
+  border-color: var(--ink-dim);
+}
+
+.stats-chip-label {
+  /* .type-micro already sets ink-dim + tracked caps; no override needed. */
+  color: var(--ink-dim);
+}
+
+.stats-chip-value {
+  color: var(--ink-bright);
+}
+
+/* Placeholder chips (no match_stats row yet): dashed border is the app's
+   "evidence pending" idiom (design-system.md §5) — these seven numbers
+   exist once the match is re-analyzed, they're just not there yet. */
+.stats-chip-empty {
+  border-style: dashed;
+}
+
+.stats-strip-empty .stats-chip-empty .stats-chip-value {
+  color: var(--ink-faint);
+}
+
+/* ---------------------------------------------------------------------- */
 /* Library (Library.tsx) — design-system.md §9, "the shelf of tapes"       */
 /* ---------------------------------------------------------------------- */
 

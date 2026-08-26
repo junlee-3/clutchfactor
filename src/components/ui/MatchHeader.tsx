@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { mapName } from "../../lib/mapName";
 
@@ -23,6 +24,10 @@ export interface MatchHeaderProps {
    *  doesn't carry one (no MatchHeader field is required — §8 degrades). */
   date?: string | null;
   stats?: MatchHeaderStats | null;
+  /** V1.4: the StatsStrip. When present, replaces the K-D/HS% `stats` span
+   *  below (the strip's own K/D supersedes it); `stats` stays for any
+   *  caller that hasn't adopted the strip yet. */
+  strip?: ReactNode;
   back: MatchHeaderLink;
   crossLink?: MatchHeaderLink;
 }
@@ -39,7 +44,7 @@ const RESULT_LABEL: Record<MatchResult, string> = {
 // field but map/score/back is optional — a screen whose loaded data lacks a
 // stat still renders that slot (as a placeholder, see below) rather than
 // fetching more to fill the mock.
-export function MatchHeader({ map, score, result, date, stats, back, crossLink }: MatchHeaderProps) {
+export function MatchHeader({ map, score, result, date, stats, strip, back, crossLink }: MatchHeaderProps) {
   const kd = stats?.kd ?? null;
   const hsPct = stats?.hsPct ?? null;
   const hasStats = kd !== null || hsPct !== null;
@@ -68,17 +73,19 @@ export function MatchHeader({ map, score, result, date, stats, back, crossLink }
       <span className={`match-header-date type-data${date ? "" : " match-header-pending"}`}>
         {date ?? "—"}
       </span>
-      <span className={`match-header-stats type-data${hasStats ? "" : " match-header-pending"}`}>
-        {hasStats ? (
-          <>
-            {kd && `K-D ${kd}`}
-            {kd && hsPct && " · "}
-            {hsPct && `HS ${hsPct}`}
-          </>
-        ) : (
-          "—"
-        )}
-      </span>
+      {strip ?? (
+        <span className={`match-header-stats type-data${hasStats ? "" : " match-header-pending"}`}>
+          {hasStats ? (
+            <>
+              {kd && `K-D ${kd}`}
+              {kd && hsPct && " · "}
+              {hsPct && `HS ${hsPct}`}
+            </>
+          ) : (
+            "—"
+          )}
+        </span>
+      )}
       {crossLink && (
         <Link to={crossLink.to} className="match-header-cross">
           {crossLink.label}
