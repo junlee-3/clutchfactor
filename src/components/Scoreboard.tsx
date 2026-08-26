@@ -59,7 +59,10 @@ function matchRow(r: ScoreRow): ReactNode[] {
     r.hsPct === null ? "—" : `${r.hsPct}%`,
     r.kastPct === null ? "—" : `${r.kastPct}%`,
     r.entryAttempts > 0 ? `${r.entryWins}/${r.entryAttempts}` : "—",
-    r.traded > 0 ? r.traded : "—",
+    // A count, not a ratio — 0 is a real, meaningful value here (the dash
+    // idiom is reserved for undefined ratios, spec ruling), so it always
+    // renders the number.
+    r.traded,
   ];
 }
 
