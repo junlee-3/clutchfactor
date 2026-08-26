@@ -3,6 +3,8 @@
 //! a stat and its coaching rule never disagree. Per-player per-round rows
 //! (the scoreboard) plus the tracked player's match totals (Task 2).
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::config::DetectorConfig;
@@ -50,9 +52,19 @@ pub fn rounds_played(ctx: &AnalysisContext) -> u32 {
 
 /// One row per rostered player per round. `entry` is filled by
 /// `match_stats` (Task 2) from H14's opening-duel finder.
+///
+/// `damage` is the health actually removed, not the raw `dmg_health`: CS2
+/// reports the post-armour figure (an AWP head can read 446), so each round
+/// replays its hurts in tick order over a 100 HP pool per rostered player
+/// and credits `min(dmg, hp_left)`. Team and self damage still remove health
+/// but credit nobody.
 pub fn round_player_rows(ctx: &AnalysisContext, cfg: &DetectorConfig) -> Vec<RoundPlayerStats> {
     let data = ctx.data();
     let commit_w = ctx.seconds(cfg.trade.commit_window_s);
+    // Sorted once; `sort_by_key` is stable, so hurts on the same tick keep
+    // their parsed order.
+    let mut hurts: Vec<&cf_parser::model::Hurt> = data.hurts.iter().collect();
+    hurts.sort_by_key(|h| h.tick);
     let mut out = vec![];
     for round in &data.rounds {
         let end = span_end(round);
@@ -68,6 +80,33 @@ pub fn round_player_rows(ctx: &AnalysisContext, cfg: &DetectorConfig) -> Vec<Rou
                 .find(|(s, _)| *s == sid)
                 .map(|(_, side)| *side)
         };
+        // Health replay for this round's damage credits.
+        let mut hp: HashMap<u64, i32> = roster.iter().map(|(s, _)| (*s, 100)).collect();
+        let mut damage_by: HashMap<u64, u32> = HashMap::new();
+        for h in hurts
+            .iter()
+            .filter(|h| h.tick >= round.start_tick && h.tick <= end)
+        {
+            // Victims off the roster (warmup bots, spectator artefacts) have
+            // no health pool to remove from.
+            let Some(hp_left) = hp.get_mut(&h.victim) else {
+                continue;
+            };
+            let actual = h.dmg_health.max(0).min(*hp_left);
+            *hp_left -= actual;
+            if actual == 0 {
+                continue;
+            }
+            let Some(attacker) = h.attacker.filter(|a| *a != h.victim) else {
+                continue;
+            };
+            let enemy = side_of(attacker)
+                .zip(side_of(h.victim))
+                .is_some_and(|(a, v)| a != v);
+            if enemy {
+                *damage_by.entry(attacker).or_insert(0) += actual as u32;
+            }
+        }
         for (sid, side) in &roster {
             let kills_in_round = data.kills.iter().filter(|k| k.round == round.number);
             let mut kills = 0;
@@ -95,12 +134,7 @@ pub fn round_player_rows(ctx: &AnalysisContext, cfg: &DetectorConfig) -> Vec<Rou
                     }
                 }
             }
-            let damage: u32 = ctx
-                .hurts_dealt_in(*sid, round.start_tick, end)
-                .iter()
-                .filter(|h| h.victim != *sid && side_of(h.victim).is_some_and(|vs| vs != *side))
-                .map(|h| h.dmg_health.max(0) as u32)
-                .sum();
+            let damage = damage_by.get(sid).copied().unwrap_or(0);
             out.push(RoundPlayerStats {
                 round: round.number,
                 steamid: *sid,
@@ -532,5 +566,48 @@ mod tests {
             .kill_full(Some(E1), ME, 1, 3150, "weapon_ak47", false, 0)
             .build();
         assert!(row(&rows_for(&data), 1, ME).traded);
+    }
+
+    #[test]
+    fn damage_is_capped_at_the_victims_remaining_health() {
+        // CS2's player_hurt.dmg_health is the raw post-armour figure: a
+        // single AWP head can report 446. Only 100 HP existed to remove.
+        let data = base().hurt(ME, E1, 2000, 446, "weapon_awp").build();
+        assert_eq!(row(&rows_for(&data), 1, ME).damage, 100);
+    }
+
+    #[test]
+    fn two_attackers_split_the_victims_health_in_tick_order() {
+        let data = base()
+            .hurt(ME, E1, 2000, 80, "weapon_ak47")
+            .hurt(MATE, E1, 2010, 80, "weapon_ak47")
+            .build();
+        let rows = rows_for(&data);
+        assert_eq!(row(&rows, 1, ME).damage, 80);
+        assert_eq!(row(&rows, 1, MATE).damage, 20);
+    }
+
+    #[test]
+    fn a_hurt_after_a_near_lethal_one_credits_only_the_remainder() {
+        let data = base()
+            .hurt(MATE, E1, 2000, 90, "weapon_ak47")
+            .hurt(ME, E1, 2010, 30, "weapon_ak47")
+            .build();
+        let rows = rows_for(&data);
+        assert_eq!(row(&rows, 1, MATE).damage, 90);
+        assert_eq!(row(&rows, 1, ME).damage, 10);
+    }
+
+    #[test]
+    fn team_damage_removes_health_but_credits_nobody() {
+        // MATE takes 40 off ME first: the enemy who then deals 80 can only
+        // remove the 60 that is left, and the teammate is credited nothing.
+        let data = base()
+            .hurt(MATE, ME, 2000, 40, "weapon_ak47")
+            .hurt(E1, ME, 2010, 80, "weapon_ak47")
+            .build();
+        let rows = rows_for(&data);
+        assert_eq!(row(&rows, 1, E1).damage, 60);
+        assert_eq!(row(&rows, 1, MATE).damage, 0);
     }
 }
