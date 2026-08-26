@@ -92,7 +92,11 @@ export function Scoreboard({ matchId, round }: Props) {
     <section className="sb" aria-label="Scoreboard">
       <div className="sb-head">
         <h3 className="type-heading sb-title">
-          {round === null ? "Scoreboard" : `Round ${round} scoreboard`}
+          {tab === "match"
+            ? "Match scoreboard"
+            : round === null
+              ? "Scoreboard"
+              : `Round ${round} scoreboard`}
         </h3>
         {round !== null && (
           <Link to={`/replay/${matchId}?round=${round}`} className="sb-watch-link">
