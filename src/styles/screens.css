@@ -1583,7 +1583,10 @@ a.stats-chip:hover {
 /* why-it-matters line under the value (spec §3), and the note in an empty
    cell — dim so the number stays the cell's subject. */
 .trd-stat-note {
+  /* A sentence, not an eyebrow: micro size in sentence case (type-micro's
+     uppercase tracking is for labels). */
   margin: 0;
+  font: var(--text-micro);
   color: var(--ink-dim);
   text-wrap: pretty;
 }

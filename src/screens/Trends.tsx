@@ -394,7 +394,7 @@ function StatCell({ series, emptyNote }: { series: StatSeries; emptyNote: string
         <div className="trd-stat-spark-slot">
           <span className="type-data trd-stat-value trd-stat-value-empty">—</span>
         </div>
-        <span className="type-micro trd-stat-note">{emptyNote}</span>
+        <span className="trd-stat-note">{emptyNote}</span>
       </div>
     );
   }
@@ -453,7 +453,7 @@ function StatCell({ series, emptyNote }: { series: StatSeries; emptyNote: string
         </svg>
       </div>
       <span className="type-data trd-stat-value">{formatStatValue(series.unit, last.v, true)}</span>
-      {why && <span className="type-micro trd-stat-note">{why}</span>}
+      {why && <span className="trd-stat-note">{why}</span>}
     </div>
   );
 }
