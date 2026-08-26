@@ -18,13 +18,14 @@ import { mapName } from "../lib/mapName";
 import {
   useCoachRounds,
   useCoachStatus,
+  useMapCallouts,
   useMatchDetail,
   useMatches,
   useRegenerateCoachRound,
   useRoundReview,
   useRoundTicks,
 } from "../lib/queries";
-import { radarImageUrl } from "../replay/coords";
+import { radarImageUrl, worldToRadar } from "../replay/coords";
 import type { MapCalibration } from "../replay/coords";
 import { buildTracks, stateAt } from "../replay/interp";
 import type { PlayerTrack } from "../replay/interp";
@@ -38,6 +39,28 @@ import type { TimelineSpec } from "../replay/timeline";
 const SPEEDS = [1, 2, 4] as const;
 type Speed = (typeof SPEEDS)[number];
 const SPEED_OPTIONS = SPEEDS.map((s) => ({ value: String(s), label: `${s}×` }));
+
+// Callout labels default on; "0" is the only persisted "off" — any other
+// value (including a missing key, a corrupted value, or storage access
+// throwing in a locked-down webview) reads as on.
+const CALLOUTS_STORAGE_KEY = "cf.replay.callouts";
+
+function loadShowCallouts(): boolean {
+  try {
+    return sessionStorage.getItem(CALLOUTS_STORAGE_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function saveShowCallouts(v: boolean): void {
+  try {
+    sessionStorage.setItem(CALLOUTS_STORAGE_KEY, v ? "1" : "0");
+  } catch {
+    // Storage unavailable (private mode, locked-down webview) — the toggle
+    // still works for this session, it just won't be remembered.
+  }
+}
 
 function useCalibration(enabled: boolean) {
   return useQuery({
@@ -250,6 +273,7 @@ function RoundPlayer({
   const coachStatus = useCoachStatus();
   const coachOn = coachStatus.data?.enabled ?? false;
   const coach = useCoachRounds(matchId, coachOn);
+  const calloutRows = useMapCallouts(d.map);
   const regenerate = useRegenerateCoachRound();
   const toast = useToast();
   const coachRound = coach.data?.rounds.find((r) => r.round === round) ?? null;
@@ -352,6 +376,7 @@ function RoundPlayer({
   const [playing, setPlayingState] = useState(false);
   const [speed, setSpeedState] = useState<Speed>(1);
   const [fps, setFps] = useState(0);
+  const [showCallouts, setShowCallouts] = useState(loadShowCallouts);
 
   const setPlaying = useCallback((v: boolean) => {
     playingRef.current = v;
@@ -360,6 +385,13 @@ function RoundPlayer({
   const setSpeed = useCallback((v: Speed) => {
     speedRef.current = v;
     setSpeedState(v);
+  }, []);
+  const toggleCallouts = useCallback(() => {
+    setShowCallouts((prev) => {
+      const next = !prev;
+      saveShowCallouts(next);
+      return next;
+    });
   }, []);
   const seek = useCallback(
     (tick: number) => {
@@ -417,8 +449,22 @@ function RoundPlayer({
       : null;
   }, [annotationMoment]);
 
+  // Radar-space label positions — converted here (not in the renderer, which
+  // stays pure over pixels) so callouts.ts never needs MapCalibration. The
+  // command already returns rows sorted by samples descending (Task 5), so
+  // this order IS the label priority `placeLabels` (Renderer.ts) walks —
+  // no client-side re-sort.
+  const calloutLabels = useMemo(
+    () =>
+      (calloutRows.data ?? []).map((c) => {
+        const p = worldToRadar(mapCal, c.x, c.y);
+        return { name: c.name, x: p.u, y: p.v };
+      }),
+    [calloutRows.data, mapCal],
+  );
+
   const getScene = useCallback(
-    (): Scene => ({
+    (cssWidth: number): Scene => ({
       cal: mapCal,
       upperImage,
       lowerImage,
@@ -433,6 +479,8 @@ function RoundPlayer({
       tickrate: d.tickrate,
       focus: focusSet,
       annotation,
+      callouts: showCallouts ? calloutLabels : undefined,
+      cssWidth,
     }),
     [
       mapCal,
@@ -448,6 +496,8 @@ function RoundPlayer({
       d.tickrate,
       focusSet,
       annotation,
+      showCallouts,
+      calloutLabels,
     ],
   );
 
@@ -547,6 +597,14 @@ function RoundPlayer({
           onChange={(v) => setSpeed(Number(v) as Speed)}
           ariaLabel="Playback speed"
         />
+        <Button
+          variant="secondary"
+          size="sm"
+          aria-pressed={showCallouts}
+          onClick={toggleCallouts}
+        >
+          Callouts
+        </Button>
         <Scrubber
           spec={spec}
           tick={displayTick}

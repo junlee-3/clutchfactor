@@ -5,11 +5,18 @@ import type { KillInfo } from "../lib/ipc";
 import { getToken, rgba } from "../lib/theme";
 import type { AnnotationPoint } from "./annotation";
 import { fmtUnits, nearestLivingTeammate } from "./annotation";
+import { labelFontPx, placeLabels } from "./callouts";
+import type { LabelBox } from "./callouts";
 import { radarLayer, worldToRadar } from "./coords";
 import type { MapCalibration } from "./coords";
 import { stateAt } from "./interp";
 import type { PlayerTrack } from "./interp";
 import type { UtilityWindow } from "./utility";
+
+// The renderer's one mono stack — same family as --font-mono (design-system
+// v2 §3), but canvas text can't read the CSS variable directly, so it's a
+// literal constant here (like the bomb/annotation-tag font strings below).
+const MONO_STACK = "ui-monospace, SFMono-Regular, Menlo, monospace";
 
 // Snapshotted once at module import — fine for the dark-only theme (no
 // runtime theme switch exists); a future light/dark toggle would need these
@@ -49,6 +56,17 @@ export interface Scene {
   // THAT death: dashed line to the nearest living teammate (with distance),
   // solid --loss line to the killer. null = no annotation drawn this frame.
   annotation: { victimId: string; killerId: string | null } | null;
+  // Map callout labels (radar-space already — Replay.tsx converts with
+  // worldToRadar so this module stays pure over pixels), in DTO priority
+  // order (biggest place first — see callouts.ts). Undefined/empty = the
+  // Callouts toggle is off or the map has none.
+  callouts?: { name: string; x: number; y: number }[];
+  // Current CSS width of the canvas element (ReplayCanvas reads
+  // `canvas.clientWidth` once per frame) — callouts.ts's labelFontPx uses it
+  // (with canvas.width, the backing-store pixel size) to hide labels below
+  // CALLOUT_MIN_CSS_PX and to size the font so it reads the same physical
+  // size regardless of DPR/window scale.
+  cssWidth: number;
 }
 
 function sideColor(side: "CT" | "T" | undefined): string {
@@ -81,6 +99,7 @@ export function draw(ctx: CanvasRenderingContext2D, scene: Scene): void {
     ctx.globalAlpha = 1;
   }
 
+  drawCallouts(ctx, scene, layer);
   drawUtility(ctx, scene);
   drawBomb(ctx, scene);
   drawDeaths(ctx, scene);
@@ -92,6 +111,40 @@ export function draw(ctx: CanvasRenderingContext2D, scene: Scene): void {
   // (§5: dashed = evidence, and evidence must read, but dots are the scene's
   // primary subject and shouldn't be occluded by furniture).
   if (geo) drawAnnotationTag(ctx, geo);
+}
+
+/** Map callout labels — upper radar layer only (no per-death relevance to
+ *  track, unlike deaths/utility/annotation, so there's no lower-layer
+ *  variant to build; ruling recorded in the Task 10 report). Drawn above
+ *  the radar image and below every gameplay layer (utility/bomb/deaths/
+ *  annotation/players/tag) so a label never competes with the scene's real
+ *  subjects (design-system.md §1: labels are furniture, not evidence). Font
+ *  size and the visibility floor come from callouts.ts so the same numbers
+ *  back both this draw and its tests. */
+function drawCallouts(
+  ctx: CanvasRenderingContext2D,
+  scene: Scene,
+  layer: "upper" | "lower",
+): void {
+  if (layer !== "upper") return;
+  const px = labelFontPx(ctx.canvas.width, scene.cssWidth);
+  if (!px || !scene.callouts?.length) return;
+
+  ctx.font = `${px}px ${MONO_STACK}`;
+  const h = px * 1.2;
+  const boxes: LabelBox[] = scene.callouts.map((c) => ({
+    name: c.name,
+    x: c.x,
+    y: c.y,
+    w: ctx.measureText(c.name).width,
+    h,
+  }));
+  const placed = placeLabels(boxes);
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = rgba("--ink-dim", 1);
+  for (const box of placed) ctx.fillText(box.name, box.x, box.y);
 }
 
 function drawUtility(ctx: CanvasRenderingContext2D, scene: Scene): void {
