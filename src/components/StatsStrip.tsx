@@ -50,7 +50,10 @@ export function StatsStrip({ matchId }: { matchId: number }) {
       }
     };
     return (
-      <div className="stats-strip stats-strip-empty">
+      <div
+        className="stats-strip stats-strip-empty"
+        aria-label="Match stats not yet available"
+      >
         {STAT_KEYS.map((k) => (
           <span key={k} className="stats-chip stats-chip-empty">
             <span className="type-micro stats-chip-label">{STAT_TITLES[k]}</span>

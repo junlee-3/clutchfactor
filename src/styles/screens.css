@@ -217,7 +217,7 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--s2);
   min-height: 26px;
 }
 

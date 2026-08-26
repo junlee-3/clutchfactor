@@ -17,10 +17,13 @@ describe("formatStat", () => {
     expect(STAT_KEYS).toHaveLength(7);
   });
   it("shows a dash, never a zero, when the ratio is undefined", () => {
-    const empty = { ...s, kills: 0, deaths: 0, kd: null, hs_pct: null, entry_attempts: 0, entry_wins: 0, clutch_attempts: 0, clutch_wins: 0 };
+    const empty = { ...s, kills: 0, deaths: 0, kd: null, adr: null, hs_pct: null, kast_pct: null, entry_attempts: 0, entry_wins: 0, clutch_attempts: 0, clutch_wins: 0 };
     expect(formatStat("kd", empty).value).toBe("0-0");
+    expect(formatStat("adr", empty).value).toBe("—");
     expect(formatStat("hs", empty).value).toBe("—");
+    expect(formatStat("kast", empty).value).toBe("—");
     expect(formatStat("entry", empty).value).toBe("—");
+    expect(formatStat("trade", empty).value).toBe("—");
     expect(formatStat("clutch", empty).value).toBe("—");
   });
 });
