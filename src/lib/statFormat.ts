@@ -4,6 +4,20 @@ export const STAT_KEYS = ["kd", "adr", "hs", "kast", "entry", "trade", "clutch"]
 export type StatKey = (typeof STAT_KEYS)[number];
 export const STAT_TITLES: Record<StatKey, string> = { kd: "K/D", adr: "ADR", hs: "HS%", kast: "KAST", entry: "Entry", trade: "Trades", clutch: "Clutch" };
 
+/** Why the number matters (spec §3): one line per stat, in the §7 coaching
+ *  voice — no thresholds and no numbers (those are on Watches, rendered
+ *  from the live config), no exclamation. Rendered under the Trends cell
+ *  value; the link on the title goes to the rules behind it. */
+export const STAT_WHY: Record<StatKey, string> = {
+  kd: "Every death has a class; the fixable ones are the untraded and unforced",
+  adr: "Damage is what utility and trades convert into; low ADR with many deaths points at exposure",
+  hs: "An aim outcome, not a habit — the engine measures results, not crosshair placement",
+  kast: "Rounds you took part in; an untraded death with nothing else is the miss the H2 rules describe",
+  entry: "Opening duels shape the round; an entry with no teammate in trade range is the H14 flag",
+  trade: "Trades are the team's insurance; both sides of it are counted here",
+  clutch: "Last alive against several; these rounds are where the coach's verdicts matter most",
+};
+
 const ratio = (n: number, d: number) => (d > 0 ? `${n}/${d}` : "—");
 
 /** The number and the sentence that says how it was counted (spec §1).

@@ -101,41 +101,46 @@ export function Watches() {
       {entries.length === 0 && (
         <Card eyebrow="Nothing to show">
           <p className="type-body wat-empty">
-            No rule feeds this number directly — it is counted straight from the events.{" "}
+            {stat === "hs"
+              ? "Headshot share is an aim outcome — see Aim mechanics below."
+              : "No rule feeds this number directly — it is counted straight from the events."}{" "}
             <Link to="/watches">See every rule</Link>.
           </p>
         </Card>
       )}
       {!stat && (
-        <>
-          <Card>
-            <h2 className="type-micro wat-family">Death classes</h2>
-            <DataTable
-              head={["#", "class", "source", "built"]}
-              rows={cat.data.classes.map((c) => [
-                String(c.id),
-                c.name,
-                c.source,
-                c.built ? "yes" : (
-                  <span className="wat-notbuilt" title={c.why_not ?? ""}>
-                    not yet — {c.why_not}
-                  </span>
-                ),
-              ])}
-              rowKey={(i) => String(cat.data!.classes[i].id)}
-            />
-          </Card>
-          <Card>
-            <h2 className="type-micro wat-family">What the engine cannot see</h2>
-            <ul className="wat-cannot">
-              {cat.data.cannot_see.map(([t, s]) => (
-                <li key={t}>
-                  <strong>{t}.</strong> {s}
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </>
+        <Card>
+          <h2 className="type-micro wat-family">Death classes</h2>
+          <DataTable
+            head={["#", "class", "source", "built"]}
+            rows={cat.data.classes.map((c) => [
+              String(c.id),
+              c.name,
+              c.source,
+              c.built ? "yes" : (
+                <span className="wat-notbuilt" title={c.why_not ?? ""}>
+                  not yet — {c.why_not}
+                </span>
+              ),
+            ])}
+            rowKey={(i) => String(cat.data!.classes[i].id)}
+          />
+        </Card>
+      )}
+      {/* The cannot-see card is the spec'd destination for HS% and the
+          honest answer for any filter with no rules behind it — it drops
+          out only when the filter DOES have rules to show. */}
+      {(!stat || entries.length === 0) && (
+        <Card>
+          <h2 className="type-micro wat-family">What the engine cannot see</h2>
+          <ul className="wat-cannot">
+            {cat.data.cannot_see.map(([t, s]) => (
+              <li key={t}>
+                <strong>{t}.</strong> {s}
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
     </div>
   );

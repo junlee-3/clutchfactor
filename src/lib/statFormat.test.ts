@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatStat, STAT_KEYS } from "./statFormat";
+import { formatStat, STAT_KEYS, STAT_WHY } from "./statFormat";
 import type { MatchStatsDto } from "./ipc";
 
 const s: MatchStatsDto = { rounds_played: 24, kills: 18, deaths: 15, assists: 4, kd: 1.2, adr: 71.3, hs_pct: 44, kast_pct: 67,
@@ -25,5 +25,19 @@ describe("formatStat", () => {
     expect(formatStat("entry", empty).value).toBe("—");
     expect(formatStat("trade", empty).value).toBe("—");
     expect(formatStat("clutch", empty).value).toBe("—");
+  });
+});
+
+describe("STAT_WHY", () => {
+  it("gives every stat a why-it-matters line in the §7 voice", () => {
+    // Seven lines, one per stat; no exclamation marks and no numbers —
+    // thresholds live on Watches, rendered from the live config. Rule-family
+    // ids ("H2", "H14") are names, not numbers, so they are stripped before
+    // the digit check.
+    expect(Object.keys(STAT_WHY).sort()).toEqual([...STAT_KEYS].sort());
+    for (const k of STAT_KEYS) {
+      expect(STAT_WHY[k].replace(/\bH\d+\b/g, "")).not.toMatch(/[!\d]/);
+      expect(STAT_WHY[k].length).toBeGreaterThan(20);
+    }
   });
 });

@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import type { StatSeries, TrendsDto } from "../lib/ipc";
 import { mapName } from "../lib/mapName";
 import { useMatches, useTrends } from "../lib/queries";
-import { STAT_TITLES, type StatKey } from "../lib/statFormat";
+import { STAT_WHY, type StatKey } from "../lib/statFormat";
 import { getToken } from "../lib/theme";
 import {
   extrema,
@@ -116,6 +116,15 @@ export function Trends() {
     [data],
   );
 
+  // A null value is either "no stats row yet" (a pre-V1.4 import — a
+  // re-analyze fixes it) or "the ratio is undefined" (no clutch attempts, no
+  // entries, no kills), which no re-analyze changes. One real value anywhere
+  // in the section settles which of the two an empty cell is.
+  const anyValues = useMemo(
+    () => (view?.stats ?? []).some((s) => s.values.some((v) => v !== null)),
+    [view],
+  );
+
   const isLoading = trends.isLoading;
   const enough = (view?.matches.length ?? 0) >= 2;
 
@@ -171,7 +180,7 @@ export function Trends() {
             </div>
 
             <Card eyebrow="Your numbers" className="trd-stat-card">
-              {view.stats.every((s) => s.values.every((v) => v === null)) ? (
+              {!anyValues ? (
                 <p className="type-body trd-stat-empty">
                   Your numbers appear once a match is analyzed with V1.4 —{" "}
                   <Link to="/" className="trd-stat-empty-link">
@@ -182,7 +191,11 @@ export function Trends() {
               ) : (
                 <div className="trd-stat-grid">
                   {view.stats.map((s) => (
-                    <StatCell key={s.key} series={s} />
+                    <StatCell
+                      key={s.key}
+                      series={s}
+                      emptyNote={anyValues ? "nothing to count yet" : "after a re-analyze"}
+                    />
                   ))}
                 </div>
               )}
@@ -364,8 +377,11 @@ function SparkLabel({
  *  labels only render when they differ from the last value (dataviz:
  *  never a number on every point) — a lone real value or a flat series
  *  reports nothing beyond the line itself. */
-function StatCell({ series }: { series: StatSeries }) {
-  const title = STAT_TITLES[series.key as StatKey] ?? series.title;
+function StatCell({ series, emptyNote }: { series: StatSeries; emptyNote: string }) {
+  // The Rust series title ("Deaths traded", "Entry wins") — the strip's
+  // short labels ("Trades", "Entry") leave the percentages ambiguous here.
+  const title = series.title;
+  const why = STAT_WHY[series.key as StatKey];
   const seg = sparkSegments(series.values, SPARK_W, SPARK_H);
   const last = seg.last;
 
@@ -378,7 +394,7 @@ function StatCell({ series }: { series: StatSeries }) {
         <div className="trd-stat-spark-slot">
           <span className="type-data trd-stat-value trd-stat-value-empty">—</span>
         </div>
-        <span className="type-micro trd-stat-note">after a re-analyze</span>
+        <span className="type-micro trd-stat-note">{emptyNote}</span>
       </div>
     );
   }
@@ -437,6 +453,7 @@ function StatCell({ series }: { series: StatSeries }) {
         </svg>
       </div>
       <span className="type-data trd-stat-value">{formatStatValue(series.unit, last.v, true)}</span>
+      {why && <span className="type-micro trd-stat-note">{why}</span>}
     </div>
   );
 }

@@ -43,7 +43,7 @@ static ENTRIES: &[CatalogEntry] = &[
     CatalogEntry { id: "H2_BAITED_TRADE", family: "H2 Trade spacing", title: "Baited trade",
         watches_for: "You committed to a trade and died with no teammate following you in.",
         thresholds: "you fire or deal damage within {trade.commit_window_s} of a teammate's death, then die within {trade.window_s} with no teammate within {trade.distance_u}",
-        class_id: Some(7), example: "You committed to the trade at Apartments; Sam stayed 1,100 u behind.", stat_links: &["trade"] },
+        class_id: Some(7), example: "You committed to the trade at Apartments; Sam stayed 1,100 u behind.", stat_links: &["trade", "kast"] },
     CatalogEntry { id: "H3_DIED_WITH_NADE_OUT", family: "H3 Utility vulnerability", title: "Died with a grenade out",
         watches_for: "You were killed while holding a grenade instead of a gun.", thresholds: "the last sampled weapon before the death was a grenade",
         class_id: Some(1), example: "Killed with a flashbang out at Connector.", stat_links: &["kd"] },
@@ -51,7 +51,7 @@ static ENTRIES: &[CatalogEntry] = &[
         watches_for: "You died just after switching weapons, before the new one was ready.", thresholds: "weapon changed within {h3.switch_window_s} before the death",
         class_id: Some(1), example: "Switched from the smoke to the rifle 0.2 s before dying.", stat_links: &["kd"] },
     CatalogEntry { id: "H3_DIED_RELOADING", family: "H3 Utility vulnerability", title: "Died reloading",
-        watches_for: "You died during a reload.", thresholds: "a reload started within {h3.reload_window_s} before the death",
+        watches_for: "You died during a reload.", thresholds: "a reload started within {h3.reload_window_s} before the death and you had not fired since",
         class_id: Some(4), example: "Reload started 0.9 s before the death at Top Mid.", stat_links: &["kd"] },
     CatalogEntry { id: "H3_DIED_SCOPED_CLOSE", family: "H3 Utility vulnerability", title: "Died scoped at close range",
         watches_for: "You were scoped in while an enemy was already close.", thresholds: "scoped with the killer within {h3.scoped_close_u}",
@@ -89,7 +89,7 @@ static ENTRIES: &[CatalogEntry] = &[
     CatalogEntry { id: "H11_EARLY_AGGRESSIVE_DEATH", family: "H11 Timing", title: "Early aggressive death",
         watches_for: "You died early, far from spawn, with no teammate close.",
         thresholds: "death within {timing.early_aggression_s} of freeze end, at least {timing.min_spawn_distance_u} from your freeze-end position, no teammate within {trade.distance_u}",
-        class_id: None, example: "Died 12 s in, 1,100 u from spawn, nearest teammate 1,500 u.", stat_links: &["entry", "kd"] },
+        class_id: None, example: "Died 12 s in, 1,100 u from spawn, nearest teammate 1,500 u.", stat_links: &["entry", "kd", "kast"] },
     CatalogEntry { id: "H11_SLOW_ROTATION", family: "H11 Timing", title: "Slow rotation",
         watches_for: "The bomb went down and you never reached the site in time (CT).",
         thresholds: "farther than {timing.rotate_radius_u} from the plant at the plant and still farther {timing.rotate_max_s} later, in a lost round",
@@ -97,7 +97,7 @@ static ENTRIES: &[CatalogEntry] = &[
     CatalogEntry { id: "H14_UNSUPPORTED_ENTRY", family: "H14 Entry structure", title: "Unsupported entry",
         watches_for: "You took the round's opening duel with no teammate close enough to trade you.",
         thresholds: "the round's first kill within {entry.opening_window_s} of freeze end; no living teammate within {entry.support_distance_u} or in the same callout",
-        class_id: None, example: "Opened at Palace with Sam 1,200 u behind.", stat_links: &["entry"] },
+        class_id: None, example: "Opened at Palace with Sam 1,200 u behind.", stat_links: &["entry", "kast"] },
     CatalogEntry { id: "H16_DIED_TO_UTILITY_NO_DUEL", family: "H16 Utility damage exposure", title: "Died to utility without a duel",
         watches_for: "Grenade or fire damage killed you without a fight.", thresholds: "no shot within {h16.no_shot_window_s} and no enemy contact within {h16.no_contact_window_s} before a utility death",
         class_id: Some(2), example: "Burned out at Banana without firing.", stat_links: &["kd"] },
@@ -215,6 +215,23 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![8, 10, 12]
         );
+    }
+
+    /// Spec §1 routes KAST to "H2 trade rules" (plural): a KAST miss is an
+    /// untraded death with no kill or assist, which is what the baited
+    /// trade, the unsupported entry and the early aggressive death all
+    /// describe. One card behind the KAST filter is under-reporting.
+    #[test]
+    fn kast_links_every_rule_that_describes_an_untraded_death() {
+        for id in [
+            "H2_ISOLATED_DEATH",
+            "H2_BAITED_TRADE",
+            "H14_UNSUPPORTED_ENTRY",
+            "H11_EARLY_AGGRESSIVE_DEATH",
+        ] {
+            let e = entries().iter().find(|e| e.id == id).expect("entry");
+            assert!(e.stat_links.contains(&"kast"), "{id} does not feed kast");
+        }
     }
 
     #[test]

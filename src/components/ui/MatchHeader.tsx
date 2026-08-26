@@ -4,13 +4,6 @@ import { mapName } from "../../lib/mapName";
 
 export type MatchResult = "win" | "loss" | "tie";
 
-export interface MatchHeaderStats {
-  /** Pre-formatted "kills-deaths", e.g. "18-14". */
-  kd?: string | null;
-  /** Pre-formatted percentage, e.g. "52%". */
-  hsPct?: string | null;
-}
-
 export interface MatchHeaderLink {
   to: string;
   label: string;
@@ -23,10 +16,8 @@ export interface MatchHeaderProps {
   /** Match/import date, pre-formatted. Omit when the caller's loaded data
    *  doesn't carry one (no MatchHeader field is required — §8 degrades). */
   date?: string | null;
-  stats?: MatchHeaderStats | null;
-  /** V1.4: the StatsStrip. When present, replaces the K-D/HS% `stats` span
-   *  below (the strip's own K/D supersedes it); `stats` stays for any
-   *  caller that hasn't adopted the strip yet. */
+  /** V1.4: the StatsStrip. Absent only until a caller's stats resolve —
+   *  the slot still renders (as a placeholder) so the header never shifts. */
   strip?: ReactNode;
   back: MatchHeaderLink;
   crossLink?: MatchHeaderLink;
@@ -39,16 +30,12 @@ const RESULT_LABEL: Record<MatchResult, string> = {
 };
 
 // Reused by Report and Replay (design-system.md §8, charter-mandated):
-// map (display-sans title) · score · result (game hues) · date · K-D/HS%
+// map (display-sans title) · score · result (game hues) · date · the stats
 // strip, plus back-navigation and the Report<->Replay cross-link. Every
 // field but map/score/back is optional — a screen whose loaded data lacks a
 // stat still renders that slot (as a placeholder, see below) rather than
 // fetching more to fill the mock.
-export function MatchHeader({ map, score, result, date, stats, strip, back, crossLink }: MatchHeaderProps) {
-  const kd = stats?.kd ?? null;
-  const hsPct = stats?.hsPct ?? null;
-  const hasStats = kd !== null || hsPct !== null;
-
+export function MatchHeader({ map, score, result, date, strip, back, crossLink }: MatchHeaderProps) {
   return (
     <header className="match-header">
       <Link to={back.to} className="match-header-back">
@@ -74,17 +61,7 @@ export function MatchHeader({ map, score, result, date, stats, strip, back, cros
         {date ?? "—"}
       </span>
       {strip ?? (
-        <span className={`match-header-stats type-data${hasStats ? "" : " match-header-pending"}`}>
-          {hasStats ? (
-            <>
-              {kd && `K-D ${kd}`}
-              {kd && hsPct && " · "}
-              {hsPct && `HS ${hsPct}`}
-            </>
-          ) : (
-            "—"
-          )}
-        </span>
+        <span className="match-header-stats type-data match-header-pending">—</span>
       )}
       {crossLink && (
         <Link to={crossLink.to} className="match-header-cross">

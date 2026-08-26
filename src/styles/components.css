@@ -88,6 +88,13 @@
   color: var(--ink-bright);
 }
 
+/* pressed — a toggle button (aria-pressed) reads as on: brighter edge and
+   ink, so "Callouts on" is visible without a second control. */
+.ui-btn[aria-pressed="true"] {
+  border-color: var(--ink-bright);
+  color: var(--ink-bright);
+}
+
 .ui-btn-armed {
   background: var(--loss);
   border-color: var(--loss);

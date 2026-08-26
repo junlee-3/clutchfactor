@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import type { PlayerRoundStatsDto } from "../lib/ipc";
 import { useRoundScoreboard } from "../lib/queries";
 import { aggregate, sortRoundRows, type ScoreRow } from "../lib/scoreboard";
@@ -70,12 +70,12 @@ function matchRow(r: ScoreRow): ReactNode[] {
  *  round the strip above has selected; `round: null` (the all-rounds query)
  *  backs the Match tab's client-side `aggregate`. A match analyzed before
  *  V1.4 has no `round_player_stats` rows at all — same "evidence pending"
- *  situation as StatsStrip, but the fix lives on the Library row, not here,
- *  so the empty state points there rather than duplicating a re-analyze
- *  control this component has no file path to drive. */
+ *  situation as StatsStrip, and the fix is the strip's own "Re-analyze for
+ *  stats" in the header above, so the empty state names it rather than
+ *  sending the user off to the Library for a control that is already on
+ *  screen. */
 export function Scoreboard({ matchId, round }: Props) {
   const [tab, setTab] = useState<Tab>("round");
-  const navigate = useNavigate();
   const scoreboard = useRoundScoreboard(matchId, tab === "round" ? round : null);
 
   const rawRows = scoreboard.data ?? [];
@@ -122,8 +122,7 @@ export function Scoreboard({ matchId, round }: Props) {
         <EmptyState
           className="sb-empty"
           title="No scoreboard for this match yet"
-          body="Re-analyze from the Library."
-          action={{ label: "Go to Library", onClick: () => navigate("/") }}
+          body="Use Re-analyze for stats in the header."
         />
       )}
 
