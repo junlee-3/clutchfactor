@@ -25,7 +25,7 @@ import {
   useRoundReview,
   useRoundTicks,
 } from "../lib/queries";
-import { radarImageUrl, worldToRadar } from "../replay/coords";
+import { radarImageUrl, radarLayer, worldToRadar } from "../replay/coords";
 import type { MapCalibration } from "../replay/coords";
 import { buildTracks, stateAt } from "../replay/interp";
 import type { PlayerTrack } from "../replay/interp";
@@ -454,11 +454,14 @@ function RoundPlayer({
   // command already returns rows sorted by samples descending (Task 5), so
   // this order IS the label priority `placeLabels` (Renderer.ts) walks —
   // no client-side re-sort.
+  // Each label also carries the radar layer its median z belongs to, so a
+  // lower-level place (nuke B, Tunnels, Decon) is drawn on the lower radar
+  // instead of on top of the upper one.
   const calloutLabels = useMemo(
     () =>
       (calloutRows.data ?? []).map((c) => {
         const p = worldToRadar(mapCal, c.x, c.y);
-        return { name: c.name, x: p.u, y: p.v };
+        return { name: c.name, x: p.u, y: p.v, layer: radarLayer(mapCal, c.z) };
       }),
     [calloutRows.data, mapCal],
   );

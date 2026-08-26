@@ -280,6 +280,10 @@ pub struct MapCalloutRow {
     pub place: String,
     pub x: f32,
     pub y: f32,
+    /// Median height of the place's samples — the replay renderer picks the
+    /// label's radar layer from it (`radarLayer`), so nuke's lower level
+    /// labels itself instead of stamping "B site" onto the upper radar.
+    pub z: f32,
     pub samples: u32,
 }
 
@@ -907,17 +911,17 @@ impl Store {
         Ok(rows)
     }
 
-    /// Raw (place, x, y) at 1 Hz over every match on the map — the input for
-    /// callout medians. Bounded by the `tick % 64` sample so a corpus map
+    /// Raw (place, x, y, z) at 1 Hz over every match on the map — the input
+    /// for callout medians. Bounded by the `tick % 64` sample so a corpus map
     /// stays in the low hundreds of thousands of rows.
-    pub fn place_positions(&self, map: &str) -> Result<Vec<(String, f32, f32)>, StoreError> {
+    pub fn place_positions(&self, map: &str) -> Result<Vec<(String, f32, f32, f32)>, StoreError> {
         let mut st = self.conn.prepare(
-            "SELECT t.last_place, t.x, t.y FROM tick_samples t
+            "SELECT t.last_place, t.x, t.y, t.z FROM tick_samples t
              JOIN matches m ON m.id = t.match_id
              WHERE m.map = ?1 AND t.last_place IS NOT NULL AND t.last_place != '' AND t.tick % 64 = 0",
         )?;
         let rows = st
-            .query_map([map], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .query_map([map], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -933,10 +937,10 @@ impl Store {
         tx.execute("DELETE FROM map_callouts WHERE map = ?1", [map])?;
         {
             let mut st = tx.prepare(
-                "INSERT INTO map_callouts (map, place, x, y, samples) VALUES (?1, ?2, ?3, ?4, ?5)",
+                "INSERT INTO map_callouts (map, place, x, y, z, samples) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             )?;
             for r in rows {
-                st.execute(params![map, r.place, r.x, r.y, r.samples])?;
+                st.execute(params![map, r.place, r.x, r.y, r.z, r.samples])?;
             }
         }
         tx.commit()?;
@@ -945,7 +949,7 @@ impl Store {
 
     pub fn load_map_callouts(&self, map: &str) -> Result<Vec<MapCalloutRow>, StoreError> {
         let mut st = self.conn.prepare(
-            "SELECT place, x, y, samples FROM map_callouts WHERE map = ?1 ORDER BY place",
+            "SELECT place, x, y, z, samples FROM map_callouts WHERE map = ?1 ORDER BY place",
         )?;
         let rows = st
             .query_map([map], |r| {
@@ -953,7 +957,8 @@ impl Store {
                     place: r.get(0)?,
                     x: r.get(1)?,
                     y: r.get(2)?,
-                    samples: r.get(3)?,
+                    z: r.get(3)?,
+                    samples: r.get(4)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -2187,11 +2192,11 @@ mod tests {
         let path = dir.path().join("test.db");
         {
             let store = Store::open(&path).unwrap();
-            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 10);
+            assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 11);
         }
         // Reopen: migrations must not re-apply / error.
         let store = Store::open(&path).unwrap();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 10);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 11);
     }
 
     #[test]
@@ -2569,7 +2574,7 @@ mod tests {
     fn cross_demo_queries_aggregate_flags_positions_and_rounds() {
         use cf_analysis::{AnalysisOutput, EvidenceRef, RuleFlag};
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 10);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 11);
         store.set_setting("tracked_steamid", "1").unwrap();
         let flag = |round: u32, tick: i32| RuleFlag {
             rule_id: "H2_ISOLATED_DEATH",
@@ -2795,7 +2800,7 @@ mod tests {
     #[test]
     fn migration_2_analysis_tables_and_rule_inputs_persist() {
         let (_dir, mut store) = open_tmp();
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 10);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 11);
         let id = store
             .save_match("m1.dem", "h1", MatchKind::Own, &sample_match())
             .unwrap();
@@ -3563,18 +3568,19 @@ mod tests {
                     place: "BombsiteA".into(),
                     x: -377.0,
                     y: -1887.0,
+                    z: -166.0,
                     samples: 52841,
                 }],
             )
             .unwrap();
         let c = store.load_map_callouts("de_mirage").unwrap();
         assert_eq!(
-            (c.len(), c[0].place.as_str(), c[0].samples),
-            (1, "BombsiteA", 52841)
+            (c.len(), c[0].place.as_str(), c[0].z, c[0].samples),
+            (1, "BombsiteA", -166.0, 52841)
         );
         store.save_map_callouts("de_mirage", &[]).unwrap();
         assert!(store.load_map_callouts("de_mirage").unwrap().is_empty());
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 10);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 11);
     }
 
     #[test]
@@ -3671,6 +3677,6 @@ mod tests {
             .get_coach_cache(match_id, "synthesis", 0)
             .unwrap()
             .is_none());
-        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 10);
+        assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 11);
     }
 }

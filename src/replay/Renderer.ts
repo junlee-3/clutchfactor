@@ -66,7 +66,12 @@ export interface Scene {
   // worldToRadar so this module stays pure over pixels), in DTO priority
   // order (biggest place first — see callouts.ts). Undefined/empty = the
   // Callouts toggle is off or the map has none.
-  callouts?: { name: string; x: number; y: number }[];
+  callouts?: {
+    name: string;
+    x: number;
+    y: number;
+    layer: "upper" | "lower";
+  }[];
   // Current CSS width of the canvas element (ReplayCanvas reads
   // `canvas.clientWidth` once per frame) — callouts.ts's labelFontPx uses it
   // (with LOGICAL_W, the fixed logical drawing resolution — NOT
@@ -121,26 +126,27 @@ export function draw(ctx: CanvasRenderingContext2D, scene: Scene): void {
   if (geo) drawAnnotationTag(ctx, geo);
 }
 
-/** Map callout labels — upper radar layer only (no per-death relevance to
- *  track, unlike deaths/utility/annotation, so there's no lower-layer
- *  variant to build; ruling recorded in the Task 10 report). Drawn above
- *  the radar image and below every gameplay layer (utility/bomb/deaths/
- *  annotation/players/tag) so a label never competes with the scene's real
- *  subjects (design-system.md §1: labels are furniture, not evidence). Font
- *  size and the visibility floor come from callouts.ts so the same numbers
- *  back both this draw and its tests. */
+/** Map callout labels — each on the radar layer its median height belongs
+ *  to (Replay.tsx resolves it with `radarLayer`), so nuke's lower level
+ *  labels itself instead of stamping "B site" on top of A on the upper
+ *  radar. Drawn above the radar image and below every gameplay layer
+ *  (utility/bomb/deaths/annotation/players/tag) so a label never competes
+ *  with the scene's real subjects (design-system.md §1: labels are
+ *  furniture, not evidence). Font size and the visibility floor come from
+ *  callouts.ts so the same numbers back both this draw and its tests. */
 function drawCallouts(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
   layer: "upper" | "lower",
 ): void {
-  if (layer !== "upper") return;
+  const mine = scene.callouts?.filter((c) => c.layer === layer);
+  if (!mine?.length) return;
   const px = labelFontPx(LOGICAL_W, scene.cssWidth);
-  if (!px || !scene.callouts?.length) return;
+  if (!px) return;
 
   ctx.font = `${px}px ${MONO_STACK}`;
   const h = px * 1.2;
-  const boxes: LabelBox[] = scene.callouts.map((c) => ({
+  const boxes: LabelBox[] = mine.map((c) => ({
     name: c.name,
     x: c.x,
     y: c.y,
