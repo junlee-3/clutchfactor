@@ -1,0 +1,8 @@
+== Entry: first kill of the round vs freeze end (window 15 s = 960 ticks @64) ==
+R7: first kill tick 40511 (+795 ticks after freeze end) attacker=76561198987228442 victim=ME opposite_sides=True within_window=True
+R20: first kill tick 120688 (+624 ticks after freeze end) attacker=76561198826400404 victim=ME opposite_sides=True within_window=True
+== Clutch: kill-state replay (last alive on my side with >=1 enemy alive) ==
+R15: 1v3 situation, side T, round winner CT -> loss
+R18: 1v4 situation, side T, round winner CT -> loss
+R23: 1v4 situation, side T, round winner CT -> loss
+clutch attempts=3 wins=0

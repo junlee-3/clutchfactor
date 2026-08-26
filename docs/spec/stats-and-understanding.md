@@ -22,7 +22,7 @@ teammates never count as kills; a teamkill death counts as a death.
 | stat | definition | coaching link |
 |---|---|---|
 | **K / D** | enemy kills / deaths | Report death breakdown (taxonomy classes) |
-| **ADR** | Σ `dmg_health` dealt to enemies (hurts by the tracked player, victim on the other side) / rounds played, 1 dp | catalog: H16 / D2 utility damage |
+| **ADR** | Σ health actually removed from enemies / rounds played, 1 dp. CS2's `player_hurt.dmg_health` is uncapped (an AWP headshot logs 446), so each round is replayed with 100 HP per rostered player and every hurt credits `min(dmg_health, hp_left)` to an opposite-side attacker; team and self damage reduce hp but credit nobody | catalog: H16 / D2 utility damage |
 | **HS%** | headshot enemy kills / enemy kills, whole percent; `null` with 0 kills | catalog entry "aim outcomes" (what the engine cannot see) |
 | **KAST%** | rounds with a Kill, an Assist, Survival, or a Traded death (killer died to anyone within `trade.commit_window_s`) / rounds played | H2 trade rules |
 | **Entry** | attempts = rounds whose opening duel (first kill with both sides known, within `entry.opening_window_s` of freeze end — the H14 definition, applied to BOTH sides) involves the tracked player; wins = tracked was the attacker | D4_ENTRY_PROFILE / H14_UNSUPPORTED_ENTRY |
@@ -92,7 +92,8 @@ not provide). Every stat in §1 links here.
 cached in `map_callouts(map, place, x, y, samples)` (migration 0010) and
 refreshed after any import/re-analyze of that map; rendered by the replay
 `Renderer` as small mono labels (prettified via `callout_name`) in `--ink-dim`
-when the radar is drawn at ≥ 600 px on screen, under the player dots; a
+when the radar is drawn at ≥ 560 CSS px on screen (ruled down from 600: this Mac's
+maximum windowed radar is 596 px), under the player dots; a
 "Callouts" toggle in the transport (default on, remembered per session).
 
 ## 4. DoD (charter)

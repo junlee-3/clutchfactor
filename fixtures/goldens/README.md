@@ -634,3 +634,13 @@ the brief's R6/R13 pair (quiet and flagged) would not have. Mirage-tie R6
 and R13 were not hand-checked under the coach in this session; if the owner
 specifically wants those two, they can be regenerated and grounded the same
 way §C does for R8/R10.
+
+## V1.4 verification (2026-08-26)
+
+Charter DoD: every stat cross-checked against raw SQL for one real match; every stat links to its coaching. Evidence lives in `docs/design/walkthrough-v1.4/` (README + eight screenshots + `handverify-match8.txt`); the reusable cross-check is `scripts/stats-crosscheck.sql`.
+
+- **Match:** dev DB id 8, mirage-tie (`fixtures/own/`), tracked `misosoupy3` `76561199228328773`, re-analyzed through the app so the V1.4 engine wrote `match_stats`, `round_player_stats`, `map_callouts`.
+- **SQL cross-check:** all eleven raw/stored pairs agree — rounds 24, kills 7 (8 raw, one teamkill excluded), deaths 19, assists 5, headshots 0 (match-wide HS share 41.5 %, so the field is live), damage 923 (health-capped: `dmg_health` is uncapped in CS2, so engine and script both replay each round's hurts with 100 HP per player — the raw column sums to 967), KAST rounds 14, entry attempts 2, traded deaths 2, trade kills 1, trade opportunities 11.
+- **Hand-verified by an independent replay:** entries R7 (+12.4 s after freeze end) and R20 (+9.8 s), both losses; traded deaths R13 (killer died +1.6 s) and R21 (+1.4 s); clutch situations R15 1v3, R18 1v4, R23 1v4, all lost.
+- **Links:** every strip chip → `/watches?stat=<key>` → the rules whose `stat_links` name it; confirmed for all seven keys.
+- **Rulings recorded during execution** are in the milestone summary and ADR-0011 (stats computed in `analyze()` with the detectors' own helpers; typed tables; static catalog with a coverage test; callouts from `last_place` medians with z so labels draw on their own radar layer; 560 px label floor; damage capped at the health removed).

@@ -2,6 +2,7 @@
 
 Desktop CS2 coaching app: parses match demo files (`.dem`) and produces coaching insights backed by a 2D replay viewer — not a stats tracker. **`PROMPT-V1.md` is the approved v1 engineering charter — read it first; it supersedes `PROMPT.md` where they conflict, and PROMPT.md remains binding everywhere else.** v1 pillars: round-by-round coaching (GitHub issue #9 IS that spec — read it fully), Gemini AI layer, premium design system, coaching depth + stats. `docs/spec/death-taxonomy.md` (PROMPT.md §5A) governs death/duel analysis: 15-class taxonomy, H1–H16 rule families, cross-demo habit tracking. This file is session context; keep it ≤120 lines and always correct (§11.1).
 `docs/spec/play-ledger-and-coach.md` governs V1.2b's play ledger (every round narrated) and V1.3's coach contract (facts validated, judgment free).
+`docs/spec/stats-and-understanding.md` governs V1.4's stats (every number cross-checkable by SQL — `scripts/stats-crosscheck.sql` — and linked to its coaching on `/watches`).
 
 Tracked player (owner): SteamID64 `76561199228328773`, in-game name `misosoupy3` — present in all five `fixtures/own/` demos.
 
@@ -32,7 +33,7 @@ Coach (V1.3): key via Settings → Coach or `CLUTCHFACTOR_GEMINI_KEY`; debug bui
 
 ```
 src-tauri/crates/cf-parser/    demoparser2 wrapper → normalized MatchData (ONLY interface cf-analysis sees)
-src-tauri/crates/cf-analysis/  Detector trait impls: pure fns MatchData → Vec<Insight>, no I/O
+src-tauri/crates/cf-analysis/  Detector trait impls: pure fns MatchData → Vec<Insight>, no I/O; stats (coaching-first, health-capped damage) + catalog (what the coach watches)
 src-tauri/crates/cf-store/     SQLite (rusqlite bundled), embedded versioned migrations
 src-tauri/crates/cf-narrator/  CoachingNarrator trait + TemplateNarrator (v1)
 src-tauri/src/                 Tauri app: snake_case commands, Progress{stage,pct,detail} event

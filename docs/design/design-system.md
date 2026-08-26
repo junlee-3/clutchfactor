@@ -160,6 +160,7 @@ respects `prefers-reduced-motion` (existing pattern, kept).
   dashing is reserved for evidence you can click through to watch.
 - Hover on a dashed element brightens it to `--ink-bright` — the coach
   presses the line down.
+- **Identity, not verdict:** the scoreboard's tracked-player row uses the same solid 2px edge in `--ink-bright` — "this is you", never an outcome tone (V1.4).
 
 ## 6. Components (`src/components/ui/`)
 
