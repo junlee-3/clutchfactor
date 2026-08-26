@@ -947,6 +947,18 @@ impl Store {
         Ok(())
     }
 
+    /// How many imported matches (own or corpus) are on this map — the
+    /// signal that an empty `map_callouts` is a stale cache, not a map
+    /// nobody has played.
+    pub fn match_count_for_map(&self, map: &str) -> Result<u32, StoreError> {
+        let n: u32 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM matches WHERE map = ?1", [map], |r| {
+                    r.get(0)
+                })?;
+        Ok(n)
+    }
+
     pub fn load_map_callouts(&self, map: &str) -> Result<Vec<MapCalloutRow>, StoreError> {
         let mut st = self.conn.prepare(
             "SELECT place, x, y, z, samples FROM map_callouts WHERE map = ?1 ORDER BY place",
@@ -3581,6 +3593,13 @@ mod tests {
         store.save_map_callouts("de_mirage", &[]).unwrap();
         assert!(store.load_map_callouts("de_mirage").unwrap().is_empty());
         assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 11);
+    }
+
+    #[test]
+    fn match_count_for_map_counts_only_that_maps_matches() {
+        let (_dir, store, _id, _data) = one_match();
+        assert_eq!(store.match_count_for_map("de_mirage").unwrap(), 1);
+        assert_eq!(store.match_count_for_map("de_nuke").unwrap(), 0);
     }
 
     #[test]

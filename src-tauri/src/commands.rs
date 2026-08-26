@@ -2277,7 +2277,21 @@ pub fn get_map_callouts(
     state: State<'_, AppState>,
     map: String,
 ) -> Result<Vec<CalloutDto>, String> {
-    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    // Callouts are written after an import or a re-analyze, so a map whose
+    // matches were all analyzed before V1.4 has none. Fill it in on first
+    // ask (measured 0.05-0.09 s over a map's 1 Hz samples) rather than
+    // showing a Callouts toggle that does nothing.
+    let missing = store
+        .load_map_callouts(&map)
+        .map_err(|e| e.to_string())?
+        .is_empty();
+    if missing && store.match_count_for_map(&map).map_err(|e| e.to_string())? > 0 {
+        if let Err(e) = refresh_map_callouts(&mut store, &map) {
+            eprintln!("callout refresh for {map} failed: {e}");
+            return Ok(vec![]);
+        }
+    }
     let mut out: Vec<CalloutDto> = store
         .load_map_callouts(&map)
         .map_err(|e| e.to_string())?
