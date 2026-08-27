@@ -53,6 +53,7 @@ fixtures/                      real .dem files, gitignored; see fixtures/README.
 - All detector thresholds live in `DetectorConfig` with documented defaults (PROMPT.md §6.4) — never scatter magic numbers; thresholds in seconds/world units, never ticks.
 - Detectors are pure functions over `MatchData`; TDD with synthetic scenario builders is mandatory.
 - Rule engine (§5A): rule ids (`H2_ISOLATED_DEATH`, …) are load-bearing — never rename/renumber; rules are data (YAML), each emits `confidence`; approximations bias toward silence (false negative ≫ false positive); every rule gets a hand-verified golden clip test; class-13 share is a golden-test regression metric (needs `fixtures/` demos, so it runs locally — CI runners only get the synthetic suites).
+- Releases: bump `package.json` + `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml` (workspace crates stay 0.1.0), tag `vX.Y.Z` on main → `release.yml` builds both installers; then `gh release edit vX.Y.Z --notes-file …`. Debug builds print `perf: <command> <ms> ms`; `VITE_FAIL_IPC=<command> pnpm tauri dev` provokes a screen's error state.
 - Real demos only — no fake match data, no placeholder insights.
 - Verify external APIs (demoparser2, Tauri) against docs/real output before coding against them.
 
