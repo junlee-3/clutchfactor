@@ -1,10 +1,12 @@
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { errorMessage } from "../lib/errors";
 import { useDetectorCatalog } from "../lib/queries";
 import { STAT_KEYS, STAT_TITLES, type StatKey } from "../lib/statFormat";
 import { Card } from "../components/ui/Card";
 import { Chip } from "../components/ui/Chip";
 import { DataTable } from "../components/ui/DataTable";
+import { EmptyState } from "../components/ui/EmptyState";
 import { Segmented } from "../components/ui/Segmented";
 import { Skeleton } from "../components/ui/Skeleton";
 
@@ -38,7 +40,11 @@ export function Watches() {
     return (
       <div className="wat-shell">
         <h1 className="type-display">What your coach watches</h1>
-        <p className="type-body">Couldn't load the catalog — {String(cat.error)}</p>
+        <EmptyState
+          title="Couldn't load the catalog"
+          body={errorMessage(cat.error)}
+          action={{ label: "Retry", onClick: () => void cat.refetch() }}
+        />
       </div>
     );
   }

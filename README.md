@@ -1,21 +1,34 @@
 # ClutchFactor
 
-Desktop CS2 coaching app. Import your own matchmaking or FACEIT demos (`.dem`)
-and get coaching you can *watch*: every insight links to the exact rounds and
-seconds in a 2D replay, so you can see the mistake instead of taking a stat's
-word for it. It is a coach, not a stats tracker.
+ClutchFactor is a coach, not a stats tracker: import your own CS2 demo
+(`.dem`) and it narrates what happened, round by round. Every insight and
+every number it shows links to the exact rounds and seconds in a 2D replay,
+so you can watch the play instead of taking a stat's word for it.
 
 ![Match report](docs/screenshots/report.png)
 
 ## What it does
 
-- **Match report** — a narrated insight feed ("You died isolated 7 times with
-  no teammate close enough to punish the kill — rounds 3, 11, 12…"), a
-  15-class breakdown of *how* you died (one primary cause per death,
-  priority-ordered), and a round strip. Every card carries evidence chips
-  that open the replay at the right tick.
+- **Round-by-round coaching** — every round is narrated from a play ledger:
+  setup, utility, trades, deaths, rotations, outcome. Each round gets a
+  verdict, and when one play decided it, the report names that play.
+- **The AI coach** — optional. With a Gemini key set, the coach reads the
+  measured facts for a round and writes its own read on what happened, per
+  round and per match — a judgment call, not a template fill-in. Every
+  number, name and callout it cites is checked against those facts before
+  you see it. No key means no network call and no coach — just the
+  plain-language templates.
+- **Stats that link to their coaching** — K/D, ADR (damage counted as
+  health actually removed, not the game's uncapped damage log), HS%, KAST,
+  entry attempts and wins, trade rate, clutch attempts and wins. Every stat
+  is a chip that opens the rules behind it.
+- **What your coach watches** — a dedicated screen listing every detection
+  rule in plain language with its live thresholds, which of the 15 death
+  classes aren't built yet and why, and what the engine flatly cannot see
+  (economy, utility lineups, comms, aim mechanics, line of sight).
 - **2D replay** — radar playback of any round at 60 fps: positions, health,
-  weapons, kill feed, deaths. Deep-linked from every insight.
+  weapons, kill feed, deaths, callout labels on the map. Deep-linked from
+  every insight and every stat.
 - **Cross-match habits** — patterns promoted only when they repeat ("Left
   trades on the table in 5 of your last 10 matches"), including repeat death
   hotspots per map, with evidence into each contributing demo.
@@ -35,17 +48,30 @@ word for it. It is a coach, not a stats tracker.
 
 ## The analysis, honestly
 
-Deaths are classified by a rule engine (families H1–H16 over parsed demo
-events: positions, trades, utility, timing) with documented thresholds —
-never scattered magic numbers. Rules bias toward silence: a missed detection
-is fine, a wrong accusation is not, and every rule carries a confidence.
-Deaths the engine can't attribute stay "Unclassified" and the report says
-so. Geometry-level analysis (raycast line-of-sight, "crosshair placement")
-is out of scope for v1 — nothing here pretends otherwise.
+Deaths are classified into 15 classes by a rule engine (families H1–H16
+over parsed demo events: positions, trades, utility, timing), and every
+threshold behind them is documented config, not a magic number buried in
+code. Three classes are not built: over-peeks (8) and wide peeks (10) need peek
+geometry the parser doesn't provide, and per-death hotspot classification
+(12) needs a "standard angle" model — hotspots are tracked across matches
+instead. The "What your coach watches" screen says so rather than folding
+them into a false "fair duel."
+Rules bias toward silence: a missed detection is fine, a wrong accusation is
+not, and every rule carries a confidence. Deaths the engine can't attribute
+stay "Unclassified" and the report says so. Line-of-sight raycasts and
+crosshair placement are out of scope for v1 — the engine has positions and
+events, not sightlines or aim.
+
+The AI coach can judge and prioritize from its own CS2 knowledge, but it
+cannot invent a number: every figure, player name, callout and round it
+cites is checked against the measured facts before it's shown, and anything
+that doesn't check out is rejected in favor of the template. The only
+network call this app ever makes is to Google's Gemini API, and only when
+you've set a key.
 
 ## Install
 
-Grab the latest release from the
+Grab **v1.0.0** from the
 [releases page](../../releases):
 
 - **Windows** — the `.exe` NSIS installer (or `.msi`). SmartScreen will warn
@@ -53,10 +79,14 @@ Grab the latest release from the
 - **macOS** (Apple silicon) — the `.dmg`. Unsigned: right-click the app →
   Open on first launch.
 
-Then: **Import demo** → pick a `.dem` from your own matches (CS2 → Watch →
-Your Matches → Download, or FACEIT match room). The app auto-detects which
-player you are (most-seen account across your imports) — override it in
-Settings if it guesses wrong.
+First run: **Import demo** → pick a `.dem` from your own matches (CS2 →
+Watch → Your Matches → Download, or a FACEIT match room). The app
+auto-detects which player you are (the most-seen account across your
+imports) — override it in Settings if it guesses wrong.
+
+The AI coach is optional. Add a Gemini API key under Settings → Coach; it's
+stored in the app's local database and never leaves your machine except in
+requests to Google's API when the coach runs.
 
 ## Development
 
@@ -71,8 +101,9 @@ cargo test --manifest-path src-tauri/Cargo.toml --workspace
 ```
 
 Architecture: `cf-parser` (demoparser2 wrapper → normalized match data) →
-`cf-analysis` (pure detectors) → `cf-store` (SQLite) → Tauri commands →
-React/canvas frontend. Real demos live in `fixtures/` (gitignored — see
-`fixtures/README.md`). Radar images vendored from
+`cf-analysis` (detectors, play ledger, stats, catalog) → `cf-store`
+(SQLite) → Tauri commands (+ the coach) → React/canvas. Real demos live in
+`fixtures/` (gitignored — see `fixtures/README.md`). Radar images vendored
+from
 [awpy](https://github.com/pnxenopoulos/awpy) (see
 `assets/maps/ATTRIBUTION.md`).

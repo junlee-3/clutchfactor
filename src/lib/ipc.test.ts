@@ -18,4 +18,14 @@ describe("call", () => {
     await call("list_matches");
     expect(measure.mock.calls.some((c) => c[0] === "ipc:list_matches")).toBe(true);
   });
+  it("forces a rejection for the command named by VITE_FAIL_IPC, in dev, without calling invoke", async () => {
+    vi.stubEnv("VITE_FAIL_IPC", "list_matches");
+    try {
+      const { call } = await import("./ipc");
+      await expect(call("list_matches")).rejects.toThrow(/forced failure/);
+      expect(invoke).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });

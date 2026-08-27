@@ -9,7 +9,10 @@ import "./styles/base.css";
 import "./styles/components.css";
 import "./styles/screens.css";
 
-const queryClient = new QueryClient();
+// Commands are local (SQLite + the demo file); a failure is deterministic,
+// so TanStack's default three retries with backoff only turn an error into
+// seven seconds of skeleton. Every screen's error state carries a Retry.
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

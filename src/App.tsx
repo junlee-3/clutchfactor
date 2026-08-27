@@ -1,6 +1,8 @@
-import { Route, Routes, useNavigate } from "react-router-dom";
+import type { ReactNode } from "react";
+import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AppShell } from "./components/ui/AppShell";
 import { EmptyState } from "./components/ui/EmptyState";
+import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { Corpus } from "./screens/Corpus";
 import { Library } from "./screens/Library";
 import { Replay } from "./screens/Replay";
@@ -22,18 +24,26 @@ function NotFound() {
   );
 }
 
+// Route-level safety net (spec §2, ErrorBoundary.tsx): keyed on the
+// pathname so a crash on one screen never survives a navigation to
+// another — the boundary clears itself as soon as the route changes.
+function RouteBoundary({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  return <ErrorBoundary resetKey={pathname}>{children}</ErrorBoundary>;
+}
+
 export default function App() {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        <Route path="/" element={<Library />} />
-        <Route path="/trends" element={<Trends />} />
-        <Route path="/watches" element={<Watches />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/corpus" element={<Corpus />} />
-        <Route path="/report/:matchId" element={<Report />} />
-        <Route path="/replay/:matchId" element={<Replay />} />
-        <Route path="*" element={<NotFound />} />
+        <Route path="/" element={<RouteBoundary><Library /></RouteBoundary>} />
+        <Route path="/trends" element={<RouteBoundary><Trends /></RouteBoundary>} />
+        <Route path="/watches" element={<RouteBoundary><Watches /></RouteBoundary>} />
+        <Route path="/settings" element={<RouteBoundary><Settings /></RouteBoundary>} />
+        <Route path="/corpus" element={<RouteBoundary><Corpus /></RouteBoundary>} />
+        <Route path="/report/:matchId" element={<RouteBoundary><Report /></RouteBoundary>} />
+        <Route path="/replay/:matchId" element={<RouteBoundary><Replay /></RouteBoundary>} />
+        <Route path="*" element={<RouteBoundary><NotFound /></RouteBoundary>} />
       </Route>
     </Routes>
   );

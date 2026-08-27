@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { errorMessage } from "../lib/errors";
 import type { StatSeries, TrendsDto } from "../lib/ipc";
 import { mapName } from "../lib/mapName";
 import { useMatches, useTrends } from "../lib/queries";
@@ -152,6 +153,12 @@ export function Trends() {
           <Skeleton kind="block" className="trends-line-skeleton" />
           <Skeleton kind="rows" count={3} className="trends-rule-skeleton" />
         </div>
+      ) : trends.isError ? (
+        <EmptyState
+          title="Couldn't load Trends"
+          body={errorMessage(trends.error)}
+          action={{ label: "Retry", onClick: () => void trends.refetch() }}
+        />
       ) : !enough ? (
         <EmptyState
           title="Not enough matches yet"

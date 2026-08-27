@@ -863,6 +863,17 @@ a.stats-chip:hover {
   min-height: 420px;
 }
 
+/* This round's ticks failed to load (VITE_FAIL_IPC=get_round_ticks, or a
+   real store error): same footprint as PlayerAreaSkeleton so switching a
+   round chip never shifts the header/round-strip above it. */
+.rpl-round-error {
+  flex: 1;
+  min-height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .rpl-player {
   display: flex;
   flex-direction: column;
@@ -2154,10 +2165,13 @@ a.stats-chip:hover {
 }
 
 /* ---------------------------------------------------------------------- */
-/* Catch-all (App.tsx `*` route)                                           */
+/* Route-level states: the catch-all route and ErrorBoundary's fallback     */
+/* (App.tsx) — both replace the whole screen, so both center like an       */
+/* EmptyState-only page (design-system.md §6, §10).                        */
 /* ---------------------------------------------------------------------- */
 
-.route-not-found {
+.route-not-found,
+.route-crash {
   display: flex;
   align-items: center;
   justify-content: center;

@@ -10,6 +10,7 @@ import {
   startFile,
   type QueueFile,
 } from "../lib/importQueue";
+import { errorMessage } from "../lib/errors";
 import { useDeleteMatch, useImportDemo, useMatches, useReAnalyzeMatch } from "../lib/queries";
 import { formatMatchRow } from "../lib/score";
 import { mapInitials, mapName } from "../lib/mapName";
@@ -160,6 +161,12 @@ export function Library() {
         <div className="library-loading" role="status" aria-label="Loading matches">
           <Skeleton kind="rows" count={6} className="library-row-skeleton" />
         </div>
+      ) : matches.isError ? (
+        <EmptyState
+          title="Couldn't load your matches"
+          body={errorMessage(matches.error)}
+          action={{ label: "Retry", onClick: () => void matches.refetch() }}
+        />
       ) : showEmpty ? (
         <EmptyState
           title="No matches yet"

@@ -12,6 +12,7 @@ import { MatchHeader } from "../components/ui/MatchHeader";
 import { Segmented } from "../components/ui/Segmented";
 import { Skeleton } from "../components/ui/Skeleton";
 import { useToast } from "../components/ui/Toast";
+import { errorMessage } from "../lib/errors";
 import { parseEvidenceParams } from "../lib/evidence";
 import type { BombInfo, KillInfo, MatchDetail, RoundReviewDto } from "../lib/ipc";
 import { mapName } from "../lib/mapName";
@@ -156,6 +157,15 @@ export function Replay() {
       </div>
     );
   }
+  if (detail.isError) {
+    return (
+      <EmptyState
+        title="Couldn't load this replay"
+        body={errorMessage(detail.error)}
+        action={{ label: "Retry", onClick: () => void detail.refetch() }}
+      />
+    );
+  }
   if (!d) {
     return (
       <EmptyState
@@ -220,7 +230,17 @@ export function Replay() {
           );
         })}
       </div>
-      {ticks.isLoading || !ticks.data ? (
+      {ticks.isLoading ? (
+        <PlayerAreaSkeleton standalone />
+      ) : ticks.isError ? (
+        <div className="rpl-round-error">
+          <EmptyState
+            title="Couldn't load this replay"
+            body={errorMessage(ticks.error)}
+            action={{ label: "Retry", onClick: () => void ticks.refetch() }}
+          />
+        </div>
+      ) : !ticks.data ? (
         <PlayerAreaSkeleton standalone />
       ) : (
         <RoundPlayer
