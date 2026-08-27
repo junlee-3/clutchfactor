@@ -51,9 +51,11 @@ so you can watch the play instead of taking a stat's word for it.
 Deaths are classified into 15 classes by a rule engine (families H1–H16
 over parsed demo events: positions, trades, utility, timing), and every
 threshold behind them is documented config, not a magic number buried in
-code. Three classes (8, 10, 12) are not built: they need peek geometry and
-angle-of-exposure data the parser doesn't provide, and the "What your coach
-watches" screen says so rather than folding them into a false "fair duel."
+code. Three classes are not built: over-peeks (8) and wide peeks (10) need peek
+geometry the parser doesn't provide, and per-death hotspot classification
+(12) needs a "standard angle" model — hotspots are tracked across matches
+instead. The "What your coach watches" screen says so rather than folding
+them into a false "fair duel."
 Rules bias toward silence: a missed detection is fine, a wrong accusation is
 not, and every rule carries a confidence. Deaths the engine can't attribute
 stay "Unclassified" and the report says so. Line-of-sight raycasts and
