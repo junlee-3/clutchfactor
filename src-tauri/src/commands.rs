@@ -15,6 +15,8 @@ use sha2::{Digest, Sha256};
 use tauri::ipc::Channel;
 use tauri::State;
 
+use crate::perf::timed;
+
 /// Per ADR-0002.
 const SAMPLE_EVERY: u32 = 4;
 
@@ -608,8 +610,10 @@ pub async fn regenerate_coach_synthesis(
 
 #[tauri::command]
 pub fn list_matches(state: State<'_, AppState>) -> Result<Vec<MatchSummary>, String> {
-    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
-    store.list_matches().map_err(|e| e.to_string())
+    timed("list_matches", || {
+        let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        store.list_matches().map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command]
@@ -623,8 +627,10 @@ pub fn get_match_detail(
     state: State<'_, AppState>,
     match_id: i64,
 ) -> Result<Option<MatchDetail>, String> {
-    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
-    store.match_detail(match_id).map_err(|e| e.to_string())
+    timed("get_match_detail", || {
+        let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        store.match_detail(match_id).map_err(|e| e.to_string())
+    })
 }
 
 // ---- M4: match report + cross-demo habits ----
@@ -786,83 +792,87 @@ pub fn get_match_report(
     state: State<'_, AppState>,
     match_id: i64,
 ) -> Result<Option<MatchReport>, String> {
-    use cf_narrator::{CoachingNarrator, TemplateNarrator};
-    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
-    let Some(MatchCtxBundle {
-        ctx,
-        detail,
-        death_classes,
-        tracked,
-        tracked_result,
-        class_13_share_pct,
-    }) = match_context(&store, match_id)?
-    else {
-        return Ok(None);
-    };
+    timed("get_match_report", || {
+        use cf_narrator::{CoachingNarrator, TemplateNarrator};
+        let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        let Some(MatchCtxBundle {
+            ctx,
+            detail,
+            death_classes,
+            tracked,
+            tracked_result,
+            class_13_share_pct,
+        }) = match_context(&store, match_id)?
+        else {
+            return Ok(None);
+        };
 
-    let narrator = TemplateNarrator;
-    let rows = store
-        .insights_for_match(match_id)
-        .map_err(|e| e.to_string())?;
-    let parsed: Vec<cf_analysis::Insight> = rows.iter().filter_map(insight_from_row).collect();
-    let mut insights: Vec<NarratedInsight> = parsed
-        .iter()
-        .map(|i| {
-            let n = narrator.narrate(i, &ctx);
-            let count = i.metrics.get("count").and_then(|v| v.as_u64()).unwrap_or(1) as f32;
-            NarratedInsight {
-                detector: i.detector.clone(),
-                category: match i.category {
-                    cf_analysis::Category::Deaths => "deaths",
-                    cf_analysis::Category::Utility => "utility",
-                    cf_analysis::Category::Positioning => "positioning",
-                    cf_analysis::Category::Timing => "timing",
+        let narrator = TemplateNarrator;
+        let rows = store
+            .insights_for_match(match_id)
+            .map_err(|e| e.to_string())?;
+        let parsed: Vec<cf_analysis::Insight> = rows.iter().filter_map(insight_from_row).collect();
+        let mut insights: Vec<NarratedInsight> = parsed
+            .iter()
+            .map(|i| {
+                let n = narrator.narrate(i, &ctx);
+                let count = i.metrics.get("count").and_then(|v| v.as_u64()).unwrap_or(1) as f32;
+                NarratedInsight {
+                    detector: i.detector.clone(),
+                    category: match i.category {
+                        cf_analysis::Category::Deaths => "deaths",
+                        cf_analysis::Category::Utility => "utility",
+                        cf_analysis::Category::Positioning => "positioning",
+                        cf_analysis::Category::Timing => "timing",
+                    }
+                    .to_string(),
+                    severity: i.severity,
+                    confidence: i.confidence,
+                    round: i.round,
+                    score: i.severity * i.confidence * (1.0 + count).ln(),
+                    title: n.title,
+                    body: n.body,
+                    metrics: i.metrics.clone(),
+                    evidence: i.evidence.clone(),
                 }
-                .to_string(),
-                severity: i.severity,
-                confidence: i.confidence,
-                round: i.round,
-                score: i.severity * i.confidence * (1.0 + count).ln(),
-                title: n.title,
-                body: n.body,
-                metrics: i.metrics.clone(),
-                evidence: i.evidence.clone(),
-            }
-        })
-        .collect();
-    insights.sort_by(|a, b| b.score.total_cmp(&a.score));
-    let summary = narrator.summarize(&parsed, &ctx).map(|n| NarrationDto {
-        title: n.title,
-        body: n.body,
-    });
+            })
+            .collect();
+        insights.sort_by(|a, b| b.score.total_cmp(&a.score));
+        let summary = narrator.summarize(&parsed, &ctx).map(|n| NarrationDto {
+            title: n.title,
+            body: n.body,
+        });
 
-    let per_round = tracked
-        .as_ref()
-        .map(|t| store.per_round_stats(match_id, t))
-        .transpose()
-        .map_err(|e| e.to_string())?
-        .unwrap_or_default();
+        let per_round = tracked
+            .as_ref()
+            .map(|t| store.per_round_stats(match_id, t))
+            .transpose()
+            .map_err(|e| e.to_string())?
+            .unwrap_or_default();
 
-    Ok(Some(MatchReport {
-        match_id,
-        map: detail.map,
-        score_a: detail.score_a,
-        score_b: detail.score_b,
-        tracked,
-        tracked_result,
-        summary,
-        insights,
-        death_classes,
-        class_13_share_pct,
-        per_round,
-        classes_not_built: vec![8, 10, 12],
-    }))
+        Ok(Some(MatchReport {
+            match_id,
+            map: detail.map,
+            score_a: detail.score_a,
+            score_b: detail.score_b,
+            tracked,
+            tracked_result,
+            summary,
+            insights,
+            death_classes,
+            class_13_share_pct,
+            per_round,
+            classes_not_built: vec![8, 10, 12],
+        }))
+    })
 }
 
 #[tauri::command]
 pub fn get_habits(state: State<'_, AppState>) -> Result<Vec<HabitReport>, String> {
-    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
-    habit_reports(&store)
+    timed("get_habits", || {
+        let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        habit_reports(&store)
+    })
 }
 
 /// The body of `get_habits`, callable under a lock the caller already holds
@@ -1041,78 +1051,80 @@ pub struct TrendsDto {
 /// 8 largest totals.
 #[tauri::command]
 pub fn get_trends(state: State<'_, AppState>) -> Result<TrendsDto, String> {
-    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
-    let Some(tracked) = store.tracked_steamid().map_err(|e| e.to_string())? else {
-        return Ok(TrendsDto {
-            matches: vec![],
-            rules: vec![],
-            stats: vec![],
-        });
-    };
-
-    let matches = store.trend_matches(&tracked).map_err(|e| e.to_string())?;
-    let window = matches.len();
-    let match_index: HashMap<i64, usize> = matches
-        .iter()
-        .enumerate()
-        .map(|(i, m)| (m.match_id, i))
-        .collect();
-
-    let mut by_rule: HashMap<String, Vec<u32>> = HashMap::new();
-    for cell in store
-        .rule_trend_counts(&tracked)
-        .map_err(|e| e.to_string())?
-    {
-        let Some(&idx) = match_index.get(&cell.match_id) else {
-            continue;
+    timed("get_trends", || {
+        let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        let Some(tracked) = store.tracked_steamid().map_err(|e| e.to_string())? else {
+            return Ok(TrendsDto {
+                matches: vec![],
+                rules: vec![],
+                stats: vec![],
+            });
         };
-        by_rule
-            .entry(cell.rule_id)
-            .or_insert_with(|| vec![0u32; window])[idx] = cell.count;
-    }
 
-    let mut rules: Vec<RuleSeries> = by_rule
-        .into_iter()
-        .map(|(rule_id, counts)| {
-            let matches_hit = counts.iter().filter(|&&c| c > 0).count();
-            let total: u32 = counts.iter().sum();
-            let n = cf_narrator::narrate_habit(
-                &rule_id,
-                matches_hit,
-                window,
-                total,
-                &serde_json::json!({}),
-            );
-            RuleSeries {
-                rule_id,
-                title: n.title,
-                counts,
-                total,
-            }
+        let matches = store.trend_matches(&tracked).map_err(|e| e.to_string())?;
+        let window = matches.len();
+        let match_index: HashMap<i64, usize> = matches
+            .iter()
+            .enumerate()
+            .map(|(i, m)| (m.match_id, i))
+            .collect();
+
+        let mut by_rule: HashMap<String, Vec<u32>> = HashMap::new();
+        for cell in store
+            .rule_trend_counts(&tracked)
+            .map_err(|e| e.to_string())?
+        {
+            let Some(&idx) = match_index.get(&cell.match_id) else {
+                continue;
+            };
+            by_rule
+                .entry(cell.rule_id)
+                .or_insert_with(|| vec![0u32; window])[idx] = cell.count;
+        }
+
+        let mut rules: Vec<RuleSeries> = by_rule
+            .into_iter()
+            .map(|(rule_id, counts)| {
+                let matches_hit = counts.iter().filter(|&&c| c > 0).count();
+                let total: u32 = counts.iter().sum();
+                let n = cf_narrator::narrate_habit(
+                    &rule_id,
+                    matches_hit,
+                    window,
+                    total,
+                    &serde_json::json!({}),
+                );
+                RuleSeries {
+                    rule_id,
+                    title: n.title,
+                    counts,
+                    total,
+                }
+            })
+            .filter(|r| r.total >= 2)
+            .collect();
+        rules.sort_by(|a, b| {
+            b.total
+                .cmp(&a.total)
+                .then_with(|| a.rule_id.cmp(&b.rule_id))
+        });
+        rules.truncate(8);
+
+        let ids: Vec<i64> = matches.iter().map(|m| m.match_id).collect();
+        let by_id: HashMap<i64, cf_store::store::MatchStatsRow> = store
+            .match_stats_for_matches(&ids)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .collect();
+        let rows: Vec<Option<cf_store::store::MatchStatsRow>> =
+            ids.iter().map(|id| by_id.get(id).copied()).collect();
+        let stats = stat_series(&rows);
+
+        Ok(TrendsDto {
+            matches,
+            rules,
+            stats,
         })
-        .filter(|r| r.total >= 2)
-        .collect();
-    rules.sort_by(|a, b| {
-        b.total
-            .cmp(&a.total)
-            .then_with(|| a.rule_id.cmp(&b.rule_id))
-    });
-    rules.truncate(8);
-
-    let ids: Vec<i64> = matches.iter().map(|m| m.match_id).collect();
-    let by_id: HashMap<i64, cf_store::store::MatchStatsRow> = store
-        .match_stats_for_matches(&ids)
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .collect();
-    let rows: Vec<Option<cf_store::store::MatchStatsRow>> =
-        ids.iter().map(|id| by_id.get(id).copied()).collect();
-    let stats = stat_series(&rows);
-
-    Ok(TrendsDto {
-        matches,
-        rules,
-        stats,
     })
 }
 
@@ -1122,10 +1134,12 @@ pub fn get_round_ticks(
     match_id: i64,
     round: u32,
 ) -> Result<RoundTicks, String> {
-    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
-    store
-        .round_ticks(match_id, round)
-        .map_err(|e| e.to_string())
+    timed("get_round_ticks", || {
+        let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        store
+            .round_ticks(match_id, round)
+            .map_err(|e| e.to_string())
+    })
 }
 
 // ---- M5: reference corpus + D6 positioning ----
@@ -1746,8 +1760,10 @@ pub fn get_round_review(
     state: State<'_, AppState>,
     match_id: i64,
 ) -> Result<Vec<RoundReviewDto>, String> {
-    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
-    assemble_round_reviews(&mut store, match_id)
+    timed("get_round_review", || {
+        let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        assemble_round_reviews(&mut store, match_id)
+    })
 }
 
 /// The body of `get_round_review`, callable under a lock the caller already
@@ -2139,11 +2155,13 @@ pub fn get_match_stats(
     state: State<'_, AppState>,
     match_id: i64,
 ) -> Result<Option<MatchStatsDto>, String> {
-    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
-    Ok(store
-        .load_match_stats(match_id)
-        .map_err(|e| e.to_string())?
-        .map(|s| stats_dto(&s)))
+    timed("get_match_stats", || {
+        let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        Ok(store
+            .load_match_stats(match_id)
+            .map_err(|e| e.to_string())?
+            .map(|s| stats_dto(&s)))
+    })
 }
 
 #[tauri::command]
@@ -2152,36 +2170,38 @@ pub fn get_round_scoreboard(
     match_id: i64,
     round: Option<u32>,
 ) -> Result<Vec<PlayerRoundStatsDto>, String> {
-    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
-    let tracked = store.tracked_steamid().map_err(|e| e.to_string())?;
-    let names: HashMap<String, String> = store
-        .match_detail(match_id)
-        .map_err(|e| e.to_string())?
-        .map(|d| d.players.into_iter().map(|p| (p.steamid, p.name)).collect())
-        .unwrap_or_default();
-    Ok(store
-        .load_round_player_stats(match_id, round)
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .map(|r| PlayerRoundStatsDto {
-            name: names
-                .get(&r.steamid)
-                .cloned()
-                .unwrap_or_else(|| r.steamid.clone()),
-            tracked: tracked.as_deref() == Some(r.steamid.as_str()),
-            round: r.round,
-            steamid: r.steamid,
-            side: r.side,
-            kills: r.kills,
-            deaths: r.deaths,
-            assists: r.assists,
-            damage: r.damage,
-            headshots: r.headshots,
-            survived: r.survived,
-            traded: r.traded,
-            entry: r.entry,
-        })
-        .collect())
+    timed("get_round_scoreboard", || {
+        let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        let tracked = store.tracked_steamid().map_err(|e| e.to_string())?;
+        let names: HashMap<String, String> = store
+            .match_detail(match_id)
+            .map_err(|e| e.to_string())?
+            .map(|d| d.players.into_iter().map(|p| (p.steamid, p.name)).collect())
+            .unwrap_or_default();
+        Ok(store
+            .load_round_player_stats(match_id, round)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|r| PlayerRoundStatsDto {
+                name: names
+                    .get(&r.steamid)
+                    .cloned()
+                    .unwrap_or_else(|| r.steamid.clone()),
+                tracked: tracked.as_deref() == Some(r.steamid.as_str()),
+                round: r.round,
+                steamid: r.steamid,
+                side: r.side,
+                kills: r.kills,
+                deaths: r.deaths,
+                assists: r.assists,
+                damage: r.damage,
+                headshots: r.headshots,
+                survived: r.survived,
+                traded: r.traded,
+                entry: r.entry,
+            })
+            .collect())
+    })
 }
 
 #[tauri::command]
@@ -2277,37 +2297,39 @@ pub fn get_map_callouts(
     state: State<'_, AppState>,
     map: String,
 ) -> Result<Vec<CalloutDto>, String> {
-    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
-    // Callouts are written after an import or a re-analyze, so a map whose
-    // matches were all analyzed before V1.4 has none. Fill it in on first
-    // ask (measured 0.05-0.09 s over a map's 1 Hz samples) rather than
-    // showing a Callouts toggle that does nothing.
-    let missing = store
-        .load_map_callouts(&map)
-        .map_err(|e| e.to_string())?
-        .is_empty();
-    if missing && store.match_count_for_map(&map).map_err(|e| e.to_string())? > 0 {
-        if let Err(e) = refresh_map_callouts(&mut store, &map) {
-            eprintln!("callout refresh for {map} failed: {e}");
-            return Ok(vec![]);
+    timed("get_map_callouts", || {
+        let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        // Callouts are written after an import or a re-analyze, so a map whose
+        // matches were all analyzed before V1.4 has none. Fill it in on first
+        // ask (measured 0.05-0.09 s over a map's 1 Hz samples) rather than
+        // showing a Callouts toggle that does nothing.
+        let missing = store
+            .load_map_callouts(&map)
+            .map_err(|e| e.to_string())?
+            .is_empty();
+        if missing && store.match_count_for_map(&map).map_err(|e| e.to_string())? > 0 {
+            if let Err(e) = refresh_map_callouts(&mut store, &map) {
+                eprintln!("callout refresh for {map} failed: {e}");
+                return Ok(vec![]);
+            }
         }
-    }
-    let mut out: Vec<CalloutDto> = store
-        .load_map_callouts(&map)
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .map(|r| CalloutDto {
-            name: cf_narrator::callouts::callout_name(&r.place),
-            place: r.place,
-            x: r.x,
-            y: r.y,
-            z: r.z,
-            samples: r.samples,
-        })
-        .collect();
-    // Task 10 needs the densest labels first for its priority layout.
-    out.sort_by_key(|c| std::cmp::Reverse(c.samples));
-    Ok(out)
+        let mut out: Vec<CalloutDto> = store
+            .load_map_callouts(&map)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|r| CalloutDto {
+                name: cf_narrator::callouts::callout_name(&r.place),
+                place: r.place,
+                x: r.x,
+                y: r.y,
+                z: r.z,
+                samples: r.samples,
+            })
+            .collect();
+        // Task 10 needs the densest labels first for its priority layout.
+        out.sort_by_key(|c| std::cmp::Reverse(c.samples));
+        Ok(out)
+    })
 }
 
 fn pct(n: u32, d: u32) -> Option<f32> {

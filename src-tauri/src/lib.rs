@@ -1,5 +1,6 @@
 mod coach;
 mod commands;
+mod perf;
 
 use std::sync::Mutex;
 
