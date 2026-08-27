@@ -12,9 +12,11 @@ import {
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { DataTable } from "../components/ui/DataTable";
+import { EmptyState } from "../components/ui/EmptyState";
 import { Input } from "../components/ui/Input";
 import { Skeleton } from "../components/ui/Skeleton";
 import { useToast } from "../components/ui/Toast";
+import { errorMessage } from "../lib/errors";
 
 export function Settings() {
   const settings = useAppSettings();
@@ -97,6 +99,21 @@ export function Settings() {
         <div className="stg-cards" role="status" aria-label="Loading settings">
           <Skeleton kind="card" count={3} className="stg-card-skeleton" />
         </div>
+      </div>
+    );
+  }
+
+  if (settings.isError) {
+    return (
+      <div className="stg-shell">
+        <div className="stg-head">
+          <h1 className="type-display">Settings</h1>
+        </div>
+        <EmptyState
+          title="Couldn't load Settings"
+          body={errorMessage(settings.error)}
+          action={{ label: "Retry", onClick: () => void settings.refetch() }}
+        />
       </div>
     );
   }

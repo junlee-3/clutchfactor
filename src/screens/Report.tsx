@@ -11,6 +11,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { MatchHeader } from "../components/ui/MatchHeader";
 import { Skeleton } from "../components/ui/Skeleton";
 import { useToast } from "../components/ui/Toast";
+import { errorMessage } from "../lib/errors";
 import {
   useCoachStatus,
   useCoachSynthesis,
@@ -62,6 +63,16 @@ export function Report() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (report.isError) {
+    return (
+      <EmptyState
+        title="Couldn't load this report"
+        body={errorMessage(report.error)}
+        action={{ label: "Retry", onClick: () => void report.refetch() }}
+      />
     );
   }
 

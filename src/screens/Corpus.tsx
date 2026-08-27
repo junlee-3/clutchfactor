@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { errorMessage } from "../lib/errors";
 import type { ProgressEvent } from "../lib/ipc";
 import {
   finishFile,
@@ -159,6 +160,12 @@ export function Corpus() {
         <div role="status" aria-label="Loading corpus">
           <Skeleton kind="block" className="cps-loading-block" />
         </div>
+      ) : status.isError ? (
+        <EmptyState
+          title="Couldn't load the corpus"
+          body={errorMessage(status.error)}
+          action={{ label: "Retry", onClick: () => void status.refetch() }}
+        />
       ) : maps.length === 0 && !importing ? (
         <EmptyState
           title="No reference demos yet"

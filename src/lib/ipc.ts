@@ -36,8 +36,14 @@ export type { GridDto };
 
 /** The single seam between the UI and the Rust side. In dev builds each
  *  call leaves a `performance.measure("ipc:<cmd>")` so the DevTools
- *  Performance tab shows IPC time per command; production pays nothing. */
+ *  Performance tab shows IPC time per command; production pays nothing.
+ *  `VITE_FAIL_IPC=<cmd>` (dev only) forces that one command to reject, so
+ *  every screen's error branch can be provoked without touching the Rust
+ *  side (polish-and-release.md §2). */
 export async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (import.meta.env.DEV && import.meta.env.VITE_FAIL_IPC === cmd) {
+    throw new Error(`forced failure: ${cmd}`);
+  }
   if (!import.meta.env.DEV) return invoke<T>(cmd, args);
   const start = `ipc:${cmd}:start:${performance.now()}`;
   try {
