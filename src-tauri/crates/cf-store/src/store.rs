@@ -2,6 +2,7 @@
 //! strings (steamid64 doesn't fit in a JS number — convention holds through
 //! IPC to the frontend).
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use cf_parser::extract::derive_score;
@@ -868,18 +869,63 @@ impl Store {
 
     /// Only the matches (of `ids`) that have a stats row (Trends screen —
     /// silently skips matches analyzed before V1.4 or without the tracked
-    /// player).
+    /// player). One `IN (...)` query rather than one `load_match_stats`
+    /// round-trip per id; results follow the input order of `ids`.
     pub fn match_stats_for_matches(
         &self,
         ids: &[i64],
     ) -> Result<Vec<(i64, MatchStatsRow)>, StoreError> {
-        let mut out = vec![];
-        for id in ids {
-            if let Some(row) = self.load_match_stats(*id)? {
-                out.push((*id, row));
-            }
+        if ids.is_empty() {
+            return Ok(vec![]);
         }
-        Ok(out)
+        let marks = vec!["?"; ids.len()].join(",");
+        let sql = format!(
+            "SELECT match_id, rounds_played, kills, deaths, assists, damage, headshots, kast_rounds, entry_attempts, entry_wins,
+                    traded_deaths, trade_kills, trade_opportunities, clutch_attempts, clutch_wins
+             FROM match_stats WHERE match_id IN ({marks})"
+        );
+        let mut st = self.conn.prepare(&sql)?;
+        let params = rusqlite::params_from_iter(ids.iter());
+        let mut by_id: HashMap<i64, MatchStatsRow> = st
+            .query_map(params, |r| {
+                Ok((
+                    r.get(0)?,
+                    MatchStatsRow {
+                        rounds_played: r.get(1)?,
+                        kills: r.get(2)?,
+                        deaths: r.get(3)?,
+                        assists: r.get(4)?,
+                        damage: r.get(5)?,
+                        headshots: r.get(6)?,
+                        kast_rounds: r.get(7)?,
+                        entry_attempts: r.get(8)?,
+                        entry_wins: r.get(9)?,
+                        traded_deaths: r.get(10)?,
+                        trade_kills: r.get(11)?,
+                        trade_opportunities: r.get(12)?,
+                        clutch_attempts: r.get(13)?,
+                        clutch_wins: r.get(14)?,
+                    },
+                ))
+            })?
+            .collect::<Result<_, _>>()?;
+        Ok(ids
+            .iter()
+            .filter_map(|id| by_id.remove(id).map(|r| (*id, r)))
+            .collect())
+    }
+
+    /// steamid → name for one match (the scoreboard's ten names; no reason
+    /// to assemble a `MatchDetail` per click).
+    pub fn player_names(&self, match_id: i64) -> Result<HashMap<String, String>, StoreError> {
+        let mut st = self
+            .conn
+            .prepare("SELECT steamid, name FROM players WHERE match_id = ?1")?;
+        let rows = st.query_map([match_id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        rows.collect::<Result<HashMap<_, _>, _>>()
+            .map_err(Into::into)
     }
 
     /// The scoreboard for one match, optionally narrowed to a single round.
@@ -3593,6 +3639,56 @@ mod tests {
         store.save_map_callouts("de_mirage", &[]).unwrap();
         assert!(store.load_map_callouts("de_mirage").unwrap().is_empty());
         assert_eq!(crate::migrations::current_version(&store.conn).unwrap(), 11);
+    }
+
+    #[test]
+    fn player_names_maps_steamid_to_name_for_one_match() {
+        let (_dir, store, match_id, data) = one_match();
+        let names = store.player_names(match_id).unwrap();
+        assert_eq!(names.len(), data.players.len());
+        let p = &data.players[0];
+        assert_eq!(
+            names.get(&p.steamid.to_string()).map(String::as_str),
+            Some(p.name.as_str())
+        );
+        assert!(store.player_names(999).unwrap().is_empty());
+    }
+
+    #[test]
+    fn match_stats_for_matches_is_one_query_in_input_order() {
+        let (_dir, mut store, a, _) = one_match();
+        let row = |k| cf_analysis::stats::MatchStats {
+            rounds_played: 1,
+            kills: k,
+            ..Default::default()
+        };
+        store
+            .save_analysis(
+                a,
+                &cf_analysis::AnalysisOutput {
+                    stats: Some(row(1)),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        // A second match: re-save the same demo builder under a new hash.
+        let b = store
+            .save_match("m2.dem", "h2", MatchKind::Own, &sample_match())
+            .unwrap();
+        store
+            .save_analysis(
+                b,
+                &cf_analysis::AnalysisOutput {
+                    stats: Some(row(2)),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let out = store.match_stats_for_matches(&[b, 999, a]).unwrap();
+        assert_eq!(
+            out.iter().map(|(id, r)| (*id, r.kills)).collect::<Vec<_>>(),
+            vec![(b, 2), (a, 1)]
+        );
     }
 
     #[test]

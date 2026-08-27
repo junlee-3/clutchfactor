@@ -52,6 +52,9 @@ pub struct AppState {
     /// queries a first open fires (rounds, synthesis) can't both pay for
     /// the same rounds (V1.3 final-review fix #5).
     pub coach_locks: CoachLocks,
+    /// Per-match memo of `Store::distinct_places` (V1.5 perf: it scanned
+    /// tick_samples on every coach call). Invalidated on re-analyze/delete.
+    pub places: crate::coach::places::PlacesCache,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -369,6 +372,10 @@ pub async fn re_analyze_match(
             .set_source_path(match_id, &demo_path)
             .map_err(|e| e.to_string())?;
     }
+    // The re-parse just replaced tick_samples, so any cached places for
+    // this match are stale the moment `replace_match_data` commits —
+    // independent of whether the analysis below succeeds.
+    state.places.invalidate(match_id);
     if let Err(e) = analyze_and_persist(&state, match_id, data, &on_progress).await {
         return Err(format!(
             "Re-parsed {}, but the analysis didn't finish: {e}. Run Re-analyze again.",
@@ -2012,8 +2019,15 @@ pub fn set_tracked_override(
 
 #[tauri::command]
 pub fn delete_match(state: State<'_, AppState>, match_id: i64) -> Result<(), String> {
-    let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
-    store.delete_match(match_id).map_err(|e| e.to_string())
+    {
+        let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        store.delete_match(match_id).map_err(|e| e.to_string())?;
+    }
+    // Even if the match was already gone, a stale places entry for its id
+    // must not survive (the id could be reused only by SQLite rowid reuse,
+    // which we don't rely on — this is just always-safe hygiene).
+    state.places.invalidate(match_id);
+    Ok(())
 }
 
 // ---- V1.4: stats & understanding ----
@@ -2173,11 +2187,7 @@ pub fn get_round_scoreboard(
     timed("get_round_scoreboard", || {
         let store = state.store.lock().map_err(|_| "store lock poisoned")?;
         let tracked = store.tracked_steamid().map_err(|e| e.to_string())?;
-        let names: HashMap<String, String> = store
-            .match_detail(match_id)
-            .map_err(|e| e.to_string())?
-            .map(|d| d.players.into_iter().map(|p| (p.steamid, p.name)).collect())
-            .unwrap_or_default();
+        let names = store.player_names(match_id).map_err(|e| e.to_string())?;
         Ok(store
             .load_round_player_stats(match_id, round)
             .map_err(|e| e.to_string())?
