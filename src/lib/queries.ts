@@ -22,6 +22,7 @@ import {
   importDemo,
   listMatches,
   reAnalyzeMatch,
+  refreshTrackedProfile,
   regenerateCoachRound,
   regenerateCoachSynthesis,
   setCoachEnabled,
@@ -75,8 +76,25 @@ export function useMatches() {
   return useQuery({ queryKey: ["matches"], queryFn: listMatches });
 }
 
+// Reads the store only, so it resolves immediately even with no network.
 export function useTrackedPlayer() {
-  return useQuery({ queryKey: ["tracked_player"], queryFn: trackedPlayer });
+  return useQuery({
+    queryKey: ["tracked_player"],
+    queryFn: trackedPlayer,
+    staleTime: Infinity,
+  });
+}
+
+// Runs behind it and may take seconds (or never arrive) — the sidebar shows
+// the store's answer until this one lands. The profile it fetches is cached
+// in SQLite for a day, so this is at worst one Steam round-trip per launch.
+export function useTrackedProfile() {
+  return useQuery({
+    queryKey: ["tracked_profile"],
+    queryFn: refreshTrackedProfile,
+    staleTime: Infinity,
+    retry: false,
+  });
 }
 
 export function useImportDemo(onProgress: (e: ProgressEvent) => void) {
@@ -86,6 +104,7 @@ export function useImportDemo(onProgress: (e: ProgressEvent) => void) {
     onSuccess: (result) => {
       void client.invalidateQueries({ queryKey: ["matches"] });
       void client.invalidateQueries({ queryKey: ["tracked_player"] });
+      void client.invalidateQueries({ queryKey: ["tracked_profile"] });
       void client.invalidateQueries({
         queryKey: ["match_stats", result.match_id],
       });
@@ -152,6 +171,7 @@ export function useSetTrackedOverride() {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["app_settings"] });
       void client.invalidateQueries({ queryKey: ["tracked_player"] });
+      void client.invalidateQueries({ queryKey: ["tracked_profile"] });
     },
   });
 }
@@ -192,6 +212,7 @@ export function useDeleteMatch() {
       void client.invalidateQueries({ queryKey: ["trends"] });
       void client.invalidateQueries({ queryKey: ["app_settings"] });
       void client.invalidateQueries({ queryKey: ["tracked_player"] });
+      void client.invalidateQueries({ queryKey: ["tracked_profile"] });
     },
   });
 }

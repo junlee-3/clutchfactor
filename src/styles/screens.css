@@ -116,13 +116,52 @@
   padding-top: var(--s4);
   width: 100%;
   min-width: 0; /* flex item: same content-based-minimum fix as .sidebar
-    above, one level down — the chip's steamid text is what actually forces
+    above, one level down — the tracked player's name is what actually forces
     this without it. */
 }
 
-.sidebar-footer .ui-chip {
+/* Tracked-player profile (design-system.md §7): avatar + name, sitting on
+   the same inset surface and radius as a chip. */
+.tracked-player {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
   width: 100%;
+  min-width: 0;
+  padding: var(--s2);
+  border-radius: var(--r-sm);
+  background: var(--bg2);
+}
+
+.tracked-avatar {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-full);
+  object-fit: cover;
+  background: var(--bg1);
+}
+
+/* No avatar (offline, private profile): initials hold the identical box, so
+   the footer never reflows when one resolves and the other doesn't. */
+.tracked-avatar-empty {
+  display: flex;
+  align-items: center;
   justify-content: center;
+  font: var(--text-data);
+  color: var(--ink-dim);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.tracked-id {
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* lets .tracked-name's ellipsis win over the flex minimum */
+}
+
+.tracked-name {
+  font: var(--text-data);
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

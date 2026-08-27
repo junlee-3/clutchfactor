@@ -1,6 +1,7 @@
 mod coach;
 mod commands;
 mod perf;
+mod steam;
 
 use std::sync::Mutex;
 
@@ -30,6 +31,7 @@ pub fn run() {
             commands::import_demo,
             commands::list_matches,
             commands::tracked_player,
+            commands::refresh_tracked_profile,
             commands::get_match_detail,
             commands::get_match_report,
             commands::get_habits,

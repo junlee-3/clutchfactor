@@ -1,7 +1,8 @@
 import { NavLink } from "react-router-dom";
-import { useTrackedPlayer } from "../../lib/queries";
+import type { TrackedPlayer } from "../../lib/ipc";
+import { useTrackedPlayer, useTrackedProfile } from "../../lib/queries";
 import type { ShellMode } from "../../lib/shellMode";
-import { Chip } from "./Chip";
+import { trackedInitials, trackedLabel } from "../../lib/trackedPlayer";
 
 interface NavItem {
   to: string;
@@ -29,7 +30,11 @@ interface SidebarProps {
 // wordmark + nav + footer tracked-player chip. `rail` (56px, immersive
 // screens): "CF" glyph + two-letter nav, no footer — the tape stays hero.
 export function Sidebar({ mode }: SidebarProps) {
+  // The store answers instantly; the Steam profile lands later, or not at
+  // all, and only ever adds the avatar and a fresher name.
   const tracked = useTrackedPlayer();
+  const profile = useTrackedProfile();
+  const player = profile.data ?? tracked.data;
   const rail = mode === "rail";
 
   return (
@@ -51,11 +56,40 @@ export function Sidebar({ mode }: SidebarProps) {
           </li>
         ))}
       </ul>
-      {!rail && tracked.data && (
+      {!rail && player && (
         <div className="sidebar-footer">
-          <Chip title="Tracked player (auto-detected)">tracking {tracked.data}</Chip>
+          <TrackedPlayerChip player={player} />
         </div>
       )}
     </nav>
+  );
+}
+
+// The footer profile: avatar + name, never a raw SteamID64 (issue #39). The
+// steamid stays reachable in the tooltip — it is still the thing you paste
+// into a bug report. `avatar` arrives as an inlined data: URI, so there is no
+// network request here and no layout shift when it resolves; when it is
+// missing (offline, private profile) the initials placeholder holds the same
+// box. The eyebrow says "Tracking" because the detection is automatic and the
+// user may need to correct it in Settings.
+function TrackedPlayerChip({ player }: { player: TrackedPlayer }) {
+  const label = trackedLabel(player);
+  return (
+    <div
+      className="tracked-player"
+      title={`Tracked player (auto-detected) — ${player.steamid}`}
+    >
+      {player.avatar ? (
+        <img className="tracked-avatar" src={player.avatar} alt="" />
+      ) : (
+        <span className="tracked-avatar tracked-avatar-empty" aria-hidden="true">
+          {trackedInitials(label)}
+        </span>
+      )}
+      <span className="tracked-id">
+        <span className="type-micro">Tracking</span>
+        <span className="tracked-name">{label}</span>
+      </span>
+    </div>
   );
 }

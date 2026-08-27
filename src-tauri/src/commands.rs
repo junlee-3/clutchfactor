@@ -623,10 +623,69 @@ pub fn list_matches(state: State<'_, AppState>) -> Result<Vec<MatchSummary>, Str
     })
 }
 
+/// The sidebar's profile chip (issue #39). `name` prefers the Steam persona
+/// and falls back to the in-game name from the most recent own demo, so the
+/// chip is still readable with no network; `avatar` is an inlined `data:` URI
+/// or `None`, which the sidebar renders as an initials placeholder.
+#[derive(serde::Serialize)]
+pub struct TrackedPlayer {
+    pub steamid: String,
+    pub name: Option<String>,
+    pub avatar: Option<String>,
+}
+
+/// Reads whatever is already on disk — the demo name and the last cached
+/// Steam profile, stale or not. Deliberately synchronous and network-free so
+/// the sidebar paints immediately; `refresh_tracked_profile` does the
+/// talking to Steam.
+fn tracked_from_store(store: &Store) -> Result<Option<TrackedPlayer>, String> {
+    let Some(steamid) = store.tracked_steamid().map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let demo_name = store.player_name(&steamid).map_err(|e| e.to_string())?;
+    let cached = crate::steam::read_cache(store, &steamid).unwrap_or_default();
+    Ok(Some(TrackedPlayer {
+        steamid,
+        name: cached.persona.or(demo_name),
+        avatar: cached.avatar,
+    }))
+}
+
 #[tauri::command]
-pub fn tracked_player(state: State<'_, AppState>) -> Result<Option<String>, String> {
+pub fn tracked_player(state: State<'_, AppState>) -> Result<Option<TrackedPlayer>, String> {
     let store = state.store.lock().map_err(|_| "store lock poisoned")?;
-    store.tracked_steamid().map_err(|e| e.to_string())
+    tracked_from_store(&store)
+}
+
+/// Refreshes the cached Steam profile if it has aged out, then returns the
+/// tracked player again. The sidebar runs this behind the synchronous read
+/// above, so a slow or unreachable Steam delays the avatar but never the
+/// footer itself.
+#[tauri::command]
+pub async fn refresh_tracked_profile(
+    state: State<'_, AppState>,
+) -> Result<Option<TrackedPlayer>, String> {
+    // Scoped: the guard must not survive into the await below.
+    let (steamid, fresh) = {
+        let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+        let Some(steamid) = store.tracked_steamid().map_err(|e| e.to_string())? else {
+            return Ok(None);
+        };
+        let fresh = crate::steam::read_cache(&store, &steamid).is_some_and(|p| p.is_fresh());
+        (steamid, fresh)
+    };
+
+    if !fresh {
+        // Offline, rate-limited, private: leave the cache alone and let the
+        // caller keep showing the last known profile.
+        if let Ok(fetched) = crate::steam::fetch(&steamid).await {
+            let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
+            crate::steam::write_cache(&mut store, &steamid, &fetched);
+        }
+    }
+
+    let store = state.store.lock().map_err(|_| "store lock poisoned")?;
+    tracked_from_store(&store)
 }
 
 #[tauri::command]
