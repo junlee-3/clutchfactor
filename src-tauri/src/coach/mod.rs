@@ -5,6 +5,7 @@
 
 pub mod gemini;
 pub mod key;
+pub(crate) mod places;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -321,7 +322,11 @@ struct RoundSession {
     cached: Vec<(u32, String, String, String)>, // (round, hash, status, response_json)
 }
 
-fn open_round_session(store: &mut Store, match_id: i64) -> Result<Option<RoundSession>, String> {
+fn open_round_session(
+    store: &mut Store,
+    match_id: i64,
+    places_cache: &places::PlacesCache,
+) -> Result<Option<RoundSession>, String> {
     if !coach_enabled(store)? {
         return Ok(None);
     }
@@ -353,7 +358,9 @@ fn open_round_session(store: &mut Store, match_id: i64) -> Result<Option<RoundSe
         .into_iter()
         .map(|r| r.plays_json)
         .collect();
-    let places = store.distinct_places(match_id).map_err(|e| e.to_string())?;
+    let places = places_cache.get_or_load(match_id, || {
+        store.distinct_places(match_id).map_err(|e| e.to_string())
+    })?;
     let known = known_callouts(&plays_jsons, &places);
     let mut cached = vec![];
     for (round, _, _) in &blocks {
@@ -436,7 +443,7 @@ pub async fn round_commentary(
 
     let session = {
         let mut store = state.store.lock().map_err(|_| "store lock poisoned")?;
-        open_round_session(&mut store, match_id)?
+        open_round_session(&mut store, match_id, &state.places)?
     };
     let Some(s) = session else {
         return Ok(quiet());
@@ -662,7 +669,9 @@ pub async fn synthesis(
             .into_iter()
             .map(|r| r.plays_json)
             .collect();
-        let places = store.distinct_places(match_id).map_err(|e| e.to_string())?;
+        let places = state.places.get_or_load(match_id, || {
+            store.distinct_places(match_id).map_err(|e| e.to_string())
+        })?;
         (
             GeminiClient::new(key).map_err(|e| e.to_string())?,
             model,

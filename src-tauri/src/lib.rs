@@ -1,5 +1,6 @@
 mod coach;
 mod commands;
+mod perf;
 
 use std::sync::Mutex;
 
@@ -21,6 +22,7 @@ pub fn run() {
             app.manage(AppState {
                 store: Mutex::new(store),
                 coach_locks: Mutex::new(Default::default()),
+                places: coach::places::PlacesCache::default(),
             });
             Ok(())
         })

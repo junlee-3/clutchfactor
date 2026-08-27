@@ -34,6 +34,28 @@ import type { GridDto } from "../replay/heatmap";
 
 export type { GridDto };
 
+/** The single seam between the UI and the Rust side. In dev builds each
+ *  call leaves a `performance.measure("ipc:<cmd>")` so the DevTools
+ *  Performance tab shows IPC time per command; production pays nothing. */
+export async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (!import.meta.env.DEV) return invoke<T>(cmd, args);
+  const start = `ipc:${cmd}:start:${performance.now()}`;
+  try {
+    performance.mark(start);
+  } catch {
+    // Measurement must never break a call.
+  }
+  try {
+    return await invoke<T>(cmd, args);
+  } finally {
+    try {
+      performance.measure(`ipc:${cmd}`, start);
+    } catch {
+      // Measurement must never break a call.
+    }
+  }
+}
+
 export interface MatchSummary {
   id: number;
   file_name: string;
@@ -138,7 +160,7 @@ export interface RoundTicks {
 }
 
 export function listMatches(): Promise<MatchSummary[]> {
-  return invoke<MatchSummary[]>("list_matches");
+  return call<MatchSummary[]>("list_matches");
 }
 
 export interface EvidenceRefDto {
@@ -219,11 +241,11 @@ export interface HabitReport {
 }
 
 export function getMatchReport(matchId: number): Promise<MatchReport | null> {
-  return invoke<MatchReport | null>("get_match_report", { matchId });
+  return call<MatchReport | null>("get_match_report", { matchId });
 }
 
 export function getHabits(): Promise<HabitReport[]> {
-  return invoke<HabitReport[]>("get_habits");
+  return call<HabitReport[]>("get_habits");
 }
 
 // ---- V1.2: round-by-round coach rail ----
@@ -285,22 +307,22 @@ export interface RoundReviewDto {
 }
 
 export function getRoundReview(matchId: number): Promise<RoundReviewDto[]> {
-  return invoke<RoundReviewDto[]>("get_round_review", { matchId });
+  return call<RoundReviewDto[]>("get_round_review", { matchId });
 }
 
 export function getMatchDetail(matchId: number): Promise<MatchDetail | null> {
-  return invoke<MatchDetail | null>("get_match_detail", { matchId });
+  return call<MatchDetail | null>("get_match_detail", { matchId });
 }
 
 export function getRoundTicks(
   matchId: number,
   round: number,
 ): Promise<RoundTicks> {
-  return invoke<RoundTicks>("get_round_ticks", { matchId, round });
+  return call<RoundTicks>("get_round_ticks", { matchId, round });
 }
 
 export function trackedPlayer(): Promise<string | null> {
-  return invoke<string | null>("tracked_player");
+  return call<string | null>("tracked_player");
 }
 
 export function importDemo(
@@ -309,7 +331,7 @@ export function importDemo(
 ): Promise<ImportResult> {
   const channel = new Channel<ProgressEvent>();
   channel.onmessage = onProgress;
-  return invoke<ImportResult>("import_demo", { path, onProgress: channel });
+  return call<ImportResult>("import_demo", { path, onProgress: channel });
 }
 
 // ---- M5: reference corpus + D6 positioning ----
@@ -340,7 +362,7 @@ export function importCorpusDemo(
 ): Promise<ImportResult> {
   const channel = new Channel<ProgressEvent>();
   channel.onmessage = onProgress;
-  return invoke<ImportResult>("import_corpus_demo", {
+  return call<ImportResult>("import_corpus_demo", {
     path,
     onProgress: channel,
   });
@@ -352,11 +374,11 @@ export function buildCorpus(
 ): Promise<number> {
   const channel = new Channel<ProgressEvent>();
   channel.onmessage = onProgress;
-  return invoke<number>("build_corpus", { map, onProgress: channel });
+  return call<number>("build_corpus", { map, onProgress: channel });
 }
 
 export function corpusStatus(): Promise<CorpusStatus> {
-  return invoke<CorpusStatus>("corpus_status");
+  return call<CorpusStatus>("corpus_status");
 }
 
 export function getGrid(
@@ -364,11 +386,11 @@ export function getGrid(
   side: "CT" | "T",
   phase: string,
 ): Promise<GridDto | null> {
-  return invoke<GridDto | null>("get_grid", { map, side, phase });
+  return call<GridDto | null>("get_grid", { map, side, phase });
 }
 
 export function analyzePositioning(matchId: number): Promise<number> {
-  return invoke<number>("analyze_positioning", { matchId });
+  return call<number>("analyze_positioning", { matchId });
 }
 
 // ---- M6: trends ----
@@ -402,7 +424,7 @@ export interface TrendsDto {
 }
 
 export function getTrends(): Promise<TrendsDto> {
-  return invoke<TrendsDto>("get_trends");
+  return call<TrendsDto>("get_trends");
 }
 
 // ---- M6: settings + housekeeping ----
@@ -424,11 +446,11 @@ export interface AppSettings {
 }
 
 export function getAppSettings(): Promise<AppSettings> {
-  return invoke<AppSettings>("get_app_settings");
+  return call<AppSettings>("get_app_settings");
 }
 
 export function setTrackedOverride(steamid: string | null): Promise<void> {
-  return invoke<void>("set_tracked_override", { steamid });
+  return call<void>("set_tracked_override", { steamid });
 }
 
 export interface ReAnalyzeResult {
@@ -444,11 +466,11 @@ export function reAnalyzeMatch(
 ): Promise<ReAnalyzeResult> {
   const channel = new Channel<ProgressEvent>();
   channel.onmessage = onProgress;
-  return invoke<ReAnalyzeResult>("re_analyze_match", { matchId, path, onProgress: channel });
+  return call<ReAnalyzeResult>("re_analyze_match", { matchId, path, onProgress: channel });
 }
 
 export function deleteMatch(matchId: number): Promise<void> {
-  return invoke<void>("delete_match", { matchId });
+  return call<void>("delete_match", { matchId });
 }
 
 // ---- V1.3: the coach ----
@@ -493,47 +515,47 @@ export interface CoachSynthesisDto {
 }
 
 export function coachStatus(): Promise<CoachStatusDto> {
-  return invoke<CoachStatusDto>("coach_status");
+  return call<CoachStatusDto>("coach_status");
 }
 
 export function setGeminiKey(key: string | null): Promise<void> {
-  return invoke<void>("set_gemini_key", { key });
+  return call<void>("set_gemini_key", { key });
 }
 
 export function setCoachModels(
   roundModel: string,
   synthesisModel: string,
 ): Promise<void> {
-  return invoke<void>("set_coach_models", { roundModel, synthesisModel });
+  return call<void>("set_coach_models", { roundModel, synthesisModel });
 }
 
 export function setCoachEnabled(enabled: boolean): Promise<void> {
-  return invoke<void>("set_coach_enabled", { enabled });
+  return call<void>("set_coach_enabled", { enabled });
 }
 
 export function testGeminiKey(): Promise<string> {
-  return invoke<string>("test_gemini_key");
+  return call<string>("test_gemini_key");
 }
 
 export function getCoachRounds(matchId: number): Promise<CoachRoundsDto> {
-  return invoke<CoachRoundsDto>("get_coach_rounds", { matchId });
+  return call<CoachRoundsDto>("get_coach_rounds", { matchId });
 }
 
 export function regenerateCoachRound(
   matchId: number,
   round: number,
 ): Promise<CoachRoundsDto> {
-  return invoke<CoachRoundsDto>("regenerate_coach_round", { matchId, round });
+  return call<CoachRoundsDto>("regenerate_coach_round", { matchId, round });
 }
 
 export function getCoachSynthesis(matchId: number): Promise<CoachSynthesisDto> {
-  return invoke<CoachSynthesisDto>("get_coach_synthesis", { matchId });
+  return call<CoachSynthesisDto>("get_coach_synthesis", { matchId });
 }
 
 export function regenerateCoachSynthesis(
   matchId: number,
 ): Promise<CoachSynthesisDto> {
-  return invoke<CoachSynthesisDto>("regenerate_coach_synthesis", { matchId });
+  return call<CoachSynthesisDto>("regenerate_coach_synthesis", { matchId });
 }
 
 // ---- V1.4: stats & understanding ----
@@ -608,23 +630,23 @@ export interface CalloutDto {
 }
 
 export function getMatchStats(matchId: number): Promise<MatchStatsDto | null> {
-  return invoke<MatchStatsDto | null>("get_match_stats", { matchId });
+  return call<MatchStatsDto | null>("get_match_stats", { matchId });
 }
 
 export function getRoundScoreboard(
   matchId: number,
   round: number | null,
 ): Promise<PlayerRoundStatsDto[]> {
-  return invoke<PlayerRoundStatsDto[]>("get_round_scoreboard", {
+  return call<PlayerRoundStatsDto[]>("get_round_scoreboard", {
     matchId,
     round,
   });
 }
 
 export function getDetectorCatalog(): Promise<CatalogDto> {
-  return invoke<CatalogDto>("get_detector_catalog");
+  return call<CatalogDto>("get_detector_catalog");
 }
 
 export function getMapCallouts(map: string): Promise<CalloutDto[]> {
-  return invoke<CalloutDto[]>("get_map_callouts", { map });
+  return call<CalloutDto[]>("get_map_callouts", { map });
 }
