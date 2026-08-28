@@ -197,8 +197,9 @@ One shell for every screen (`<AppShell>`): fixed left sidebar + content.
 
 - **Sidebar, 216px:** wordmark (display-sans, type-title) → nav (Library,
   Trends, Corpus, Settings — text-first, no icon library; active item
-  ink-bright with a 2px ink left edge) → footer: tracked-player chip
-  (mono).
+  ink-bright with a 2px ink left edge) → footer: tracked-player profile —
+  circular Steam avatar (initials placeholder when there isn't one) + name
+  (mono), "Tracking" eyebrow, steamid in the tooltip only.
 - **Immersive screens (Replay, Report):** the sidebar collapses to a 56px
   rail (wordmark glyph "CF" + initials nav) so the tape stays hero; the
   MatchHeader carries context. Everything else about the shell is identical —

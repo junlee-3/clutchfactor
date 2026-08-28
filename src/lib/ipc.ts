@@ -26,6 +26,7 @@
 //   CatalogEntryDto/ClassEntryDto/CatalogDto <- src-tauri/src/commands.rs
 //   CalloutDto <- src-tauri/src/commands.rs
 //   StatSeries (TrendsDto.stats) <- src-tauri/src/commands.rs
+//   TrackedPlayer <- src-tauri/src/commands.rs
 // Conventions: steamids are strings (steamid64 overflows JS number);
 // command names are snake_case; Rust arg names arrive camelCased.
 
@@ -327,8 +328,24 @@ export function getRoundTicks(
   return call<RoundTicks>("get_round_ticks", { matchId, round });
 }
 
-export function trackedPlayer(): Promise<string | null> {
-  return call<string | null>("tracked_player");
+// The sidebar's profile chip. `name` is the Steam persona when the profile
+// could be reached, else the in-game name from the most recent own demo;
+// `avatar` is an inlined data: URI, so rendering it never hits the network.
+export interface TrackedPlayer {
+  steamid: string;
+  name: string | null;
+  avatar: string | null;
+}
+
+export function trackedPlayer(): Promise<TrackedPlayer | null> {
+  return call<TrackedPlayer | null>("tracked_player");
+}
+
+// Talks to Steam when the cached profile has aged out, then returns the
+// tracked player again. Kept separate from `trackedPlayer` so a slow or
+// unreachable Steam delays only the avatar, never the footer.
+export function refreshTrackedProfile(): Promise<TrackedPlayer | null> {
+  return call<TrackedPlayer | null>("refresh_tracked_profile");
 }
 
 export function importDemo(
