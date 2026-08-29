@@ -169,6 +169,65 @@ pub struct H16Cfg {
     pub fire_linger_s: f32,
 }
 
+/// H1 — man-count discipline (death-taxonomy §2 H1; sources class 8).
+/// `H1_DESPERATION_PEEK` is a kinematic proxy for "player initiated", so
+/// every gate below biases toward silence (spec §4.1).
+#[derive(Debug, Clone, Deserialize)]
+pub struct H1Cfg {
+    /// Bodies down at the death: fire only at or below this (−1 = down one).
+    #[serde(default = "d_disadvantage_max")]
+    pub disadvantage_max: i32,
+    /// How far back the approach is measured from the death.
+    #[serde(default = "d_approach_window_s")]
+    pub approach_window_s: f32,
+    /// Distance the player must both close on the killer AND cover along
+    /// their own path in that window before the contact counts as theirs to
+    /// initiate. Path length is z-weighted like every other distance here
+    /// (`general.z_weight`, so a metre climbed counts double a metre walked)
+    /// — it is "ground covered" only on the flat.
+    #[serde(default = "d_approach_min_u")]
+    pub approach_min_u: f32,
+    /// Round clock (MR12 competitive), used for the T-side suppression.
+    #[serde(default = "d_round_length_s")]
+    pub round_length_s: f32,
+    /// Bomb timer, used for the CT-side retake suppression.
+    #[serde(default = "d_bomb_timer_s")]
+    pub bomb_timer_s: f32,
+    /// CT, bomb down, less than this left: the retake is forced → silent.
+    #[serde(default = "d_ct_retake_forced_s")]
+    pub ct_retake_forced_s: f32,
+    /// T, no plant, less than this left in the round: forced → silent.
+    #[serde(default = "d_t_forced_s")]
+    pub t_forced_s: f32,
+    /// The peek worked as intended when the killer dies this fast → silent.
+    #[serde(default = "d_h1_traded_within_s")]
+    pub traded_within_s: f32,
+}
+fn d_disadvantage_max() -> i32 {
+    -1
+}
+fn d_approach_window_s() -> f32 {
+    2.0
+}
+fn d_approach_min_u() -> f32 {
+    150.0
+}
+fn d_round_length_s() -> f32 {
+    115.0
+}
+fn d_bomb_timer_s() -> f32 {
+    40.0
+}
+fn d_ct_retake_forced_s() -> f32 {
+    12.0
+}
+fn d_t_forced_s() -> f32 {
+    20.0
+}
+fn d_h1_traded_within_s() -> f32 {
+    2.0
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct H4Cfg {
     #[serde(default = "d_crossfire_engage_window_s")]
@@ -177,6 +236,34 @@ pub struct H4Cfg {
     pub crossfire_min_angle_deg: f32,
     #[serde(default = "d_contactless_window_s")]
     pub contactless_window_s: f32,
+    /// Tier 2 wide peek (class 10): how far back the swing is measured.
+    #[serde(default = "d_peek_window_s")]
+    pub peek_window_s: f32,
+    /// Path length the victim must cover in that window to count as
+    /// swinging — z-weighted (`general.z_weight`: Δz counts double), so it
+    /// is "ground covered" only on the flat.
+    #[serde(default = "d_exposure_min_u")]
+    pub exposure_min_u: f32,
+    /// Path length the killer must stay under to count as holding the
+    /// angle. Same z-weighting: a crouch-spam on the angle spends part of
+    /// this budget.
+    #[serde(default = "d_holder_max_u")]
+    pub holder_max_u: f32,
+    /// Below this distance at the death it is a scramble, not an angle duel.
+    #[serde(default = "d_wide_peek_min_dist_u")]
+    pub wide_peek_min_dist_u: f32,
+}
+fn d_peek_window_s() -> f32 {
+    1.5
+}
+fn d_exposure_min_u() -> f32 {
+    120.0
+}
+fn d_holder_max_u() -> f32 {
+    60.0
+}
+fn d_wide_peek_min_dist_u() -> f32 {
+    150.0
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -449,6 +536,16 @@ pub struct SeverityCfg {
     pub h11_early_aggressive_death: f32,
     #[serde(default = "sev_push_no_info")]
     pub h6_push_without_info: f32,
+    #[serde(default = "sev_default")]
+    pub h1_desperation_peek: f32,
+    /// Below the H4 default: a lost angle duel is a positioning habit, not
+    /// the spacing failure `h4_killed_without_contact` describes.
+    #[serde(default = "sev_wide_peek")]
+    pub h4_wide_peek_held_angle: f32,
+}
+
+fn sev_wide_peek() -> f32 {
+    0.5
 }
 
 fn sev_slow_rotation() -> f32 {
@@ -487,6 +584,7 @@ default_impl!(
     TradeCfg,
     FlashCfg,
     D2Cfg,
+    H1Cfg,
     H3Cfg,
     H16Cfg,
     H4Cfg,
@@ -510,6 +608,8 @@ pub struct DetectorConfig {
     pub flash: FlashCfg,
     #[serde(default)]
     pub d2: D2Cfg,
+    #[serde(default)]
+    pub h1: H1Cfg,
     #[serde(default)]
     pub h3: H3Cfg,
     #[serde(default)]
@@ -598,7 +698,55 @@ pub fn threshold_values(cfg: &DetectorConfig) -> Vec<(String, String, String)> {
             format!("{}", cfg.h3.scoped_close_u),
             "u",
         ),
+        // H1 man-count discipline (class 8). Catalog prose supplies the
+        // "bodies" word after the (signed) disadvantage number.
+        row(
+            "h1.disadvantage_max",
+            format!("{}", cfg.h1.disadvantage_max),
+            "",
+        ),
+        row(
+            "h1.approach_window_s",
+            format!("{}", cfg.h1.approach_window_s),
+            "s",
+        ),
+        // Compared against a z-weighted path length (Δz counts double), not
+        // flat ground covered — same for h4.exposure_min_u/h4.holder_max_u.
+        row(
+            "h1.approach_min_u",
+            format!("{}", cfg.h1.approach_min_u),
+            "u",
+        ),
+        row(
+            "h1.round_length_s",
+            format!("{}", cfg.h1.round_length_s),
+            "s",
+        ),
+        row("h1.bomb_timer_s", format!("{}", cfg.h1.bomb_timer_s), "s"),
+        row(
+            "h1.ct_retake_forced_s",
+            format!("{}", cfg.h1.ct_retake_forced_s),
+            "s",
+        ),
+        row("h1.t_forced_s", format!("{}", cfg.h1.t_forced_s), "s"),
+        row(
+            "h1.traded_within_s",
+            format!("{}", cfg.h1.traded_within_s),
+            "s",
+        ),
         // H4 exposure.
+        row("h4.peek_window_s", format!("{}", cfg.h4.peek_window_s), "s"),
+        row(
+            "h4.exposure_min_u",
+            format!("{}", cfg.h4.exposure_min_u),
+            "u",
+        ),
+        row("h4.holder_max_u", format!("{}", cfg.h4.holder_max_u), "u"),
+        row(
+            "h4.wide_peek_min_dist_u",
+            format!("{}", cfg.h4.wide_peek_min_dist_u),
+            "u",
+        ),
         row(
             "h4.contactless_window_s",
             format!("{}", cfg.h4.contactless_window_s),
@@ -772,6 +920,50 @@ mod tests {
         assert_eq!(c.ledger.molotov_burn_s, 7.0);
         assert_eq!(c.ledger.flash_join_s, 0.25);
         assert_eq!(c.ledger.sample_step_s, 1.0);
+        // V1.6 death classes 8 / 10 (death-taxonomy §2 H1 + H4 Tier 2).
+        assert_eq!(c.h1.disadvantage_max, -1);
+        assert_eq!(c.h1.approach_window_s, 2.0);
+        assert_eq!(c.h1.approach_min_u, 150.0);
+        assert_eq!(c.h1.round_length_s, 115.0);
+        assert_eq!(c.h1.bomb_timer_s, 40.0);
+        assert_eq!(c.h1.ct_retake_forced_s, 12.0);
+        assert_eq!(c.h1.t_forced_s, 20.0);
+        assert_eq!(c.h1.traded_within_s, 2.0);
+        assert_eq!(c.h4.peek_window_s, 1.5);
+        assert_eq!(c.h4.exposure_min_u, 120.0);
+        assert_eq!(c.h4.holder_max_u, 60.0);
+        assert_eq!(c.h4.wide_peek_min_dist_u, 150.0);
+        assert_eq!(c.severity.h1_desperation_peek, 0.6);
+        assert_eq!(c.severity.h4_wide_peek_held_angle, 0.5);
+    }
+
+    /// PROMPT.md §6.4: a threshold with no row is a threshold the Settings
+    /// table and the catalog cannot show.
+    #[test]
+    fn every_class_8_and_10_threshold_has_a_settings_row() {
+        let names: Vec<String> = threshold_values(&DetectorConfig::default())
+            .into_iter()
+            .map(|(name, _, _)| name)
+            .collect();
+        for name in [
+            "h1.disadvantage_max",
+            "h1.approach_window_s",
+            "h1.approach_min_u",
+            "h1.round_length_s",
+            "h1.bomb_timer_s",
+            "h1.ct_retake_forced_s",
+            "h1.t_forced_s",
+            "h1.traded_within_s",
+            "h4.peek_window_s",
+            "h4.exposure_min_u",
+            "h4.holder_max_u",
+            "h4.wide_peek_min_dist_u",
+        ] {
+            assert!(
+                names.iter().any(|n| n == name),
+                "{name} has no threshold_values row"
+            );
+        }
     }
 
     #[test]

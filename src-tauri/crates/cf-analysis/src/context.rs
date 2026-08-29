@@ -165,6 +165,40 @@ impl<'a> AnalysisContext<'a> {
         (dx * dx + dy * dy + dz * dz).sqrt()
     }
 
+    /// `steamid`'s samples across [t0, t1], stepping `step` ticks and always
+    /// ending on `t1`. None when the player has no sample at `t0` — a rule
+    /// that cannot see the start of its window stays silent (spec §4.1).
+    pub fn samples_in(
+        &self,
+        steamid: u64,
+        t0: i32,
+        t1: i32,
+        step: i32,
+    ) -> Option<Vec<PlayerState>> {
+        let mut out = vec![self.state_at(steamid, t0)?];
+        let step = step.max(1);
+        let mut t = t0 + step;
+        while t < t1 {
+            if let Some(st) = self.state_at(steamid, t) {
+                out.push(st);
+            }
+            t += step;
+        }
+        if t1 > t0 {
+            out.extend(self.state_at(steamid, t1));
+        }
+        Some(out)
+    }
+
+    /// Ground covered along a sampled track, same vertical weighting as
+    /// `dist`.
+    pub fn path_length(track: &[PlayerState], z_weight: f32) -> f32 {
+        track
+            .windows(2)
+            .map(|w| Self::dist(&w[0], &w[1], z_weight))
+            .sum()
+    }
+
     pub fn teammates_alive_at(
         &self,
         steamid: u64,
@@ -296,6 +330,43 @@ impl<'a> AnalysisContext<'a> {
             .copied()
     }
 
+    /// (CT alive, T alive) at `tick`, replayed from kill events over the
+    /// round's rosters — never tick samples, so a synthetic or sparsely
+    /// sampled track can't misreport a death (a kill on the tick itself is
+    /// already counted; callers wanting the board *before* a death pass
+    /// `kill.tick - 1`). None when the round number is unknown.
+    pub fn alive_counts_at(&self, round: u32, tick: i32) -> Option<(usize, usize)> {
+        let r = self.data.rounds.iter().find(|r| r.number == round)?;
+        let alive = |roster: &[u64]| {
+            let dead = self
+                .data
+                .kills
+                .iter()
+                .filter(|k| k.round == round && k.tick <= tick && roster.contains(&k.victim))
+                .count();
+            roster.len().saturating_sub(dead)
+        };
+        Some((alive(&r.ct_steamids), alive(&r.t_steamids)))
+    }
+
+    /// `alive_counts_at` ordered as (mine, theirs) from `steamid`'s side —
+    /// the one place the side swap is written. None when the player has no
+    /// side in the round, or the round is unknown.
+    pub fn alive_pair(&self, steamid: u64, round: u32, tick: i32) -> Option<(usize, usize)> {
+        let (ct, t) = self.alive_counts_at(round, tick)?;
+        Some(match self.side_of(steamid, round)? {
+            Side::Ct => (ct, t),
+            Side::T => (t, ct),
+        })
+    }
+
+    /// Bodies up (+) or down (−) at `tick` from `steamid`'s side. None when
+    /// the player has no side in the round, or the round is unknown.
+    pub fn man_advantage(&self, steamid: u64, round: u32, tick: i32) -> Option<i32> {
+        let (mine, theirs) = self.alive_pair(steamid, round, tick)?;
+        Some(mine as i32 - theirs as i32)
+    }
+
     pub fn kill_of(&self, victim: u64, round: u32) -> Option<&'a Kill> {
         self.data
             .kills
@@ -414,6 +485,89 @@ mod tests {
         assert_eq!(ctx.shots_by_in(1, 1501, 1600).len(), 0);
         assert_eq!(ctx.hurts_dealt_in(1, 1500, 1540).len(), 1);
         assert_eq!(ctx.hurts_taken_in(3, 1500, 1540).len(), 1);
+    }
+
+    /// CT [1,2] vs T [3,4]; T3 dies at 1500, CT1 at 2000.
+    fn alive_fixture() -> MatchData {
+        Scenario::new("de_test")
+            .players_ct(&[1, 2])
+            .players_t(&[3, 4])
+            .round(1, 1000, 5000)
+            .kill(1, 3, 1, 1500, "ak47")
+            .kill(4, 1, 1, 2000, "ak47")
+            .build()
+    }
+
+    #[test]
+    fn alive_counts_replay_kill_events_over_the_round_rosters() {
+        let data = alive_fixture();
+        let ctx = AnalysisContext::new(&data, 1);
+        assert_eq!(ctx.alive_counts_at(1, 1400), Some((2, 2)));
+        assert_eq!(
+            ctx.alive_counts_at(1, 1500),
+            Some((2, 1)),
+            "a kill on the tick itself is already counted"
+        );
+        assert_eq!(ctx.alive_counts_at(1, 1999), Some((2, 1)));
+        assert_eq!(ctx.alive_counts_at(1, 2000), Some((1, 1)));
+        assert_eq!(ctx.alive_counts_at(7, 1500), None, "unknown round");
+    }
+
+    #[test]
+    fn man_advantage_is_mine_minus_theirs_from_the_players_side() {
+        let data = alive_fixture();
+        let ctx = AnalysisContext::new(&data, 1);
+        assert_eq!(
+            ctx.alive_pair(1, 1, 1999),
+            Some((2, 1)),
+            "CT sees (mine, theirs)"
+        );
+        assert_eq!(
+            ctx.alive_pair(4, 1, 1999),
+            Some((1, 2)),
+            "T sees it swapped"
+        );
+        assert_eq!(ctx.alive_pair(99, 1, 1999), None, "no side in the round");
+        assert_eq!(ctx.man_advantage(1, 1, 1999), Some(1), "CT up one body");
+        assert_eq!(
+            ctx.man_advantage(4, 1, 1999),
+            Some(-1),
+            "same board, T side"
+        );
+        assert_eq!(ctx.man_advantage(1, 1, 2000), Some(0), "after the death");
+        assert_eq!(
+            ctx.man_advantage(99, 1, 1999),
+            None,
+            "a player with no side in the round is silent"
+        );
+    }
+
+    #[test]
+    fn samples_in_walks_the_window_and_always_ends_on_the_last_tick() {
+        // Player 1 walks 0 -> 640 u over ticks 1000..1064.
+        let data = Scenario::new("de_test")
+            .players_ct(&[1])
+            .players_t(&[2])
+            .round(1, 1000, 5000)
+            .waypoint(1, 1000, 0.0, 0.0, 0.0)
+            .waypoint(1, 1064, 640.0, 0.0, 0.0)
+            .build();
+        let ctx = AnalysisContext::new(&data, 1);
+        let walk = ctx.samples_in(1, 1000, 1064, 16).expect("samples");
+        assert_eq!(
+            walk.iter().map(|s| s.tick).collect::<Vec<_>>(),
+            vec![1000, 1016, 1032, 1048, 1064]
+        );
+        assert!((AnalysisContext::path_length(&walk, 2.0) - 640.0).abs() < 1.0);
+
+        // A step that doesn't divide the window still ends on t1.
+        let ragged = ctx.samples_in(1, 1000, 1060, 16).expect("samples");
+        assert_eq!(ragged.last().map(|s| s.tick), Some(1060));
+
+        assert!(
+            ctx.samples_in(1, 900, 1064, 16).is_none(),
+            "no sample at the window start is silence, not a guess"
+        );
     }
 
     #[test]

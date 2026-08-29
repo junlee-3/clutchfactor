@@ -33,12 +33,16 @@ const UNUSED_UTIL_AT_ROUND_END: &str = "H6_UNUSED_UTIL_AT_ROUND_END";
 const DEAD_TIME_SMOKE: &str = "H6_DEAD_TIME_SMOKE";
 const SLOW_ROTATION: &str = "H11_SLOW_ROTATION";
 const FIRE_LINGER: &str = "H16_FIRE_LINGER";
+const DESPERATION_PEEK: &str = "H1_DESPERATION_PEEK";
+const WIDE_PEEK_HELD_ANGLE: &str = "H4_WIDE_PEEK_HELD_ANGLE";
 const PRACTISE_RULES: &[&str] = &[
     ISOLATED,
     FAILED_TRADE,
     UNSUPPORTED_ENTRY,
     PUSH_WITHOUT_INFO,
     EARLY_AGGRESSIVE,
+    DESPERATION_PEEK,
+    WIDE_PEEK_HELD_ANGLE,
 ];
 
 /// One narrated moment for the rail: a headline label plus numbers-first
@@ -183,6 +187,28 @@ pub fn what_to_practise(review: &RoundReview, ctx: &MatchContext) -> Option<Stri
                 fmt_units(dist)
             ))
         }
+        // death-taxonomy §2 H1: the clock is the only thing this line may
+        // hold against the peek.
+        DESPERATION_PEEK => {
+            let man = text(&moment.facts, "man_context")?;
+            let secs = num(&moment.facts, "seconds_left")?.round() as i64;
+            let place = text(&moment.facts, "place")?;
+            Some(format!(
+                "You took that fight {man} at {} with {secs} s still on the clock — down \
+                 bodies, hold the angle and make them come to you.",
+                callout_name(&place)
+            ))
+        }
+        WIDE_PEEK_HELD_ANGLE => {
+            let exposed = num(&moment.facts, "exposed_u")?;
+            let place = text(&moment.facts, "place")?;
+            Some(format!(
+                "You swung {} into a held angle at {} — clear that corner from wide, or take \
+                 it behind a flash.",
+                fmt_units(exposed),
+                callout_name(&place)
+            ))
+        }
         _ => None,
     }
 }
@@ -229,6 +255,8 @@ fn death_headline(rule_id: &Option<String>) -> String {
         Some(UNSUPPORTED_ENTRY) => "Lost the entry",
         Some(EARLY_AGGRESSIVE) => "Died pushing early",
         Some(PUSH_WITHOUT_INFO) => "Pushed blind",
+        Some(DESPERATION_PEEK) => "Over-peeked down bodies",
+        Some(WIDE_PEEK_HELD_ANGLE) => "Peeked a held angle",
         _ => "Death",
     }
     .to_string()
@@ -291,7 +319,16 @@ fn death_facts(m: &Moment, ctx: &MatchContext) -> Vec<String> {
     if let Some(name) = name_of(&m.facts, "nearest_teammate", ctx) {
         out.push(format!("Nearest: {name}"));
     }
-    match (num(&m.facts, "distance"), text(&m.facts, "place")) {
+    // `H4_WIDE_PEEK_HELD_ANGLE`'s `distance` is the KILLER's, not a
+    // teammate's — `wide_peek_facts` renders it below with the holder's
+    // callout instead. (Every other death-anchored `distance` on the rail —
+    // H2_ISOLATED_DEATH, H14_UNSUPPORTED_ENTRY — is a teammate's, and both
+    // outrank class 10 on severity, so a merged moment keeps their meaning.)
+    let killer_distance = m.rule_id.as_deref() == Some(WIDE_PEEK_HELD_ANGLE);
+    match (
+        num(&m.facts, "distance").filter(|_| !killer_distance),
+        text(&m.facts, "place"),
+    ) {
         (Some(d), Some(p)) => out.push(format!("{} away at {}", fmt_units(d), callout_name(&p))),
         (Some(d), None) => out.push(format!("{} away", fmt_units(d))),
         (None, Some(p)) => out.push(format!("At {}", callout_name(&p))),
@@ -323,6 +360,13 @@ fn death_facts(m: &Moment, ctx: &MatchContext) -> Vec<String> {
             None => format!("{nf} {} back — never in trade range", fmt_units(dist)),
         });
     }
+    // Rule-specific death schemas, dispatched like `flag_facts` does: the
+    // claiming rule tells the story, so a merged moment reads as one death.
+    out.extend(match m.rule_id.as_deref() {
+        Some(DESPERATION_PEEK) => desperation_peek_facts(m),
+        Some(WIDE_PEEK_HELD_ANGLE) => wide_peek_facts(m),
+        _ => vec![],
+    });
     if let Some(traded) = m.facts.get("traded").and_then(|v| v.as_bool()) {
         let secs = num(&m.facts, "round_end_delta_s")
             .map(|s| s.round() as i64)
@@ -349,6 +393,57 @@ fn death_facts(m: &Moment, ctx: &MatchContext) -> Vec<String> {
         } else {
             format!("Not traded — round ended {secs} s later")
         });
+    }
+    out
+}
+
+/// `H1_DESPERATION_PEEK`'s schema (`h1.rs`): `{man_context, my_alive,
+/// their_alive, closed_u, killer_moved_u, seconds_left, place, killer}`.
+fn desperation_peek_facts(m: &Moment) -> Vec<String> {
+    let mut out = vec![];
+    if let Some(man) = text(&m.facts, "man_context") {
+        out.push(match num(&m.facts, "seconds_left") {
+            Some(secs) => format!("{man} with {secs:.1} s left"),
+            None => format!("{man} down bodies"),
+        });
+    }
+    if let (Some(closed), Some(moved)) =
+        (num(&m.facts, "closed_u"), num(&m.facts, "killer_moved_u"))
+    {
+        out.push(format!(
+            "{} closed on the killer, who moved {}",
+            fmt_units(closed),
+            fmt_units(moved)
+        ));
+    }
+    out
+}
+
+/// `H4_WIDE_PEEK_HELD_ANGLE`'s schema (`h4.rs`): `{exposed_u,
+/// killer_moved_u, distance, shots, place, killer_place, killer}`. A shot
+/// count of 0 means the duel was established by damage instead — the clause
+/// drops rather than printing a bare 0.
+fn wide_peek_facts(m: &Moment) -> Vec<String> {
+    let mut out = vec![];
+    if let (Some(exposed), Some(moved)) =
+        (num(&m.facts, "exposed_u"), num(&m.facts, "killer_moved_u"))
+    {
+        out.push(format!(
+            "{} swung into a killer who moved {}",
+            fmt_units(exposed),
+            fmt_units(moved)
+        ));
+    }
+    if let Some(d) = num(&m.facts, "distance") {
+        out.push(match text(&m.facts, "killer_place") {
+            Some(p) => format!("{} apart, holding at {}", fmt_units(d), callout_name(&p)),
+            None => format!("{} apart", fmt_units(d)),
+        });
+    }
+    match num(&m.facts, "shots").map(|s| s.round() as i64) {
+        Some(1) => out.push("1 shot fired".to_string()),
+        Some(n) if n > 1 => out.push(format!("{n} shots fired")),
+        _ => {}
     }
     out
 }
@@ -744,6 +839,16 @@ mod tests {
                 json!({ "seconds_in": 8.0, "distance_from_spawn": 750.0 }),
                 "750 u",
             ),
+            (
+                DESPERATION_PEEK,
+                json!({ "man_context": "3v4", "seconds_left": 41.2, "place": "Palace" }),
+                "3v4",
+            ),
+            (
+                WIDE_PEEK_HELD_ANGLE,
+                json!({ "exposed_u": 180.0, "place": "Palace" }),
+                "180 u",
+            ),
         ];
         for (rule, facts, expect_contains) in cases {
             let r = review(
@@ -951,6 +1056,78 @@ mod tests {
             vec![
                 "Takenouchi 1,850 u back when Kanae went down — never in trade range".to_string(),
                 "Not traded — round ended 9 s later".to_string(),
+            ]
+        );
+    }
+
+    /// Class 8's schema (`h1.rs`): the man count and the clock that did not
+    /// demand the fight, then the two movement numbers behind "you walked
+    /// into it". Numbers first, seconds at 1 dp.
+    #[test]
+    fn desperation_peek_death_moment_reads_the_man_count_and_the_clock() {
+        let m = Moment {
+            tick: 96_000,
+            kind: "tracked_death".to_string(),
+            rule_id: Some(DESPERATION_PEEK.to_string()),
+            delta_p: Some(-0.24),
+            facts: json!({
+                "man_context": "3v4",
+                "my_alive": 3,
+                "their_alive": 4,
+                "closed_u": 312.0,
+                "killer_moved_u": 40.0,
+                "seconds_left": 41.2,
+                "place": "Palace",
+                "killer": UNCLE_BUBBLES.to_string(),
+                "traded": false,
+                "round_end_delta_s": 8.0,
+            }),
+        };
+        let t = narrate_moment(&m, &ctx());
+        assert_eq!(t.headline, "Over-peeked down bodies");
+        assert_eq!(
+            t.facts,
+            vec![
+                "At Palace".to_string(),
+                "3v4 with 41.2 s left".to_string(),
+                "312 u closed on the killer, who moved 40 u".to_string(),
+                "Not traded — round ended 8 s later".to_string(),
+            ]
+        );
+    }
+
+    /// Class 10's schema (`h4.rs`). Its `distance` is the KILLER's, so the
+    /// generic "N u away at <your place>" line — which reads as a teammate
+    /// distance everywhere else on the rail — must not render for it.
+    #[test]
+    fn wide_peek_death_moment_names_the_holder_not_a_teammate_distance() {
+        let m = Moment {
+            tick: 96_000,
+            kind: "tracked_death".to_string(),
+            rule_id: Some(WIDE_PEEK_HELD_ANGLE.to_string()),
+            delta_p: Some(-0.2),
+            facts: json!({
+                "exposed_u": 180.0,
+                "killer_moved_u": 12.0,
+                "distance": 640.0,
+                "shots": 3,
+                "place": "Palace",
+                "killer_place": "Jungle",
+                "killer": UNCLE_BUBBLES.to_string(),
+                "traded": false,
+                "round_end_delta_s": 5.0,
+            }),
+        };
+        let t = narrate_moment(&m, &ctx());
+        assert_eq!(t.headline, "Peeked a held angle");
+        assert_eq!(
+            t.facts,
+            vec![
+                "At Palace".to_string(),
+                "180 u swung into a killer who moved 12 u".to_string(),
+                "640 u apart, holding at Jungle".to_string(),
+                "3 shots fired".to_string(),
+                "Not traded — round ended 5 s later".to_string(),
             ]
         );
     }

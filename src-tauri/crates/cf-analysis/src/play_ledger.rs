@@ -144,31 +144,21 @@ fn reason_str(r: &RoundEndReason) -> String {
     }
 }
 
-/// Roster minus everyone killed at or before `tick` — the same state
-/// replay `round_review` uses (kill events, never tick samples, so a
-/// synthetic or sparsely sampled track can't misreport a death).
-fn alive_in(ctx: &AnalysisContext, round: &Round, roster: &[u64], tick: i32) -> usize {
-    let dead = ctx
-        .data()
-        .kills
-        .iter()
-        .filter(|k| k.round == round.number && k.tick <= tick && roster.contains(&k.victim))
-        .count();
-    roster.len().saturating_sub(dead)
+/// (my side alive, their side alive) at `tick`, from the shared kill-event
+/// replay (`AnalysisContext::alive_pair` — kill events, never tick samples,
+/// so a synthetic or sparsely sampled track can't misreport a death). Every
+/// caller here is inside a round the tracked player played, so the lookup
+/// cannot miss; (0, 0) is the unreachable arm.
+fn alive_pair(ctx: &AnalysisContext, round: &Round, tick: i32) -> (usize, usize) {
+    ctx.alive_pair(ctx.tracked(), round.number, tick)
+        .unwrap_or((0, 0))
 }
 
 /// "3v5" — my side v their side alive at `tick` (callers pass
 /// `kill.tick - 1` so the kill itself is not yet counted).
-fn man_context(ctx: &AnalysisContext, round: &Round, side: Side, tick: i32) -> String {
-    let (mine, theirs) = match side {
-        Side::Ct => (&round.ct_steamids, &round.t_steamids),
-        Side::T => (&round.t_steamids, &round.ct_steamids),
-    };
-    format!(
-        "{}v{}",
-        alive_in(ctx, round, mine, tick),
-        alive_in(ctx, round, theirs, tick)
-    )
+fn man_context(ctx: &AnalysisContext, round: &Round, tick: i32) -> String {
+    let (mine, theirs) = alive_pair(ctx, round, tick);
+    format!("{mine}v{theirs}")
 }
 
 fn play(tick: i32, phase: String, kind: &str, facts: Value, quality: Option<Quality>) -> Play {
@@ -253,7 +243,7 @@ fn engagement_plays(
         if k.attacker == Some(tracked) && k.victim != tracked {
             out.push(kill_play(ctx, cfg, round, side, k));
         } else if k.victim == tracked {
-            out.push(death_play(ctx, cfg, round, side, k));
+            out.push(death_play(ctx, cfg, round, k));
         } else if k.assister == Some(tracked) {
             out.push(play(
                 k.tick,
@@ -302,19 +292,13 @@ fn kill_play(
             "thru_smoke": k.thru_smoke,
             "wallbang": k.penetrated > 0,
             "while_blind": k.attacker_blind,
-            "man_context": man_context(ctx, round, side, k.tick - 1),
+            "man_context": man_context(ctx, round, k.tick - 1),
         }),
         if team_kill { Some(Quality::Bad) } else { None },
     )
 }
 
-fn death_play(
-    ctx: &AnalysisContext,
-    cfg: &DetectorConfig,
-    round: &Round,
-    side: Side,
-    k: &Kill,
-) -> Play {
+fn death_play(ctx: &AnalysisContext, cfg: &DetectorConfig, round: &Round, k: &Kill) -> Play {
     let tracked = ctx.tracked();
     let z = cfg.general.z_weight;
     let commit_w = ctx.seconds(cfg.trade.commit_window_s);
@@ -342,7 +326,7 @@ fn death_play(
             "traded": traded,
             "nearest_teammate": nearest.map(|(id, _)| id.to_string()),
             "nearest_teammate_dist": nearest.map(|(_, d)| d.round()),
-            "man_context": man_context(ctx, round, side, k.tick - 1),
+            "man_context": man_context(ctx, round, k.tick - 1),
             // Clamped at 0: a death in the post-decision tail (after
             // `end_tick`, inside `officially_ended_tick`) is never negative
             // seconds — `dead_time` marks it, as the smoke play does.
@@ -389,12 +373,7 @@ fn outcome_play(
     let tracked = ctx.tracked();
     let tick = round.end_tick;
     let survived = ctx.kill_of(tracked, round.number).is_none();
-    let (mine, theirs) = match side {
-        Side::Ct => (&round.ct_steamids, &round.t_steamids),
-        Side::T => (&round.t_steamids, &round.ct_steamids),
-    };
-    let my_alive = alive_in(ctx, round, mine, span_end(round));
-    let their_alive = alive_in(ctx, round, theirs, span_end(round));
+    let (my_alive, their_alive) = alive_pair(ctx, round, span_end(round));
     let kills = ctx
         .data()
         .kills

@@ -915,6 +915,93 @@ mod tests {
         );
     }
 
+    // ---- classes 8 / 10 --------------------------------------------------
+
+    /// death-taxonomy §2 H1: the only thing this rule may assert is that the
+    /// clock was not demanding contact — never that the peek was stupid.
+    #[test]
+    fn desperation_peek_names_the_man_count_and_the_clock() {
+        let n = say(&ins(
+            "H1_DESPERATION_PEEK",
+            json!({ "count": 3, "rule": "H1_DESPERATION_PEEK", "man_contexts": ["3v4", "2v3"] }),
+            json!({ "count": 3, "per_round": per_round(&[5, 9, 14]) }),
+        ));
+        assert_eq!(n.title, "Over-peeked down bodies 3 times");
+        assert_eq!(
+            n.body,
+            "You took the fight a player down 3 times, at 3v4 and 2v3 — rounds 5, 9 and 14. \
+             The clock was not demanding contact in any of them, and down bodies the duel you \
+             want is the one they have to walk into. Hold the angle and let them come to you, \
+             or wait for the teammate who can re-peek it."
+        );
+        let lower = n.body.to_lowercase();
+        for blame in ["your fault", "you should have", "threw the round", "stupid"] {
+            assert!(
+                !lower.contains(blame),
+                "blame word {blame:?} in: {}",
+                n.body
+            );
+        }
+    }
+
+    #[test]
+    fn desperation_peek_without_facts_drops_its_clauses() {
+        let n = say(&ins("H1_DESPERATION_PEEK", json!({}), json!({})));
+        assert_eq!(n.title, "Over-peeked down bodies");
+        assert!(!n.body.contains("round"), "no round clause: {}", n.body);
+        assert!(
+            !n.body.contains(" at .") && !n.body.contains("null") && !n.body.contains("{}"),
+            "no empty-fact leakage: {}",
+            n.body
+        );
+    }
+
+    /// death-taxonomy §2 H4: a lost angle duel is a positioning result. The
+    /// copy says "held angle" and never blames aim.
+    #[test]
+    fn wide_peek_names_the_held_angle_and_never_blames_aim() {
+        let n = say(&ins(
+            "H4_WIDE_PEEK_HELD_ANGLE",
+            json!({ "count": 2 }),
+            json!({ "count": 2 }),
+        ));
+        assert_eq!(n.title, "Swung into a held angle twice");
+        assert_eq!(
+            n.body,
+            "You swung into an enemy who was already still on the angle twice and lost the \
+             duel. Whoever is standing still when the fight starts wins it — that is a \
+             positioning result, not an aim result. Clear that corner from as wide as you can, \
+             or take it behind a flash."
+        );
+        let lower = n.body.to_lowercase();
+        assert!(lower.contains("angle"), "must name the held angle");
+        assert!(!lower.contains("bad aim"), "never blames aim: {}", n.body);
+    }
+
+    #[test]
+    fn habit_desperation_peek_has_its_own_phrasing() {
+        let n = narrate_habit("H1_DESPERATION_PEEK", 3, 5, 7, &json!({}));
+        assert_eq!(n.title, "Habit: over-peeking down bodies");
+        assert_eq!(
+            n.body,
+            "You took the fight a player down in 3 of your last 5 matches — 7 times in all. \
+             Down bodies is the one place patience wins rounds: hold the angle and make them \
+             come to you."
+        );
+    }
+
+    #[test]
+    fn habit_wide_peek_has_its_own_phrasing() {
+        let n = narrate_habit("H4_WIDE_PEEK_HELD_ANGLE", 2, 5, 4, &json!({}));
+        assert_eq!(n.title, "Habit: swinging into held angles");
+        assert_eq!(
+            n.body,
+            "You swung into an enemy holding still in 2 of your last 5 matches — 4 times in \
+             all. Nobody wins that duel by aiming faster: clear the corner from wide, or take \
+             it behind a flash."
+        );
+    }
+
     #[test]
     fn habit_covers_the_named_rules() {
         for rule in [
@@ -924,6 +1011,8 @@ mod tests {
             "H3_WASTED_UTILITY",
             "H4_KILLED_WITHOUT_CONTACT",
             "H4_REPEAT_HOTSPOT",
+            "H1_DESPERATION_PEEK",
+            "H4_WIDE_PEEK_HELD_ANGLE",
         ] {
             let n = narrate_habit(rule, 3, 5, 9, &json!({ "map": "de_nuke", "matches": 3 }));
             assert!(!n.title.is_empty() && !n.body.is_empty(), "{rule}");
@@ -1349,6 +1438,27 @@ mod tests {
                     json!({ "count": 3 }),
                     json!({ "count": 3 }),
                 ),
+            ),
+            (
+                "H4_WIDE_PEEK_HELD_ANGLE",
+                ins(
+                    "H4_WIDE_PEEK_HELD_ANGLE",
+                    json!({ "count": 2 }),
+                    json!({ "count": 2 }),
+                ),
+            ),
+            (
+                "H1_DESPERATION_PEEK",
+                ins(
+                    "H1_DESPERATION_PEEK",
+                    json!({ "count": 3, "rule": "H1_DESPERATION_PEEK",
+                            "man_contexts": ["3v4", "2v3"] }),
+                    json!({ "count": 3, "per_round": per_round(&[5, 9, 14]) }),
+                ),
+            ),
+            (
+                "H1_DESPERATION_PEEK/no-facts",
+                ins("H1_DESPERATION_PEEK", json!({}), json!({})),
             ),
             (
                 "H16_UTILITY_EXPOSURE",
