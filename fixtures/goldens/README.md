@@ -668,8 +668,8 @@ class 8, 1.5 s for class 10) with the configured z-weighting.
 | nuke-tie | 2 | 9076 | H1 | **8** | 4v5, 96.3 s left, at Trophy; you 270 u / killer 56 u; closed 161 u | True positive, thinnest closure in the set (161 u against a 150 u floor). The killer was nearly static, so the initiative reading is clean. |
 | nuke-tie | 14 | 82608 | H1 | 5 (secondary tag) | 4v5, 97.6 s left, at Control; you 376 u / killer 0 u; closed 209 u | True positive. The killer did not move at all. Again class 5 in the end — no shot fired. |
 | dust2-loss | 15 | 88796 | H4 | **10** | Long A into a killer at Long Doors; you 322 u / killer 41 u; 507 u apart; 7 shots | True positive, textbook: swung Long against a held Long Doors angle and lost the trade. |
-| inferno-win | 18 | 105258 | H4 | **10** | Banana into a killer at B site; you 162 u / killer 46 u; 610 u apart; 5 shots | True positive. |
-| nuke-tie | 10 | 62206 | H4 | **10** | Squeaky into a killer in Lobby; you 191 u / killer 50 u; 622 u apart; 5 shots | True positive. |
+| inferno-win | 18 | 105258 | H4 | **10** | Banana into a killer at B site; you 162 u / killer 46 u; 610 u apart; 5 shots | True positive. Thinnest swing in the set (162 u against a 120 u floor), but the asymmetry the class is about is unambiguous: the killer spent 46 u of a 60 u budget — sat on the B-site angle while you crossed Banana into it — and the duel was real (5 shots) at 610 u, a range where the held angle decides it, not the aim. |
+| nuke-tie | 10 | 62206 | H4 | **10** | Squeaky into a killer in Lobby; you 191 u / killer 50 u; 622 u apart; 5 shots | True positive, the same shape as the dust2-loss Long peek: 191 u of your movement against 50 u of theirs, the gap closing across the whole window, 622 u apart at the shot. The holder was already still when the duel started, so the fix is where you took it from, not how you aimed. |
 
 **No flag was judged a false positive, so no default was changed** — the
 thresholds in `H1Cfg`/`H4Cfg` are the ones the rules shipped with. The one
