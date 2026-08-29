@@ -36,6 +36,8 @@ pub(crate) fn narrate(insight: &Insight, ctx: &MatchContext) -> Narration {
         "H3_WASTED_UTILITY" => wasted_utility(&f),
         "H4_KILLED_WITHOUT_CONTACT" => killed_without_contact(&f, r),
         "H4_CAUGHT_IN_CROSSFIRE" => caught_in_crossfire(&f),
+        "H4_WIDE_PEEK_HELD_ANGLE" => wide_peek_held_angle(&f),
+        "H1_DESPERATION_PEEK" => desperation_peek(&f),
         "H16_UTILITY_EXPOSURE" => utility_exposure(&f),
         "D2_FLASH_EFFECTIVENESS" => flash_effectiveness(&f),
         "H6_UTIL_TEAM_DAMAGE" => util_team_damage(&f, ctx),
@@ -391,6 +393,75 @@ fn caught_in_crossfire(f: &Facts) -> Narration {
                 None => String::new(),
             }
         ),
+    }
+}
+
+/// death-taxonomy §2 H4 Tier 2. A lost angle duel is a positioning result,
+/// so the copy says "held angle" and never reaches for aim.
+fn wide_peek_held_angle(f: &Facts) -> Narration {
+    let n = f.int("count");
+    Narration {
+        title: match n {
+            Some(n) => format!("Swung into a held angle {}", times(n)),
+            None => "Swung into a held angle".to_string(),
+        },
+        body: format!(
+            "You swung into an enemy who was already still on the angle{} and lost the duel. \
+             Whoever is standing still when the fight starts wins it — that is a positioning \
+             result, not an aim result. Clear that corner from as wide as you can, or take it \
+             behind a flash.",
+            match n {
+                Some(n) => format!(" {}", times(n)),
+                None => String::new(),
+            }
+        ),
+    }
+}
+
+/// death-taxonomy §2 H1. Being down bodies is not itself a mistake and the
+/// engine cannot see intent, so the only judgement this caption may make is
+/// the one the rule actually established: the clock was not demanding the
+/// contact.
+fn desperation_peek(f: &Facts) -> Narration {
+    let n = f.int("count");
+    let contexts: Vec<String> = f
+        .get("man_contexts")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let at = if contexts.is_empty() {
+        String::new()
+    } else {
+        format!(", at {}", list(&contexts))
+    };
+    let claim = match n {
+        Some(n) => format!("You took the fight a player down {}{at}", times(n)),
+        None => format!("You took the fight a player down{at}"),
+    };
+    let clock = if n.is_some_and(|n| n > 1) {
+        "The clock was not demanding contact in any of them, and down bodies the duel you want \
+         is the one they have to walk into."
+    } else {
+        "The clock was not demanding contact, and down bodies the duel you want is the one \
+         they have to walk into."
+    };
+    Narration {
+        title: match n {
+            Some(n) => format!("Over-peeked down bodies {}", times(n)),
+            None => "Over-peeked down bodies".to_string(),
+        },
+        body: sentences(&[
+            fact(claim, f.round_clause()),
+            clock.to_string(),
+            "Hold the angle and let them come to you, or wait for the teammate who can \
+             re-peek it."
+                .to_string(),
+        ]),
     }
 }
 
@@ -830,6 +901,20 @@ pub fn narrate_habit(
             body: format!(
                 "Smoke and wallbang deaths caught you {seen}. You keep holding lines that get \
                  sprayed blind — take one step off the common spot before you set up."
+            ),
+        },
+        "H1_DESPERATION_PEEK" => Narration {
+            title: "Habit: over-peeking down bodies".to_string(),
+            body: format!(
+                "You took the fight a player down {seen}. Down bodies is the one place \
+                 patience wins rounds: hold the angle and make them come to you."
+            ),
+        },
+        "H4_WIDE_PEEK_HELD_ANGLE" => Narration {
+            title: "Habit: swinging into held angles".to_string(),
+            body: format!(
+                "You swung into an enemy holding still {seen}. Nobody wins that duel by aiming \
+                 faster: clear the corner from wide, or take it behind a flash."
             ),
         },
         "H4_REPEAT_HOTSPOT" => {
