@@ -323,13 +323,15 @@ line in CLAUDE.md's release checklist.
 - Vercel project `clutchfactor`, Git-connected to `junlee-3/clutchfactor`,
   **Root Directory `site`**, framework Vite, install
   `pnpm install --frozen-lockfile`, build `pnpm build`, output `dist`.
-  Production branch `main`; every PR gets a preview URL. Ignored Build
-  Step: `git diff HEAD^ HEAD --quiet -- .` (skips builds when `site/`
-  didn't change). `vercel login` / `vercel link` are interactive — the
-  owner runs them; the implementation plan stops there and says so.
-- `site/vercel.json`: `cleanUrls: true`, the cache headers above, and
-  security headers (`X-Content-Type-Options: nosniff`,
-  `Referrer-Policy: strict-origin-when-cross-origin`).
+  Production branch `main`; every PR gets a preview URL. The Ignored
+  Build Step lives in `vercel.json` as `ignoreCommand`:
+  `git diff HEAD^ HEAD --quiet -- .` (skips builds when `site/` didn't
+  change). `vercel login` / `vercel link` are interactive — the owner
+  runs them; the implementation plan stops there and says so.
+- `site/vercel.json`: `cleanUrls: true`, `ignoreCommand`, the cache
+  headers above, and security headers (`X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: strict-origin-when-cross-origin`,
+  `X-Frame-Options: DENY`).
 - CI (`.github/workflows/ci.yml`): new `site` job on `ubuntu-latest`,
   Node 22 + pnpm 10, `pnpm -C site install --frozen-lockfile`, then
   `typecheck`, `lint`, `test`, `build`. Not a required check until it has
