@@ -29,7 +29,12 @@ import {
   useTrackedPlayer,
 } from "../lib/queries";
 import { trackedLabel } from "../lib/trackedPlayer";
-import { clipFileName, clipProgress, clipWindow } from "../replay/clip";
+import {
+  clipFileName,
+  clipWindow,
+  recordingAnnouncement,
+  recordingLabel,
+} from "../replay/clip";
 import type { ClipWindow } from "../replay/clip";
 import { radarImageUrl, radarLayer, worldToRadar } from "../replay/coords";
 import type { MapCalibration } from "../replay/coords";
@@ -76,20 +81,18 @@ interface ClipRecording {
   win: ClipWindow;
   recorder: ClipRecorder;
   fileName: string;
-  /** Where the playhead was before the export, so Escape can put it back. */
+  /** Where the playhead was, and how fast it was playing, before the export
+   * — the export forces 1x, so both go back afterwards. */
   resumeTick: number;
+  resumeSpeed: Speed;
   /** Set when the window is reached: the clip is being written now, so it
    * can no longer be cancelled — and a second export can't start on top. */
   stopping: boolean;
 }
 
-/** The recording button's live label. `.rpl-clip-btn` holds a fixed width so
- * the transport never reflows as the numbers tick (design-system §4: nothing
- * animates position except the playhead and progress fills). */
-function recordingLabel(win: ClipWindow, tick: number, tickrate: number): string {
-  const { done, total } = clipProgress(win, tick, tickrate);
-  return `Recording ${done.toFixed(1)} s / ${total.toFixed(1)} s`;
-}
+/** What the button reads between the recorder stopping and the file landing
+ * — the transport stays locked across it, and Escape no longer applies. */
+const SAVING_LABEL = "Saving…";
 
 function useCalibration(enabled: boolean) {
   return useQuery({
@@ -431,6 +434,9 @@ function RoundPlayer({
   const recordingRef = useRef<ClipRecording | null>(null);
   // Non-null exactly while a clip is recording; also the button's label.
   const [clipLabel, setClipLabel] = useState<string | null>(null);
+  // The same state at whole-second granularity for the live region, so the
+  // 10 Hz label doesn't queue ten announcements a second.
+  const [clipAnnounce, setClipAnnounce] = useState<string | null>(null);
   // Read once: what this WebView can encode never changes mid-session.
   const clipFormat = useMemo(() => supportedMime(), []);
   const holdCanvas = useCallback((canvas: HTMLCanvasElement | null) => {
@@ -580,7 +586,8 @@ function RoundPlayer({
    * button's own idle text coming back is what says the clip is on disk. */
   const finishClip = useCallback(
     async (rec: ClipRecording) => {
-      setClipLabel("Saving…");
+      setClipLabel(SAVING_LABEL);
+      setClipAnnounce(SAVING_LABEL);
       try {
         const blob = await rec.recorder.stop();
         const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -591,9 +598,11 @@ function RoundPlayer({
       } finally {
         recordingRef.current = null;
         setClipLabel(null);
+        setClipAnnounce(null);
+        setSpeed(rec.resumeSpeed);
       }
     },
-    [toast],
+    [setSpeed, toast],
   );
 
   /** One click (or `E`) → one file. Records the tape as it plays, at 1x, so
@@ -609,6 +618,7 @@ function RoundPlayer({
       d.tickrate,
     );
     const resumeTick = tickRef.current;
+    const resumeSpeed = speedRef.current;
     const who = tracked.data ? trackedLabel(tracked.data) : null;
     const caption = `${mapName(d.map)} · R${round}${who ? ` · ${who}` : ""}`;
     seek(win.startTick);
@@ -618,6 +628,7 @@ function RoundPlayer({
       recorder = startClipRecorder(canvas, clipFormat.mime, caption);
     } catch (e) {
       seek(resumeTick);
+      setSpeed(resumeSpeed);
       toast.push("error", errorMessage(e));
       return;
     }
@@ -626,9 +637,11 @@ function RoundPlayer({
       recorder,
       fileName: clipFileName(d.map, round, spec, win, d.tickrate, clipFormat.ext),
       resumeTick,
+      resumeSpeed,
       stopping: false,
     };
     setClipLabel(recordingLabel(win, win.startTick, d.tickrate));
+    setClipAnnounce(recordingAnnouncement(win, win.startTick, d.tickrate));
     setPlaying(true);
   }, [
     annotationMoment,
@@ -644,7 +657,8 @@ function RoundPlayer({
     tracked.data,
   ]);
 
-  /** Escape while recording: nothing is written, the playhead goes back. */
+  /** Escape while recording: nothing is written, the playhead and the speed
+   * go back to what the user had. */
   const cancelClip = useCallback(() => {
     const rec = recordingRef.current;
     if (!rec || rec.stopping) return;
@@ -652,9 +666,11 @@ function RoundPlayer({
     rec.recorder.cancel();
     setPlaying(false);
     seek(rec.resumeTick);
+    setSpeed(rec.resumeSpeed);
     setClipLabel(null);
+    setClipAnnounce(null);
     toast.push("status", "Clip cancelled");
-  }, [seek, setPlaying, toast]);
+  }, [seek, setPlaying, setSpeed, toast]);
 
   const lastSync = useRef(0);
   const onFrame = useCallback(
@@ -674,6 +690,11 @@ function RoundPlayer({
         setDisplayTick(tickRef.current);
         if (rec && !rec.stopping) {
           setClipLabel(recordingLabel(rec.win, tickRef.current, d.tickrate));
+          // Identical for ~10 frames running, so React leaves the live
+          // region's text node alone and nothing is announced.
+          setClipAnnounce(
+            recordingAnnouncement(rec.win, tickRef.current, d.tickrate),
+          );
         }
       }
       // The window is clamped inside the round, so this also catches the
@@ -730,6 +751,7 @@ function RoundPlayer({
   }, [cancelClip, d.tickrate, exportClip, seek, setPlaying, setSpeed]);
 
   const recording = clipLabel !== null;
+  const saving = clipLabel === SAVING_LABEL;
 
   return (
     <div className="rpl-player">
@@ -809,10 +831,9 @@ function RoundPlayer({
           className="rpl-clip-btn"
           onClick={exportClip}
           disabled={!clipFormat}
-          aria-live="polite"
           title={
             clipFormat
-              ? recording
+              ? recording && !saving
                 ? "Escape cancels"
                 : undefined
               : "Recording not supported in this WebView"
@@ -820,6 +841,11 @@ function RoundPlayer({
         >
           {clipLabel ?? "Export clip"}
         </Button>
+        {/* The live region is separate from the button so the announcement
+            can run at 1 Hz while the label above counts in tenths. */}
+        <span className="rpl-clip-live" role="status" aria-live="polite">
+          {clipAnnounce ?? ""}
+        </span>
         <Scrubber
           spec={spec}
           tick={displayTick}

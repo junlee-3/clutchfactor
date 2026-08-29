@@ -58,10 +58,18 @@ export function startClipRecorder(
   if (!ctx) throw new Error("this WebView wouldn't give the recorder a canvas");
 
   const stream = target.captureStream(CAPTURE_FPS);
-  const media = new MediaRecorder(stream, {
-    mimeType: mime,
-    videoBitsPerSecond: BITRATE,
-  });
+  let media: MediaRecorder;
+  try {
+    media = new MediaRecorder(stream, {
+      mimeType: mime,
+      videoBitsPerSecond: BITRATE,
+    });
+  } catch (e) {
+    // The container was supported a moment ago but isn't now: let go of the
+    // capture stream before the error leaves here.
+    for (const track of stream.getTracks()) track.stop();
+    throw e;
+  }
   const chunks: Blob[] = [];
   media.ondataavailable = (e) => {
     if (e.data.size > 0) chunks.push(e.data);
@@ -80,15 +88,26 @@ export function startClipRecorder(
     ctx.fillText(label, BAND_PAD, EXPORT_W - BAND_H / 2);
     raf = requestAnimationFrame(paint);
   };
-  raf = requestAnimationFrame(paint);
 
   const teardown = () => {
     cancelAnimationFrame(raf);
     for (const track of stream.getTracks()) track.stop();
   };
+  // Until stop()/cancel() take it over: an encoder that dies on its own must
+  // still take the mirror loop down with it, or it paints for the rest of
+  // the session.
+  media.onerror = teardown;
 
   let settled = false;
-  media.start();
+  try {
+    media.start();
+  } catch (e) {
+    teardown();
+    throw e;
+  }
+  // Armed only once the encoder is actually running, so a throwing start()
+  // can never leave a loop behind.
+  raf = requestAnimationFrame(paint);
 
   return {
     stop() {
@@ -106,6 +125,14 @@ export function startClipRecorder(
           teardown();
           reject(new Error("the recording stopped early — nothing was saved"));
         };
+        if (media.state === "inactive") {
+          // It already stopped on its own (an encoder error) — there is no
+          // onstop coming, so settle here instead of throwing inside the
+          // executor and leaving the loop painting.
+          teardown();
+          reject(new Error("the recording stopped early — nothing was saved"));
+          return;
+        }
         media.stop();
       });
     },

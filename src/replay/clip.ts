@@ -111,3 +111,27 @@ export function clipProgress(
   const elapsed = Math.min(Math.max(tick - win.startTick, 0), span);
   return { done: elapsed / tickrate, total: span / tickrate };
 }
+
+/** The recording button's own label, counting in tenths. `.rpl-clip-btn`
+ *  holds a fixed width so the transport never reflows as it ticks. */
+export function recordingLabel(
+  win: ClipWindow,
+  tick: number,
+  tickrate: number,
+): string {
+  const { done, total } = clipProgress(win, tick, tickrate);
+  return `Recording ${done.toFixed(1)} s / ${total.toFixed(1)} s`;
+}
+
+/** The same sentence at whole-second granularity, for the polite live
+ *  region: the string only changes once a second, so a 7 s clip is
+ *  announced about seven times instead of seventy. The total rounds up so
+ *  the announcement never promises a shorter clip than is being recorded. */
+export function recordingAnnouncement(
+  win: ClipWindow,
+  tick: number,
+  tickrate: number,
+): string {
+  const { done, total } = clipProgress(win, tick, tickrate);
+  return `Recording ${Math.floor(done)} s / ${Math.ceil(total)} s`;
+}

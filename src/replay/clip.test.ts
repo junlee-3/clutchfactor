@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { clipFileName, clipProgress, clipWindow, pickMimeType } from "./clip";
+import {
+  clipFileName,
+  clipProgress,
+  clipWindow,
+  pickMimeType,
+  recordingAnnouncement,
+  recordingLabel,
+} from "./clip";
 import type { TimelineSpec } from "./timeline";
 
 const TR = 64;
@@ -131,5 +138,42 @@ describe("clipProgress", () => {
 
   it("never reports negative progress before the window starts", () => {
     expect(clipProgress(win, 900, TR).done).toBe(0);
+  });
+});
+
+describe("recordingLabel", () => {
+  const win = { startTick: 1000, endTick: 1000 + 7 * TR };
+
+  it("counts in tenths of a second", () => {
+    expect(recordingLabel(win, 1000 + 3.2 * TR, TR)).toBe(
+      "Recording 3.2 s / 7.0 s",
+    );
+  });
+
+  it("reads zero at the start of the window", () => {
+    expect(recordingLabel(win, 1000, TR)).toBe("Recording 0.0 s / 7.0 s");
+  });
+});
+
+describe("recordingAnnouncement", () => {
+  const win = { startTick: 1000, endTick: 1000 + 7 * TR };
+
+  it("counts in whole seconds", () => {
+    expect(recordingAnnouncement(win, 1000 + 3.2 * TR, TR)).toBe(
+      "Recording 3 s / 7 s",
+    );
+  });
+
+  it("holds one string for a whole second, so a live region speaks once", () => {
+    const first = recordingAnnouncement(win, 1000 + 3.0 * TR, TR);
+    for (const tenths of [0.1, 0.4, 0.9]) {
+      expect(recordingAnnouncement(win, 1000 + (3 + tenths) * TR, TR)).toBe(first);
+    }
+    expect(recordingAnnouncement(win, 1000 + 4 * TR, TR)).not.toBe(first);
+  });
+
+  it("rounds the total up to a whole second so it never announces short", () => {
+    const odd = { startTick: 1000, endTick: 1000 + 6.5 * TR };
+    expect(recordingAnnouncement(odd, 1000, TR)).toBe("Recording 0 s / 7 s");
   });
 });
