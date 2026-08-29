@@ -305,11 +305,12 @@ export const assetUrl = (file: string) =>
   `https://github.com/junlee-3/clutchfactor/releases/download/${release.tag}/${file}`;
 ```
 
-`detectPlatform(userAgent)`: `/Windows|Win64|Win32/` → `windows`;
-`/Macintosh|Mac OS X/` without `/iPhone|iPad|iPod/` → `mac`; everything
-else (iOS, Android, Linux) → `other`, which shows both buttons as
-secondary. Pure, tested. Sizes are
-rendered as whole MB (`Math.round(bytes / 1e6)`). Updating `release.ts` is a
+`detectPlatform(userAgent, maxTouchPoints = 0)`: `/Windows|Win64|Win32/` →
+`windows`; `/Macintosh|Mac OS X/` without `/iPhone|iPad|iPod/` **and**
+`maxTouchPoints ≤ 1` → `mac` (iPadOS in desktop mode reports `Macintosh`
+but has touch points); everything else → `other`, which shows both
+buttons as secondary. Pure, tested.
+Sizes are rendered as whole MiB (`Math.round(bytes / 1048576)`) — the number Finder/Explorer show. Updating `release.ts` is a
 line in CLAUDE.md's release checklist.
 
 ## 7. Deployment (Vercel) and CI
