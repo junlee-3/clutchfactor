@@ -11,6 +11,9 @@ interface SegmentedProps {
   value: string;
   onChange: (value: string) => void;
   ariaLabel: string;
+  /** Locks the whole group (the replay disables its speed control while a
+   *  clip is recording — the clip is a 1x record of what was played). */
+  disabled?: boolean;
 }
 
 // Segmented control / radiogroup (design-system.md §6) — replaces the
@@ -20,7 +23,13 @@ interface SegmentedProps {
 // roving-tabindex keyboard support, so the group is a single tab stop and
 // Left/Right arrows move both focus and selection (WAI-ARIA radiogroup
 // pattern).
-export function Segmented({ options, value, onChange, ariaLabel }: SegmentedProps) {
+export function Segmented({
+  options,
+  value,
+  onChange,
+  ariaLabel,
+  disabled,
+}: SegmentedProps) {
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, index: number) {
@@ -51,6 +60,7 @@ export function Segmented({ options, value, onChange, ariaLabel }: SegmentedProp
             type="button"
             role="radio"
             aria-checked={active}
+            disabled={disabled}
             tabIndex={segTabIndex(i, activeIndex)}
             className={`ui-seg-option${active ? " ui-seg-option-active" : ""}`}
             onClick={() => onChange(option.value)}

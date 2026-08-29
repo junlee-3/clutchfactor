@@ -10,6 +10,9 @@ interface Props {
   bombEvents: BombInfo[];
   names: Map<string, string>;
   onSeek: (tick: number) => void;
+  /** Locks scrubbing (the replay locks it while a clip is recording, so the
+   *  clip is what actually played). */
+  disabled?: boolean;
 }
 
 // The transport's scrub bar (design-system.md §9): ink accent-color on the
@@ -26,6 +29,7 @@ export function Scrubber({
   bombEvents,
   names,
   onSeek,
+  disabled,
 }: Props) {
   const frac = tickToFrac(spec, tick);
   const name = (sid: string | null) =>
@@ -43,6 +47,7 @@ export function Scrubber({
           value={Math.round(frac * 1000)}
           aria-label="Round timeline"
           aria-valuetext={fmtClock(spec, tick, tickrate)}
+          disabled={disabled}
           onChange={(e) =>
             onSeek(fracToTick(spec, Number(e.target.value) / 1000))
           }
@@ -55,6 +60,7 @@ export function Scrubber({
               style={{ left: `${tickToFrac(spec, k.tick) * 100}%` }}
               title={`${name(k.attacker)} → ${name(k.victim)} (${k.weapon})`}
               tabIndex={-1}
+              disabled={disabled}
               onClick={() => onSeek(Math.max(spec.startTick, k.tick - 2 * tickrate))}
             />
           ))}
@@ -65,6 +71,7 @@ export function Scrubber({
               style={{ left: `${tickToFrac(spec, b.tick) * 100}%` }}
               title={`bomb ${b.kind}`}
               tabIndex={-1}
+              disabled={disabled}
               onClick={() => onSeek(Math.max(spec.startTick, b.tick - 2 * tickrate))}
             />
           ))}

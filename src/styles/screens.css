@@ -1408,6 +1408,14 @@ a.stats-chip:hover {
   border-top: 1px solid var(--line);
 }
 
+/* Wide enough for the longest recording label ("Recording 10.0 s / 10.0 s")
+   so the transport row holds still while the numbers tick — design-system §4:
+   nothing animates position except the playhead and progress fills. */
+.rpl-clip-btn {
+  min-width: 180px;
+  flex: none;
+}
+
 .rpl-scrubber {
   flex: 1;
   display: flex;
