@@ -1,3 +1,4 @@
+mod clips;
 mod coach;
 mod commands;
 mod perf;
@@ -59,7 +60,8 @@ pub fn run() {
             commands::get_match_stats,
             commands::get_round_scoreboard,
             commands::get_detector_catalog,
-            commands::get_map_callouts
+            commands::get_map_callouts,
+            clips::save_clip
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

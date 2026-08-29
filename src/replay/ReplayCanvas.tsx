@@ -11,15 +11,19 @@ interface Props {
   /** Called each frame with dt (seconds) so the parent can advance time. */
   onFrame: (dtSeconds: number) => void;
   onFps?: (fps: number) => void;
+  /** Handed the mounted canvas once (and null on unmount) so the screen can
+   *  record it — the element itself, not the pixels, so nothing here knows
+   *  what a clip is. */
+  onCanvas?: (canvas: HTMLCanvasElement | null) => void;
 }
 
-export function ReplayCanvas({ getScene, onFrame, onFps }: Props) {
+export function ReplayCanvas({ getScene, onFrame, onFps, onCanvas }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Latest callbacks without re-arming the rAF loop.
-  const callbacksRef = useRef({ getScene, onFrame, onFps });
+  const callbacksRef = useRef({ getScene, onFrame, onFps, onCanvas });
   useEffect(() => {
-    callbacksRef.current = { getScene, onFrame, onFps };
-  }, [getScene, onFrame, onFps]);
+    callbacksRef.current = { getScene, onFrame, onFps, onCanvas };
+  }, [getScene, onFrame, onFps, onCanvas]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -30,6 +34,7 @@ export function ReplayCanvas({ getScene, onFrame, onFps }: Props) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.scale(dpr, dpr);
+    callbacksRef.current.onCanvas?.(canvas);
 
     let raf = 0;
     let last = performance.now();
@@ -52,7 +57,10 @@ export function ReplayCanvas({ getScene, onFrame, onFps }: Props) {
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      callbacksRef.current.onCanvas?.(null);
+    };
   }, []);
 
   return (

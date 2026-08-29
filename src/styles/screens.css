@@ -1408,6 +1408,14 @@ a.stats-chip:hover {
   border-top: 1px solid var(--line);
 }
 
+/* Wide enough for the longest recording label ("Recording 10.0 s / 10.0 s")
+   so the transport row holds still while the numbers tick — design-system §4:
+   nothing animates position except the playhead and progress fills. */
+.rpl-clip-btn {
+  min-width: 180px;
+  flex: none;
+}
+
 .rpl-scrubber {
   flex: 1;
   display: flex;
@@ -1425,6 +1433,24 @@ a.stats-chip:hover {
   position: relative;
   flex: 1;
   height: 26px;
+}
+
+/* Screen-reader-only: the recording announcement, at a calmer cadence than
+   the button's own label. Out of flow, so the transport row is unaffected. */
+.rpl-clip-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.rpl-scrubber-range:disabled {
+  /* Same disabled treatment as .ui-btn — a locked transport has to read
+     locked (the scrubber is disabled while a clip records). */
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .rpl-scrubber-range {

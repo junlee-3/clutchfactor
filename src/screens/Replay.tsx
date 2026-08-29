@@ -15,6 +15,7 @@ import { useToast } from "../components/ui/Toast";
 import { errorMessage } from "../lib/errors";
 import { parseEvidenceParams } from "../lib/evidence";
 import type { BombInfo, KillInfo, MatchDetail, RoundReviewDto } from "../lib/ipc";
+import { saveClip } from "../lib/ipc";
 import { mapName } from "../lib/mapName";
 import {
   useCoachRounds,
@@ -25,12 +26,23 @@ import {
   useRegenerateCoachRound,
   useRoundReview,
   useRoundTicks,
+  useTrackedPlayer,
 } from "../lib/queries";
+import { trackedLabel } from "../lib/trackedPlayer";
+import {
+  clipFileName,
+  clipWindow,
+  recordingAnnouncement,
+  recordingLabel,
+} from "../replay/clip";
+import type { ClipWindow } from "../replay/clip";
 import { radarImageUrl, radarLayer, worldToRadar } from "../replay/coords";
 import type { MapCalibration } from "../replay/coords";
 import { buildTracks, stateAt } from "../replay/interp";
 import type { PlayerTrack } from "../replay/interp";
 import { annotationMomentIndex } from "../replay/rail";
+import { startClipRecorder, supportedMime } from "../replay/recorder";
+import type { ClipRecorder } from "../replay/recorder";
 import { ReplayCanvas } from "../replay/ReplayCanvas";
 import type { BombState, Scene } from "../replay/Renderer";
 import { utilityWindows } from "../replay/utility";
@@ -62,6 +74,25 @@ function saveShowCallouts(v: boolean): void {
     // still works for this session, it just won't be remembered.
   }
 }
+
+/** A clip being recorded right now (V1.6, ADR-0012). Lives in a ref because
+ * the rAF callback is what ends it; the button label mirrors it in state. */
+interface ClipRecording {
+  win: ClipWindow;
+  recorder: ClipRecorder;
+  fileName: string;
+  /** Where the playhead was, and how fast it was playing, before the export
+   * — the export forces 1x, so both go back afterwards. */
+  resumeTick: number;
+  resumeSpeed: Speed;
+  /** Set when the window is reached: the clip is being written now, so it
+   * can no longer be cancelled — and a second export can't start on top. */
+  stopping: boolean;
+}
+
+/** What the button reads between the recorder stopping and the file landing
+ * — the transport stays locked across it, and Escape no longer applies. */
+const SAVING_LABEL = "Saving…";
 
 function useCalibration(enabled: boolean) {
   return useQuery({
@@ -294,6 +325,8 @@ function RoundPlayer({
   const coachOn = coachStatus.data?.enabled ?? false;
   const coach = useCoachRounds(matchId, coachOn);
   const calloutRows = useMapCallouts(d.map);
+  // Only for the exported clip's caption; already cached by the sidebar.
+  const tracked = useTrackedPlayer();
   const regenerate = useRegenerateCoachRound();
   const toast = useToast();
   const coachRound = coach.data?.rounds.find((r) => r.round === round) ?? null;
@@ -397,6 +430,30 @@ function RoundPlayer({
   const [speed, setSpeedState] = useState<Speed>(1);
   const [fps, setFps] = useState(0);
   const [showCallouts, setShowCallouts] = useState(loadShowCallouts);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const recordingRef = useRef<ClipRecording | null>(null);
+  // Non-null exactly while a clip is recording; also the button's label.
+  const [clipLabel, setClipLabel] = useState<string | null>(null);
+  // The same state at whole-second granularity for the live region, so the
+  // 10 Hz label doesn't queue ten announcements a second.
+  const [clipAnnounce, setClipAnnounce] = useState<string | null>(null);
+  // Read once: what this WebView can encode never changes mid-session.
+  const clipFormat = useMemo(() => supportedMime(), []);
+  const holdCanvas = useCallback((canvas: HTMLCanvasElement | null) => {
+    canvasRef.current = canvas;
+  }, []);
+
+  // Leaving the round mid-recording (a round chip is still live while one
+  // runs) throws the clip away rather than leaving a recorder running against
+  // a canvas nobody will stop. Safe under StrictMode's double-mount: a
+  // recording only ever starts from a click.
+  useEffect(
+    () => () => {
+      recordingRef.current?.recorder.cancel();
+      recordingRef.current = null;
+    },
+    [],
+  );
 
   const setPlaying = useCallback((v: boolean) => {
     playingRef.current = v;
@@ -524,6 +581,97 @@ function RoundPlayer({
     ],
   );
 
+  /** Stops the recorder, writes the file, names the path in a toast. The
+   * transport stays locked through the write (the label says so) — the
+   * button's own idle text coming back is what says the clip is on disk. */
+  const finishClip = useCallback(
+    async (rec: ClipRecording) => {
+      setClipLabel(SAVING_LABEL);
+      setClipAnnounce(SAVING_LABEL);
+      try {
+        const blob = await rec.recorder.stop();
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        const path = await saveClip(bytes, rec.fileName);
+        toast.push("status", `Clip saved · ${path}`);
+      } catch (e) {
+        toast.push("error", errorMessage(e));
+      } finally {
+        recordingRef.current = null;
+        setClipLabel(null);
+        setClipAnnounce(null);
+        setSpeed(rec.resumeSpeed);
+      }
+    },
+    [setSpeed, toast],
+  );
+
+  /** One click (or `E`) → one file. Records the tape as it plays, at 1x, so
+   * what lands on disk is exactly what the coach was looking at. Never call
+   * this from an effect — StrictMode would start two recorders. */
+  const exportClip = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !clipFormat || recordingRef.current) return;
+    const win = clipWindow(
+      spec,
+      tickRef.current,
+      annotationMoment?.tick ?? null,
+      d.tickrate,
+    );
+    const resumeTick = tickRef.current;
+    const resumeSpeed = speedRef.current;
+    const who = tracked.data ? trackedLabel(tracked.data) : null;
+    const caption = `${mapName(d.map)} · R${round}${who ? ` · ${who}` : ""}`;
+    seek(win.startTick);
+    setSpeed(1);
+    let recorder: ClipRecorder;
+    try {
+      recorder = startClipRecorder(canvas, clipFormat.mime, caption);
+    } catch (e) {
+      seek(resumeTick);
+      setSpeed(resumeSpeed);
+      toast.push("error", errorMessage(e));
+      return;
+    }
+    recordingRef.current = {
+      win,
+      recorder,
+      fileName: clipFileName(d.map, round, spec, win, d.tickrate, clipFormat.ext),
+      resumeTick,
+      resumeSpeed,
+      stopping: false,
+    };
+    setClipLabel(recordingLabel(win, win.startTick, d.tickrate));
+    setClipAnnounce(recordingAnnouncement(win, win.startTick, d.tickrate));
+    setPlaying(true);
+  }, [
+    annotationMoment,
+    clipFormat,
+    d.map,
+    d.tickrate,
+    round,
+    seek,
+    setPlaying,
+    setSpeed,
+    spec,
+    toast,
+    tracked.data,
+  ]);
+
+  /** Escape while recording: nothing is written, the playhead and the speed
+   * go back to what the user had. */
+  const cancelClip = useCallback(() => {
+    const rec = recordingRef.current;
+    if (!rec || rec.stopping) return;
+    recordingRef.current = null;
+    rec.recorder.cancel();
+    setPlaying(false);
+    seek(rec.resumeTick);
+    setSpeed(rec.resumeSpeed);
+    setClipLabel(null);
+    setClipAnnounce(null);
+    toast.push("status", "Clip cancelled");
+  }, [seek, setPlaying, setSpeed, toast]);
+
   const lastSync = useRef(0);
   const onFrame = useCallback(
     (dt: number) => {
@@ -536,18 +684,48 @@ function RoundPlayer({
         }
       }
       const now = performance.now();
+      const rec = recordingRef.current;
       if (now - lastSync.current > 100) {
         lastSync.current = now;
         setDisplayTick(tickRef.current);
+        if (rec && !rec.stopping) {
+          setClipLabel(recordingLabel(rec.win, tickRef.current, d.tickrate));
+          // Identical for ~10 frames running, so React leaves the live
+          // region's text node alone and nothing is announced.
+          setClipAnnounce(
+            recordingAnnouncement(rec.win, tickRef.current, d.tickrate),
+          );
+        }
+      }
+      // The window is clamped inside the round, so this also catches the
+      // auto-pause at spec.endTick — the min() only guards a spec that
+      // somehow ends first.
+      if (
+        rec &&
+        !rec.stopping &&
+        tickRef.current >= Math.min(rec.win.endTick, spec.endTick)
+      ) {
+        rec.stopping = true;
+        setPlaying(false);
+        void finishClip(rec);
       }
     },
-    [d.tickrate, spec.endTick],
+    [d.tickrate, finishClip, setPlaying, spec.endTick],
   );
 
   // Window-scoped so transport works regardless of focus (round chips live
   // outside this subtree; scrubber/buttons stay individually operable).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // A recording owns the transport — the clip has to be what played.
+      // Escape is the one key still heard, and it throws the clip away.
+      if (recordingRef.current) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          cancelClip();
+        }
+        return;
+      }
       if (e.code === "Space") {
         e.preventDefault();
         setPlaying(!playingRef.current);
@@ -558,17 +736,33 @@ function RoundPlayer({
         seek(tickRef.current + dir * step);
       } else if (e.key === "1" || e.key === "2" || e.key === "3") {
         setSpeed(SPEEDS[Number(e.key) - 1]);
+      } else if (
+        (e.key === "e" || e.key === "E") &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        exportClip();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [d.tickrate, seek, setPlaying, setSpeed]);
+  }, [cancelClip, d.tickrate, exportClip, seek, setPlaying, setSpeed]);
+
+  const recording = clipLabel !== null;
+  const saving = clipLabel === SAVING_LABEL;
 
   return (
     <div className="rpl-player">
       <div className="rpl-main">
         <div className="rpl-radar-well">
-          <ReplayCanvas getScene={getScene} onFrame={onFrame} onFps={setFps} />
+          <ReplayCanvas
+            getScene={getScene}
+            onFrame={onFrame}
+            onFps={setFps}
+            onCanvas={holdCanvas}
+          />
         </div>
         <aside className="rpl-side">
           <RosterPanel
@@ -611,6 +805,7 @@ function RoundPlayer({
           variant="primary"
           onClick={() => setPlaying(!playingRef.current)}
           aria-label={playing ? "Pause" : "Play"}
+          disabled={recording}
         >
           {playing ? "Pause" : "Play"}
         </Button>
@@ -619,15 +814,38 @@ function RoundPlayer({
           value={String(speed)}
           onChange={(v) => setSpeed(Number(v) as Speed)}
           ariaLabel="Playback speed"
+          disabled={recording}
         />
         <Button
           variant="secondary"
           size="sm"
           aria-pressed={showCallouts}
           onClick={toggleCallouts}
+          disabled={recording}
         >
           Callouts
         </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="rpl-clip-btn"
+          onClick={exportClip}
+          disabled={!clipFormat}
+          title={
+            clipFormat
+              ? recording && !saving
+                ? "Escape cancels"
+                : undefined
+              : "Recording not supported in this WebView"
+          }
+        >
+          {clipLabel ?? "Export clip"}
+        </Button>
+        {/* The live region is separate from the button so the announcement
+            can run at 1 Hz while the label above counts in tenths. */}
+        <span className="rpl-clip-live" role="status" aria-live="polite">
+          {clipAnnounce ?? ""}
+        </span>
         <Scrubber
           spec={spec}
           tick={displayTick}
@@ -636,6 +854,7 @@ function RoundPlayer({
           bombEvents={roundBombEvents}
           names={names}
           onSeek={seek}
+          disabled={recording}
         />
         <span className="type-micro" data-testid="fps">
           {fps} fps
