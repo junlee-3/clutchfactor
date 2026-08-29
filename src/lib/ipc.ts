@@ -27,6 +27,9 @@
 //   CalloutDto <- src-tauri/src/commands.rs
 //   StatSeries (TrendsDto.stats) <- src-tauri/src/commands.rs
 //   TrackedPlayer <- src-tauri/src/commands.rs
+//   save_clip's raw-body contract (the `x-clip-name` header, the
+//     [A-Za-z0-9._-] name alphabet, the mp4/webm extensions and the 200 MB
+//     ceiling) <- src-tauri/src/clips.rs
 // Conventions: steamids are strings (steamid64 overflows JS number);
 // command names are snake_case; Rust arg names arrive camelCased.
 
@@ -35,17 +38,16 @@ import type { GridDto } from "../replay/heatmap";
 
 export type { GridDto };
 
-/** The single seam between the UI and the Rust side. In dev builds each
- *  call leaves a `performance.measure("ipc:<cmd>")` so the DevTools
- *  Performance tab shows IPC time per command; production pays nothing.
- *  `VITE_FAIL_IPC=<cmd>` (dev only) forces that one command to reject, so
- *  every screen's error branch can be provoked without touching the Rust
- *  side (polish-and-release.md §2). */
-export async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+/** Dev instrumentation shared by both invoke shapes below: a
+ *  `performance.measure("ipc:<cmd>")` per call so the DevTools Performance
+ *  tab shows IPC time per command (production pays nothing), and the
+ *  `VITE_FAIL_IPC=<cmd>` short-circuit that provokes a screen's error branch
+ *  without touching the Rust side (polish-and-release.md §2). */
+async function measured<T>(cmd: string, send: () => Promise<T>): Promise<T> {
   if (import.meta.env.DEV && import.meta.env.VITE_FAIL_IPC === cmd) {
     throw new Error(`forced failure: ${cmd}`);
   }
-  if (!import.meta.env.DEV) return invoke<T>(cmd, args);
+  if (!import.meta.env.DEV) return send();
   const start = `ipc:${cmd}:start:${performance.now()}`;
   try {
     performance.mark(start);
@@ -53,7 +55,7 @@ export async function call<T>(cmd: string, args?: Record<string, unknown>): Prom
     // Measurement must never break a call.
   }
   try {
-    return await invoke<T>(cmd, args);
+    return await send();
   } finally {
     try {
       performance.measure(`ipc:${cmd}`, start);
@@ -61,6 +63,22 @@ export async function call<T>(cmd: string, args?: Record<string, unknown>): Prom
       // Measurement must never break a call.
     }
   }
+}
+
+/** The single seam between the UI and the Rust side. */
+export function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  return measured(cmd, () => invoke<T>(cmd, args));
+}
+
+/** The same seam for a payload too big to spend a JSON round-trip on: the
+ *  bytes travel as the request body (Tauri 2's raw request — `InvokeBody::Raw`
+ *  on the Rust side) and the small stuff travels as headers. */
+export function callRaw<T>(
+  cmd: string,
+  body: Uint8Array,
+  headers: Record<string, string>,
+): Promise<T> {
+  return measured(cmd, () => invoke<T>(cmd, body, { headers }));
 }
 
 export interface MatchSummary {
@@ -672,4 +690,15 @@ export function getDetectorCatalog(): Promise<CatalogDto> {
 
 export function getMapCallouts(map: string): Promise<CalloutDto[]> {
   return call<CalloutDto[]>("get_map_callouts", { map });
+}
+
+// ---- V1.6: clip export ----
+
+/** Writes a recorded replay clip into the user's Videos/ClutchFactor folder
+ *  and resolves with the absolute path it landed on (the Rust side appends
+ *  `-2`, `-3`, … rather than overwriting). The video travels as the raw
+ *  request body — base64 in JSON would cost a third more bytes and a second
+ *  copy of a file that can run to tens of megabytes. */
+export function saveClip(bytes: Uint8Array, fileName: string): Promise<string> {
+  return callRaw<string>("save_clip", bytes, { "x-clip-name": fileName });
 }
