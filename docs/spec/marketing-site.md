@@ -270,7 +270,7 @@ additions live in `site.css`, never in `tokens.css`:
   opacity; scroll reveals opacity + 8 px translateY over 200 ms `--ease`,
   once, via IntersectionObserver; the ledger sequence (§3.3); nav ground
   fade 200 ms; the `.is-target` ring on an evidence chip's card fading over
-  1.2 s (§3.2). `prefers-reduced-motion: reduce` disables all four and shows
+  1.2 s (§3.2). `prefers-reduced-motion: reduce` disables all five and shows
   the poster instead of video.
 - Breakpoints 375 / 768 / 1024 / 1440. Below 720 px: poster only, hero
   stacks, buttons full-width, ledger above its screenshot. No horizontal

@@ -8,7 +8,7 @@ Tracked player (owner): SteamID64 `76561199228328773`, in-game name `misosoupy3`
 
 ## Stack
 
-Tauri 2 (2.10.x) shell · Rust core (demoparser2 git dep, detectors, rusqlite/SQLite) · React + TypeScript + Vite frontend · Canvas 2D replay rendering · GitHub Actions CI.
+Tauri 2 (2.10.x) shell · Rust core (demoparser2 git dep, detectors, rusqlite/SQLite) · React + TypeScript + Vite frontend · Canvas 2D replay rendering · GitHub Actions CI · marketing site in `site/` (vanilla TS + CSS on Vite, Vercel — `docs/spec/marketing-site.md`, ADR-0012).
 
 ## Dev commands
 
@@ -18,6 +18,7 @@ Prereqs: Rust stable via rustup (installed: 1.97.x), Node 22 LTS, pnpm 10. Fresh
 pnpm install                 # setup (frontend deps)
 pnpm tauri dev               # run the desktop app (compiles Rust + Vite dev server)
 pnpm typecheck && pnpm lint && pnpm test:run          # frontend checks (tsc, eslint, vitest)
+pnpm -C site dev                                     # marketing site; checks: pnpm -C site typecheck && pnpm -C site lint && pnpm -C site test:run && pnpm -C site build
 cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml --workspace          # add --release to speed up golden demo parse
@@ -40,6 +41,7 @@ src-tauri/src/                 Tauri app: snake_case commands, Progress{stage,pc
 src/                           React: screens/, replay/ (canvas + coord math), components/
 assets/maps/                   radar images + per-map calibration (awpy data, vendored w/ attribution)
 fixtures/                      real .dem files, gitignored; see fixtures/README.md
+site/                          marketing site, standalone package (own lockfile): public/shots via `pnpm -C site shots`, release links in src/release.ts
 ```
 
 **Boundary rule:** no demoparser2 types leak past `cf-parser` — this keeps risk R1's fallback (C# demofile-net sidecar) survivable.
@@ -53,7 +55,7 @@ fixtures/                      real .dem files, gitignored; see fixtures/README.
 - All detector thresholds live in `DetectorConfig` with documented defaults (PROMPT.md §6.4) — never scatter magic numbers; thresholds in seconds/world units, never ticks.
 - Detectors are pure functions over `MatchData`; TDD with synthetic scenario builders is mandatory.
 - Rule engine (§5A): rule ids (`H2_ISOLATED_DEATH`, …) are load-bearing — never rename/renumber; rules are data (YAML), each emits `confidence`; approximations bias toward silence (false negative ≫ false positive); every rule gets a hand-verified golden clip test; class-13 share is a golden-test regression metric (needs `fixtures/` demos, so it runs locally — CI runners only get the synthetic suites).
-- Releases: bump `package.json` + `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml` (workspace crates stay 0.1.0), tag `vX.Y.Z` on main → `release.yml` builds both installers; then `gh release edit vX.Y.Z --notes-file …`. Debug builds print `perf: <command> <ms> ms`; `VITE_FAIL_IPC=<command> pnpm tauri dev` provokes a screen's error state.
+- Releases: bump `package.json` + `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml` (workspace crates stay 0.1.0), tag `vX.Y.Z` on main → `release.yml` builds both installers; then `gh release edit vX.Y.Z --notes-file …`; then update `site/src/release.ts` (version, asset names, byte sizes from `gh release view vX.Y.Z --json assets`) and re-run `pnpm -C site shots` if screenshots changed. Debug builds print `perf: <command> <ms> ms`; `VITE_FAIL_IPC=<command> pnpm tauri dev` provokes a screen's error state.
 - Real demos only — no fake match data, no placeholder insights.
 - Verify external APIs (demoparser2, Tauri) against docs/real output before coding against them.
 
