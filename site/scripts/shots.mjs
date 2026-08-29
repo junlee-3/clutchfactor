@@ -10,12 +10,12 @@ const root = path.resolve(here, "..", "..");            // repo root
 const out = path.resolve(here, "..", "public", "shots");
 const pub = path.resolve(here, "..", "public");
 
+// Only what index.html actually renders — an entry here that the page does not
+// use is a committed binary nobody downloads.
 const shots = [
-  ["docs/screenshots/report.png", "report"],
   ["docs/screenshots/replay.png", "replay"],
   ["docs/screenshots/trends.png", "trends"],
   ["docs/screenshots/corpus.png", "corpus"],
-  ["docs/screenshots/library.png", "library"],
   ["docs/design/walkthrough-v1.3/report-coach.png", "coach"],
   ["docs/design/walkthrough-v1.4/04-watches.png", "watches"],
 ];
@@ -36,6 +36,7 @@ await sharp(path.join(root, "assets/maps/de_inferno.png"))
   .toFile(path.join(out, "radar-inferno.webp"));
 console.log("wrote site/public/shots/radar-inferno.webp");
 
+// og.jpg is cropped from the report screenshot directly — it is not a `shots` entry.
 await sharp(path.join(root, "docs/screenshots/report.png"))
   .resize(1200, 630, { fit: "cover", position: "top" })
   .jpeg({ quality: 82 })
