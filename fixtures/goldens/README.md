@@ -644,3 +644,79 @@ Charter DoD: every stat cross-checked against raw SQL for one real match; every 
 - **Hand-verified by an independent replay:** entries R7 (+12.4 s after freeze end) and R20 (+9.8 s), both losses; traded deaths R13 (killer died +1.6 s) and R21 (+1.4 s); clutch situations R15 1v3, R18 1v4, R23 1v4, all lost.
 - **Links:** every strip chip → `/watches?stat=<key>` → the rules whose `stat_links` name it; confirmed for all seven keys.
 - **Rulings recorded during execution** are in the milestone summary and ADR-0011 (stats computed in `analyze()` with the detectors' own helpers; typed tables; static catalog with a coverage test; callouts from `last_place` medians with z so labels draw on their own radar layer; 560 px label floor; damage capped at the health removed).
+
+## Classes 8/10 verification (2026-08-29)
+
+V1.6 ships `H1_DESPERATION_PEEK` (class 8, over-peek down bodies) and
+`H4_WIDE_PEEK_HELD_ANGLE` (class 10, lost angle-advantage duel). Both are
+kinematic proxies for geometry the parser cannot give us, so both were
+hand-reviewed on all five owner demos before the defaults were frozen.
+
+- **Command:** `cargo run -p cf-analysis --release --example print_insights -- fixtures/own/<demo>.dem 76561199228328773 --json <out>` for each of the five demos, plus `--golden` runs for the two committed goldens.
+- **Volume:** 8 flags over 84 tracked deaths (5 × class 8, 3 × class 10). Six become the primary class; two class-8 flags are outranked by class 5 (the player never fired, so "you never had a duel" wins per spec §1) and survive as `secondary_tags`.
+
+### Every class-8 and class-10 flag, with its judgement
+
+`you`/`killer` are ground covered over the rule's own window (2.0 s for
+class 8, 1.5 s for class 10) with the configured z-weighting.
+
+| Demo | Rnd | Tick | Rule | Final class | Numbers | Judgement |
+|---|---|---|---|---|---|---|
+| dust2-loss | 1 | 2252 | H1 | 5 (secondary tag) | 4v5, 102.3 s left, at Upper Tunnel; you 413 u / killer 238 u; closed 258 u | **Marginal, kept.** Both players were covering ground, so "you initiated" rests only on you moving 1.7× further and owning the closure. Every spec gate holds (down a body, not last alive, untraded, clock wide open). It never reaches the user as an over-peek — the death is class 5 because no shot was ever fired. |
+| inferno-win | 14 | 85668 | H1 | **8** | 2v3, 70.5 s left, at Apartments; you 345 u / killer 148 u; closed 322 u | True positive. Down a man with over a minute left, walked 345 u into a fight nobody traded. |
+| mirage-tie | 5 | 31321 | H1 | **8** | 3v4, 49.3 s left, at A site; you 355 u / killer 225 u; closed 457 u | True positive, and the closest thing in the corpus to the spec's target case (3v4, clock open, walked into the open). |
+| nuke-tie | 2 | 9076 | H1 | **8** | 4v5, 96.3 s left, at Trophy; you 270 u / killer 56 u; closed 161 u | True positive, thinnest closure in the set (161 u against a 150 u floor). The killer was nearly static, so the initiative reading is clean. |
+| nuke-tie | 14 | 82608 | H1 | 5 (secondary tag) | 4v5, 97.6 s left, at Control; you 376 u / killer 0 u; closed 209 u | True positive. The killer did not move at all. Again class 5 in the end — no shot fired. |
+| dust2-loss | 15 | 88796 | H4 | **10** | Long A into a killer at Long Doors; you 322 u / killer 41 u; 507 u apart; 7 shots | True positive, textbook: swung Long against a held Long Doors angle and lost the trade. |
+| inferno-win | 18 | 105258 | H4 | **10** | Banana into a killer at B site; you 162 u / killer 46 u; 610 u apart; 5 shots | True positive. |
+| nuke-tie | 10 | 62206 | H4 | **10** | Squeaky into a killer in Lobby; you 191 u / killer 50 u; 622 u apart; 5 shots | True positive. |
+
+**No flag was judged a false positive, so no default was changed** — the
+thresholds in `H1Cfg`/`H4Cfg` are the ones the rules shipped with. The one
+marginal case (dust2-loss R1) is recorded above rather than tuned away: the
+tightening that would silence it (requiring a near-static killer) also
+silences the mirage-tie 3v4, which is the spec's own target case.
+
+### Class-13 share, before and after
+
+Class 13 is the spec's regression metric: every class you have not built
+inflates it. mirage-tie's "before" is the committed golden; the other four
+are derived — each newly-classed death carries no other priority rule in
+its `secondary_tags` and the victim fired inside the fallthrough duel
+window, so class 13 is where it fell through before.
+
+| Demo | Deaths | Class-13 before | Class-13 after | Deaths moved |
+|---|---|---|---|---|
+| mirage-tie (golden) | 19 | 21.1 % | **15.8 %** | 1 → class 8 |
+| dust2-loss | 17 | 47.1 % | **41.2 %** | 1 → class 10 |
+| inferno-loss | 15 | 46.7 % | 46.7 % | none |
+| inferno-win | 14 | 28.6 % | **14.3 %** | 1 → class 8, 1 → class 10 |
+| nuke-tie | 19 | 36.8 % | **26.3 %** | 1 → class 8, 1 → class 10 |
+| navi-javelins (GOTV golden) | 16 | 37.5 % | 37.5 % | none |
+
+Golden diff, `mirage-tie.analysis.json` — the only changes are the new rule
+count, the death moving 13 → 8 and the share; every other class count is
+untouched:
+
+```
++    "H1_DESPERATION_PEEK": 1,
+-    "13": 4,
++    "8": 1,
++    "13": 3,
+-  "class_13_share_pct": 21.1,
++  "class_13_share_pct": 15.8,
+```
+
+`navi-javelins-mirage.analysis.json` regenerated byte-identical (neither
+rule fires on it).
+
+### Recall, recorded honestly
+
+Class 10 is silent on inferno-loss, mirage-tie and both golden demos. The
+binding gate on the near-misses is `h4.holder_max_u` (60 u): real players
+holding an angle still drift 60–250 u in 1.5 s, and a killer who is moving
+is not the "held angle" the class describes. The next gate down is the
+engagement one — several swings into genuinely static holders (nuke-tie
+R14, killer 0 u; inferno-loss R12, killer 2 u; inferno-win R8, killer 1 u)
+had no shot and no damage from the tracked player, which makes them class 5's story, not a lost duel. Both are
+spec §4.1 working as intended: bias every approximation toward silence.

@@ -316,6 +316,17 @@ Not a rule-engine blocker: callout *names* are only used for human-readable evid
 - Parser facts learned: the death-tick inventory sample is always empty (items drop on
   death) — inventories are sampled ~0.25 s pre-death, and empty samples are treated as the
   death artifact (a living player always holds a knife).
+- **V1.6 (2026-08-29, additions only):** `H1_DESPERATION_PEEK` (class 8) and
+  `H4_WIDE_PEEK_HELD_ANGLE` (class 10) ship as **kinematic** rules — no geometry, no
+  `spotted` flag (§5.1). H1's "player initiated" is: over a 2 s window the tracked player
+  closed ≥ 150 u on the killer, walked ≥ 150 u, and covered at least as much ground as the
+  killer did (a killer who moved more was the one pushing → silent, which is this table's
+  "enemy already pushing you" suppression). Its clock test reads the bomb timer once the
+  bomb is down and the round clock otherwise, and stays silent when the derived time has
+  already run out. H4 Tier 2's "whoever is further from the corner sees the other first"
+  becomes: the victim covered ≥ 120 u toward a killer who covered ≤ 60 u, still ≥ 150 u
+  apart at the death, with a shot or damage from the victim. Both emit `confidence` 0.6
+  (§4.2's cap on approximations). Class 12 is now the only reserved class.
 
 ## 6. Cross-demo habit tracking (owner requirement, verbatim intent)
 
