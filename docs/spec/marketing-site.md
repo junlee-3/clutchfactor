@@ -90,8 +90,9 @@ the fold; same OS logic as the hero, scrolls to `#download` on "other").
   macOS secondary.
 - Evidence row (mono): `Missed 4 trades in range →` then dashed chips
   `R3 · 0:16` `R12 · 0:28` `R13 · 0:14` `R16 · 0:16`. Each chip is a link to
-  `#catches`; on arrival the matching card gets `.is-target` (2 px `--loss`
-  edge → fades over 1.2 s). Dashed stays clickable, as in the app.
+  `#catches`; on arrival the matching card gets `.is-target` for 1.2 s — a
+  2 px `--accent-bright` ring, the same treatment as keyboard focus, fading
+  out. Dashed stays clickable, as in the app.
 - Bottom-right tag (mono, dashed border): none in production — it existed
   only in the mocks to label the stand-in footage.
 
@@ -268,7 +269,8 @@ additions live in `site.css`, never in `tokens.css`:
 - Motion budget (everything else is static): clip crossfade 1,000 ms
   opacity; scroll reveals opacity + 8 px translateY over 200 ms `--ease`,
   once, via IntersectionObserver; the ledger sequence (§3.3); nav ground
-  fade 200 ms. `prefers-reduced-motion: reduce` disables all four and shows
+  fade 200 ms; the `.is-target` ring on an evidence chip's card fading over
+  1.2 s (§3.2). `prefers-reduced-motion: reduce` disables all four and shows
   the poster instead of video.
 - Breakpoints 375 / 768 / 1024 / 1440. Below 720 px: poster only, hero
   stacks, buttons full-width, ledger above its screenshot. No horizontal
