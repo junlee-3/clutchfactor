@@ -1,0 +1,53 @@
+/* Copy of src/styles/tokens.css (the app). test/tokens.test.ts fails CI if any
+   token other than --font-* / --text-* drifts. Web-only type tokens live in
+   site.css, never here. */
+:root {
+  color-scheme: dark; /* native controls render dark */
+
+  /* Neutrals — cool navy (the v0 palette). */
+  --bg0:   #0e1116;   /* app canvas */
+  --bg1:   #151a21;   /* card / row surface */
+  --bg2:   #1d242e;   /* hover / inset / track */
+  --bg-tape: #0b0d11; /* radar & heatmap wells — a touch darker than bg0 */
+  --line:  #232b36;   /* hairline borders, dividers */
+  --line-strong: #2f3944; /* emphasized borders (active card edge) */
+
+  /* Ink — text. Brightness carries hierarchy; --accent carries interaction. */
+  --ink:      #dfe5ec;  /* primary ink */
+  --ink-bright: #f2f5f8; /* interactive/hover ink, active nav */
+  --ink-dim:  #8a94a3;  /* secondary ink */
+  --ink-faint:#5c6672;  /* tertiary: timestamps, placeholders, disabled */
+
+  /* Accent — the app's ONE interaction hue: primary buttons, focus ring,
+     progress fills. Shares --ct's value on purpose (v0 did too); a separate
+     token so side identity stays explicit in code. */
+  --accent:   #4aa3ff;
+  --accent-bright: #6db6ff; /* hover on accent fills */
+
+  /* Game hues — reserved. Never used for chrome, brand, or emphasis. */
+  --ct:   #4aa3ff;    /* CT side identity only */
+  --t:    #f5b83d;    /* T side identity only */
+  --win:  #5dbb7a;    /* round/match won, good-news class 13, good plays */
+  --loss: #d16a5f;    /* round/match lost, severity, errors, bad plays */
+  --tie:  #8a94a3;    /* = ink-dim */
+
+  /* Derived, defined once (no ad-hoc color-mix in component CSS) */
+  --surface-win:  color-mix(in srgb, var(--win) 12%, var(--bg1));
+  --surface-loss: color-mix(in srgb, var(--loss) 10%, var(--bg1));
+  --border-win:   color-mix(in srgb, var(--win) 35%, var(--line));
+  --border-loss:  color-mix(in srgb, var(--loss) 35%, var(--line));
+
+  /* 4px base — the only spacing values allowed */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px;
+  --s6: 24px; --s7: 32px; --s8: 48px;
+
+  --r-sm: 4px;  /* chips, pips, inputs */
+  --r-md: 8px;  /* cards, buttons, rows — THE surface radius */
+  --r-lg: 12px; /* modals/toasts, the radar well */
+  --r-full: 999px;
+
+  /* Elevation: borders first, shadow only where something floats */
+  --shadow-float: 0 8px 24px rgb(0 0 0 / 0.45); /* toasts, menus */
+
+  --dur-fast: 120ms; --dur: 200ms; --ease: cubic-bezier(0.2, 0, 0, 1);
+}
