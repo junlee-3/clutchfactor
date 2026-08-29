@@ -24,11 +24,26 @@ describe("renderDownloadButtons", () => {
     expect(btn("windows").querySelector("small")!.textContent).toBe(".exe · 8 MB");
   });
 
-  it("shows both as secondary on an unknown OS", () => {
+  it("falls back to Windows primary on an unknown OS", () => {
     renderDownloadButtons(document, "other");
+    expect(btn("windows").classList.contains("btn--primary")).toBe(true);
+    expect(btn("windows").classList.contains("btn--secondary")).toBe(false);
     expect(btn("mac").classList.contains("btn--secondary")).toBe(true);
-    expect(btn("windows").classList.contains("btn--secondary")).toBe(true);
     expect(btn("mac").classList.contains("btn--primary")).toBe(false);
+    expect(btn("windows").href).toBe(assetUrl(release.win.file));
+    expect(btn("mac").href).toBe(assetUrl(release.mac.file));
+  });
+
+  it('drops the extension from the size label on a data-label="short" anchor', () => {
+    document.body.innerHTML += `<div class="dl" data-download-buttons><a class="btn btn--secondary" data-os="mac" data-label="short" href="#">Download .dmg <small>x</small></a><a class="btn btn--primary" data-os="windows" data-label="short" href="#">Download .exe <small>x</small></a></div>`;
+    renderDownloadButtons(document, "mac");
+    const small = (os: string, i: number) =>
+      document.querySelectorAll<HTMLAnchorElement>(`[data-os="${os}"]`)[i].querySelector("small")!.textContent;
+    expect(small("mac", 1)).toBe("Apple silicon · 10 MB");
+    expect(small("windows", 1)).toBe("8 MB");
+    // the hero anchors have no data-label — they keep the full label
+    expect(small("mac", 0)).toBe(".dmg · Apple silicon · 10 MB");
+    expect(small("windows", 0)).toBe(".exe · 8 MB");
   });
 
   it("applies to every [data-download-buttons] container", () => {

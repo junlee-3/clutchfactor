@@ -154,8 +154,9 @@ h2 + .lede, h2 + .body { margin-top: var(--s4); }
 .cta { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s6); }
 .cta .btn { flex: 1 1 100%; justify-content: center; }
 .cta .btn--primary { order: -1; }
+@media (max-width: 719px) { .cta .btn { flex-direction: column; align-items: center; gap: 2px; } }
 .evidence { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s3) var(--s4); margin-top: var(--s6); font: 400 var(--t-data) var(--font-mono); color: var(--ink-dim); }
-@media (min-width: 640px) { .cta .btn { flex: 0 1 auto; } }
+@media (min-width: 720px) { .cta .btn { flex: 0 1 auto; } }
 
 /* ---------- sections ---------- */
 .section { padding: var(--section) 0; }

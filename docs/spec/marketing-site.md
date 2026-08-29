@@ -211,7 +211,9 @@ Split 42 / 58 on ≥ 1024 px, stacked below.
   first launch. Intel Mac? Not built yet — build from source (README).*
   **Windows** — button `Download .exe` (`ClutchFactor_1.0.0_x64-setup.exe`,
   8 MB) + text link `.msi`; note *Unsigned build: SmartScreen will warn —
-  "More info → Run anyway".*
+  "More info → Run anyway".* The card buttons carry `data-label="short"`;
+  the JS-rendered size label there omits the extension the button text
+  already shows.
 - **First run** (numbered — it is a sequence): 1 Import demo → 2 pick a
   `.dem` from your own matches (CS2 → Watch → Your Matches → Download, or a
   FACEIT match room) → 3 the app auto-detects which player you are (override
@@ -310,8 +312,9 @@ export const assetUrl = (file: string) =>
 `detectPlatform(userAgent, maxTouchPoints = 0)`: `/Windows|Win64|Win32/` →
 `windows`; `/Macintosh|Mac OS X/` without `/iPhone|iPad|iPod/` **and**
 `maxTouchPoints ≤ 1` → `mac` (iPadOS in desktop mode reports `Macintosh`
-but has touch points); everything else → `other`, which shows both
-buttons as secondary. Pure, tested.
+but has touch points); everything else (iOS, Android, Linux) → `other`,
+which falls back to Windows primary / macOS secondary (§3.2) so every
+screen keeps one accent button. Pure, tested.
 Sizes are rendered as whole MiB (`Math.round(bytes / 1048576)`) — the number Finder/Explorer show. Updating `release.ts` is a
 line in CLAUDE.md's release checklist.
 
