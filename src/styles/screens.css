@@ -1435,6 +1435,13 @@ a.stats-chip:hover {
   height: 26px;
 }
 
+.rpl-scrubber-range:disabled {
+  /* Same disabled treatment as .ui-btn — a locked transport has to read
+     locked (the scrubber is disabled while a clip records). */
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .rpl-scrubber-range {
   position: absolute;
   inset: 0;
