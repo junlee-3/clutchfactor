@@ -32,7 +32,10 @@ const DESPERATION_PEEK: &str = "H1_DESPERATION_PEEK";
 /// Kinematic proxy for "player initiated", no geometry behind it — spec §4.2
 /// caps approximations here.
 const CONF_KINEMATIC: f32 = 0.6;
-/// Kinematics are sampled at 4 Hz across the approach window.
+/// Kinematics are sampled at 4 Hz across the approach window. The tick table is
+/// ~16 Hz, so this reads one sample in four: a jiggle-peek shorter than
+/// 250 ms can fall between samples and read as a player standing still.
+/// Deliberate (the plan fixes the step) — widen it here, not per rule.
 const SAMPLE_STEP_S: f32 = 0.25;
 const INSIGHT_MIN_OCCURRENCES: usize = 2;
 const INSIGHT_EVIDENCE_CAP: usize = 8;
@@ -121,10 +124,10 @@ fn desperation_peek(ctx: &AnalysisContext, cfg: &DetectorConfig, kill: &Kill) ->
 
     // The board BEFORE this death (same convention as the play ledger).
     let before = kill.tick - 1;
-    let (my_alive, their_alive) = my_side_first(ctx.alive_counts_at(kill.round, before)?, my_side);
-    if my_alive as i32 - their_alive as i32 > cfg.h1.disadvantage_max {
+    if ctx.man_advantage(tracked, kill.round, before)? > cfg.h1.disadvantage_max {
         return None;
     }
+    let (my_alive, their_alive) = ctx.alive_pair(tracked, kill.round, before)?;
     // Last alive is a clutch, judged by H10 — not an over-peek (spec §2 H1).
     if my_alive < 2 {
         return None;
@@ -180,14 +183,6 @@ fn desperation_peek(ctx: &AnalysisContext, cfg: &DetectorConfig, kill: &Kill) ->
         }),
         evidence: evidence_around(ctx, kill.round, kill.tick, &[tracked, killer]),
     })
-}
-
-/// (CT, T) alive counts reordered as (mine, theirs).
-fn my_side_first(counts: (usize, usize), my_side: Side) -> (usize, usize) {
-    match my_side {
-        Side::Ct => counts,
-        Side::T => (counts.1, counts.0),
-    }
 }
 
 /// Seconds left on whichever clock is actually running at the death — the
@@ -475,6 +470,39 @@ mod tests {
             .kill_full(None, TRACKED, 1, DEATH, "world", false, 0)
             .build();
         assert!(detect(&world).is_empty());
+    }
+
+    #[test]
+    fn silent_when_the_window_opens_before_the_players_first_sample() {
+        // The tracked player's track only starts 100 ticks before the death,
+        // so the 2 s approach window has no start to measure from. Nothing
+        // else about the scenario would suppress it.
+        let s = Scenario::new("de_test")
+            .players_ct(&[TRACKED, MATE_A, MATE_B])
+            .players_t(&[KILLER, ENEMY_B, 6, 7])
+            .round(1, ROUND_START, 12000);
+        let at = |s: Scenario, sid: u64, tick: i32, x: f32, place: &str| {
+            s.waypoint_full(
+                sid,
+                tick,
+                x,
+                0.0,
+                0.0,
+                0.0,
+                100,
+                true,
+                Some("weapon_ak47"),
+                Some(place),
+                false,
+            )
+        };
+        let s = at(s, TRACKED, DEATH - 100, 0.0, "Palace");
+        let s = at(s, TRACKED, DEATH, 400.0, "Palace");
+        let s = at(s, KILLER, ROUND_START, 1000.0, "Jungle");
+        let s = at(s, KILLER, DEATH - WINDOW, 1000.0, "Jungle");
+        let s = at(s, KILLER, DEATH, 1000.0, "Jungle");
+        let data = s.kill(KILLER, TRACKED, 1, DEATH, "ak47").build();
+        assert!(detect(&data).is_empty());
     }
 
     #[test]

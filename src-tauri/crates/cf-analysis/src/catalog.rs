@@ -32,6 +32,10 @@ pub const CANNOT_SEE: &[(&str, &str)] = &[
 ];
 
 static ENTRIES: &[CatalogEntry] = &[
+    CatalogEntry { id: "H1_DESPERATION_PEEK", family: "H1 Man-count discipline", title: "Over-peek down bodies",
+        watches_for: "You walked into the fight a player down, with nothing on the clock forcing the contact.",
+        thresholds: "down at least one body with two of you still alive; you close {h1.approach_min_u} on the killer inside {h1.approach_window_s} and cover more ground than they do; nobody trades within {h1.traded_within_s}; silent under {h1.ct_retake_forced_s} of bomb on CT and under {h1.t_forced_s} of round on T",
+        class_id: Some(8), example: "3v4 at Palace with 41 s left: 312 u closed on a killer who moved 40 u.", stat_links: &["kast", "kd"] },
     CatalogEntry { id: "H2_ISOLATED_DEATH", family: "H2 Trade spacing", title: "Isolated death",
         watches_for: "You died with no teammate close enough to trade, and nobody punished the killer.",
         thresholds: "no living teammate within {trade.isolation_u} at your death (a teammate in the same callout counts as close) and the killer survives {trade.commit_window_s} after it",
@@ -71,10 +75,6 @@ static ENTRIES: &[CatalogEntry] = &[
         watches_for: "You swung into an enemy who was standing still on the angle, traded shots with them and lost.",
         thresholds: "{h4.exposure_min_u} of your own movement in the {h4.peek_window_s} before the death, toward a killer who moved less than {h4.holder_max_u}, still {h4.wide_peek_min_dist_u} apart when you died, with a shot or damage from you",
         class_id: Some(10), example: "180 u swung into a killer holding 640 u away at Jungle, 3 shots fired.", stat_links: &["kast", "kd"] },
-    CatalogEntry { id: "H1_DESPERATION_PEEK", family: "H1 Man-count discipline", title: "Over-peek down bodies",
-        watches_for: "You walked into the fight a player down, with nothing on the clock forcing the contact.",
-        thresholds: "down at least one body with two of you still alive; you close {h1.approach_min_u} on the killer inside {h1.approach_window_s} and cover more ground than they do; nobody trades within {h1.traded_within_s}; silent under {h1.ct_retake_forced_s} of bomb on CT and under {h1.t_forced_s} of round on T",
-        class_id: Some(8), example: "3v4 at Palace with 41 s left: 312 u closed on a killer who moved 40 u.", stat_links: &["kast", "kd"] },
     CatalogEntry { id: "H5_DIED_FLASHED", family: "H5 Audio-cued misplay", title: "Died flashed",
         watches_for: "You died inside an enemy flash.", thresholds: "an enemy blind of at least {flash.effective_s} covering the death tick",
         class_id: Some(3), example: "Blinded for 1.8 s when the duel started.", stat_links: &["kd"] },

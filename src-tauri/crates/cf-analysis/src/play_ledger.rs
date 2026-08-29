@@ -145,22 +145,19 @@ fn reason_str(r: &RoundEndReason) -> String {
 }
 
 /// (my side alive, their side alive) at `tick`, from the shared kill-event
-/// replay (`AnalysisContext::alive_counts_at` — kill events, never tick
-/// samples, so a synthetic or sparsely sampled track can't misreport a
-/// death). `round` always comes from `ctx.data().rounds`, so the lookup
+/// replay (`AnalysisContext::alive_pair` — kill events, never tick samples,
+/// so a synthetic or sparsely sampled track can't misreport a death). Every
+/// caller here is inside a round the tracked player played, so the lookup
 /// cannot miss; (0, 0) is the unreachable arm.
-fn alive_pair(ctx: &AnalysisContext, round: &Round, side: Side, tick: i32) -> (usize, usize) {
-    let (ct, t) = ctx.alive_counts_at(round.number, tick).unwrap_or((0, 0));
-    match side {
-        Side::Ct => (ct, t),
-        Side::T => (t, ct),
-    }
+fn alive_pair(ctx: &AnalysisContext, round: &Round, tick: i32) -> (usize, usize) {
+    ctx.alive_pair(ctx.tracked(), round.number, tick)
+        .unwrap_or((0, 0))
 }
 
 /// "3v5" — my side v their side alive at `tick` (callers pass
 /// `kill.tick - 1` so the kill itself is not yet counted).
-fn man_context(ctx: &AnalysisContext, round: &Round, side: Side, tick: i32) -> String {
-    let (mine, theirs) = alive_pair(ctx, round, side, tick);
+fn man_context(ctx: &AnalysisContext, round: &Round, tick: i32) -> String {
+    let (mine, theirs) = alive_pair(ctx, round, tick);
     format!("{mine}v{theirs}")
 }
 
@@ -246,7 +243,7 @@ fn engagement_plays(
         if k.attacker == Some(tracked) && k.victim != tracked {
             out.push(kill_play(ctx, cfg, round, side, k));
         } else if k.victim == tracked {
-            out.push(death_play(ctx, cfg, round, side, k));
+            out.push(death_play(ctx, cfg, round, k));
         } else if k.assister == Some(tracked) {
             out.push(play(
                 k.tick,
@@ -295,19 +292,13 @@ fn kill_play(
             "thru_smoke": k.thru_smoke,
             "wallbang": k.penetrated > 0,
             "while_blind": k.attacker_blind,
-            "man_context": man_context(ctx, round, side, k.tick - 1),
+            "man_context": man_context(ctx, round, k.tick - 1),
         }),
         if team_kill { Some(Quality::Bad) } else { None },
     )
 }
 
-fn death_play(
-    ctx: &AnalysisContext,
-    cfg: &DetectorConfig,
-    round: &Round,
-    side: Side,
-    k: &Kill,
-) -> Play {
+fn death_play(ctx: &AnalysisContext, cfg: &DetectorConfig, round: &Round, k: &Kill) -> Play {
     let tracked = ctx.tracked();
     let z = cfg.general.z_weight;
     let commit_w = ctx.seconds(cfg.trade.commit_window_s);
@@ -335,7 +326,7 @@ fn death_play(
             "traded": traded,
             "nearest_teammate": nearest.map(|(id, _)| id.to_string()),
             "nearest_teammate_dist": nearest.map(|(_, d)| d.round()),
-            "man_context": man_context(ctx, round, side, k.tick - 1),
+            "man_context": man_context(ctx, round, k.tick - 1),
             // Clamped at 0: a death in the post-decision tail (after
             // `end_tick`, inside `officially_ended_tick`) is never negative
             // seconds — `dead_time` marks it, as the smoke play does.
@@ -382,7 +373,7 @@ fn outcome_play(
     let tracked = ctx.tracked();
     let tick = round.end_tick;
     let survived = ctx.kill_of(tracked, round.number).is_none();
-    let (my_alive, their_alive) = alive_pair(ctx, round, side, span_end(round));
+    let (my_alive, their_alive) = alive_pair(ctx, round, span_end(round));
     let kills = ctx
         .data()
         .kills

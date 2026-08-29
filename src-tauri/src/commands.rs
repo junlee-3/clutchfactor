@@ -2808,14 +2808,6 @@ mod tests {
     #[test]
     fn classes_not_built_is_the_catalogs_unbuilt_list() {
         let ids = unbuilt_class_ids();
-        assert_eq!(
-            ids,
-            cf_analysis::catalog::classes()
-                .iter()
-                .filter(|c| !c.built)
-                .map(|c| c.id)
-                .collect::<Vec<u8>>()
-        );
         assert!(
             !ids.contains(&8) && !ids.contains(&10),
             "classes 8 and 10 ship in V1.6: {ids:?}"

@@ -35,7 +35,10 @@ const CONF_NO_CONTACT: f32 = 0.6;
 const CONF_CROSSFIRE: f32 = 0.8;
 /// Kinematic swing-vs-hold proxy, no geometry behind it (spec §4.2).
 const CONF_WIDE_PEEK: f32 = 0.6;
-/// Movement is sampled at 4 Hz across the peek window.
+/// Movement is sampled at 4 Hz across the peek window. The tick table is
+/// ~16 Hz, so this reads one sample in four: a jiggle-peek shorter than
+/// 250 ms can fall between samples and read as a player standing still.
+/// Deliberate (the plan fixes the step) — widen it here, not per rule.
 const SAMPLE_STEP_S: f32 = 0.25;
 const INSIGHT_MIN_OCCURRENCES: usize = 2;
 const INSIGHT_EVIDENCE_CAP: usize = 8;
@@ -751,6 +754,27 @@ mod tests {
                 "thru_smoke {thru_smoke} / penetrated {penetrated} is class 5's"
             );
         }
+    }
+
+    #[test]
+    fn wide_peek_silent_when_the_window_opens_before_the_first_sample() {
+        // The victim's track starts 64 ticks before the death, inside the
+        // 1.5 s peek window: no sample at the window start, no swing to
+        // measure. Every other gate would pass.
+        let s = Scenario::new("de_test")
+            .players_ct(&[VICTIM, MATE])
+            .players_t(&[ENEMY_A, ENEMY_B, ENEMY_C])
+            .round(1, 1000, 5000);
+        let s = at(s, VICTIM, DEATH - 64, 0.0, 0.0, "Palace");
+        let s = at(s, VICTIM, DEATH, 200.0, 0.0, "Palace");
+        let s = at(s, ENEMY_A, 1000, 1000.0, 0.0, "Jungle");
+        let s = at(s, ENEMY_A, DEATH - PEEK_WINDOW, 1000.0, 0.0, "Jungle");
+        let s = at(s, ENEMY_A, DEATH, 1000.0, 0.0, "Jungle");
+        let data = s
+            .shot(VICTIM, 1950, "weapon_ak47")
+            .kill(ENEMY_A, VICTIM, 1, DEATH, "ak47")
+            .build();
+        assert!(wide_peek_flags(&detect(&data)).is_empty());
     }
 
     #[test]

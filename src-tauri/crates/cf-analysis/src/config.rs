@@ -180,8 +180,11 @@ pub struct H1Cfg {
     /// How far back the approach is measured from the death.
     #[serde(default = "d_approach_window_s")]
     pub approach_window_s: f32,
-    /// Ground the player must both close on the killer AND walk in that
-    /// window before the contact counts as theirs to initiate.
+    /// Distance the player must both close on the killer AND cover along
+    /// their own path in that window before the contact counts as theirs to
+    /// initiate. Path length is z-weighted like every other distance here
+    /// (`general.z_weight`, so a metre climbed counts double a metre walked)
+    /// — it is "ground covered" only on the flat.
     #[serde(default = "d_approach_min_u")]
     pub approach_min_u: f32,
     /// Round clock (MR12 competitive), used for the T-side suppression.
@@ -236,10 +239,14 @@ pub struct H4Cfg {
     /// Tier 2 wide peek (class 10): how far back the swing is measured.
     #[serde(default = "d_peek_window_s")]
     pub peek_window_s: f32,
-    /// Ground the victim must cover in that window to count as swinging.
+    /// Path length the victim must cover in that window to count as
+    /// swinging — z-weighted (`general.z_weight`: Δz counts double), so it
+    /// is "ground covered" only on the flat.
     #[serde(default = "d_exposure_min_u")]
     pub exposure_min_u: f32,
-    /// Ground the killer must stay under to count as holding the angle.
+    /// Path length the killer must stay under to count as holding the
+    /// angle. Same z-weighting: a crouch-spam on the angle spends part of
+    /// this budget.
     #[serde(default = "d_holder_max_u")]
     pub holder_max_u: f32,
     /// Below this distance at the death it is a scramble, not an angle duel.
@@ -703,6 +710,8 @@ pub fn threshold_values(cfg: &DetectorConfig) -> Vec<(String, String, String)> {
             format!("{}", cfg.h1.approach_window_s),
             "s",
         ),
+        // Compared against a z-weighted path length (Δz counts double), not
+        // flat ground covered — same for h4.exposure_min_u/h4.holder_max_u.
         row(
             "h1.approach_min_u",
             format!("{}", cfg.h1.approach_min_u),

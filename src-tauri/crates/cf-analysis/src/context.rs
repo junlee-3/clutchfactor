@@ -349,14 +349,21 @@ impl<'a> AnalysisContext<'a> {
         Some((alive(&r.ct_steamids), alive(&r.t_steamids)))
     }
 
+    /// `alive_counts_at` ordered as (mine, theirs) from `steamid`'s side —
+    /// the one place the side swap is written. None when the player has no
+    /// side in the round, or the round is unknown.
+    pub fn alive_pair(&self, steamid: u64, round: u32, tick: i32) -> Option<(usize, usize)> {
+        let (ct, t) = self.alive_counts_at(round, tick)?;
+        Some(match self.side_of(steamid, round)? {
+            Side::Ct => (ct, t),
+            Side::T => (t, ct),
+        })
+    }
+
     /// Bodies up (+) or down (−) at `tick` from `steamid`'s side. None when
     /// the player has no side in the round, or the round is unknown.
     pub fn man_advantage(&self, steamid: u64, round: u32, tick: i32) -> Option<i32> {
-        let (ct, t) = self.alive_counts_at(round, tick)?;
-        let (mine, theirs) = match self.side_of(steamid, round)? {
-            Side::Ct => (ct, t),
-            Side::T => (t, ct),
-        };
+        let (mine, theirs) = self.alive_pair(steamid, round, tick)?;
         Some(mine as i32 - theirs as i32)
     }
 
@@ -510,6 +517,17 @@ mod tests {
     fn man_advantage_is_mine_minus_theirs_from_the_players_side() {
         let data = alive_fixture();
         let ctx = AnalysisContext::new(&data, 1);
+        assert_eq!(
+            ctx.alive_pair(1, 1, 1999),
+            Some((2, 1)),
+            "CT sees (mine, theirs)"
+        );
+        assert_eq!(
+            ctx.alive_pair(4, 1, 1999),
+            Some((1, 2)),
+            "T sees it swapped"
+        );
+        assert_eq!(ctx.alive_pair(99, 1, 1999), None, "no side in the round");
         assert_eq!(ctx.man_advantage(1, 1, 1999), Some(1), "CT up one body");
         assert_eq!(
             ctx.man_advantage(4, 1, 1999),
