@@ -4,9 +4,338 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ClutchFactor — CS2 demo coach</title>
+    <meta
+      name="description"
+      content="Import your CS2 demo. ClutchFactor coaches you round by round and links every insight to the exact second in a 2D replay. Free, local, honest about what it can't see."
+    />
+    <meta name="theme-color" content="#0e1116" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="ClutchFactor — CS2 demo coach" />
+    <meta
+      property="og:description"
+      content="Import your CS2 demo. ClutchFactor coaches you round by round and links every insight to the exact second in a 2D replay. Free, local, honest about what it can't see."
+    />
+    <meta property="og:image" content="https://clutchfactor.vercel.app/og.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    />
   </head>
   <body>
-    <main id="main"><h1>ClutchFactor</h1></main>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="nav" data-nav>
+      <div class="nav__in container">
+        <a class="brand" href="#top" aria-label="ClutchFactor — back to top">
+          <svg class="brand__icon" viewBox="0 0 1024 1024" aria-hidden="true">
+            <rect width="1024" height="1024" rx="224" fill="#151a21" />
+            <circle cx="512" cy="512" r="268" fill="none" stroke="#2c3a4d" stroke-width="34" />
+            <g stroke="#4aa3ff" stroke-width="46" stroke-linecap="round">
+              <line x1="512" y1="150" x2="512" y2="268" />
+              <line x1="512" y1="756" x2="512" y2="874" />
+              <line x1="150" y1="512" x2="268" y2="512" />
+              <line x1="756" y1="512" x2="874" y2="512" />
+            </g>
+            <polyline points="330,612 438,548 512,588 606,470 694,414" fill="none" stroke="#4aa3ff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" />
+            <circle cx="694" cy="414" r="42" fill="#f5b83d" />
+          </svg>
+          <span>ClutchFactor</span>
+        </a>
+        <nav class="nav__links" aria-label="Sections">
+          <a href="#ledger">How it works</a>
+          <a href="#coach">The coach</a>
+          <a href="#limits">Honest limits</a>
+          <a href="https://github.com/junlee-3/clutchfactor" rel="noopener">GitHub</a>
+        </nav>
+        <a class="btn btn--secondary btn--sm" href="#download" data-nav-download>Download v1.0.0</a>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- ======================= HERO ======================= -->
+      <section class="hero" id="top" data-hero>
+        <div class="hero__media" aria-hidden="true">
+          <div class="hero__poster"></div>
+          <video class="hero__video" data-video="a" muted playsinline preload="metadata"></video>
+          <video class="hero__video" data-video="b" muted playsinline preload="none"></video>
+        </div>
+        <div class="hero__body container">
+          <p class="eyebrow">CS2 demo coach · free · runs on your machine</p>
+          <h1 class="hero__title">Watch why you died.</h1>
+          <p class="lede">
+            ClutchFactor reads your CS2 demo and coaches you round by round. Every insight links to the exact second on a
+            2D replay — so you watch the play instead of taking a stat's word for it.
+          </p>
+          <div class="cta" data-download-buttons>
+            <a class="btn btn--primary" data-os="windows" href="https://github.com/junlee-3/clutchfactor/releases/download/v1.0.0/ClutchFactor_1.0.0_x64-setup.exe">
+              Download for Windows <small>.exe · 8 MB</small>
+            </a>
+            <a class="btn btn--secondary" data-os="mac" href="https://github.com/junlee-3/clutchfactor/releases/download/v1.0.0/ClutchFactor_1.0.0_aarch64.dmg">
+              Download for macOS <small>.dmg · Apple silicon · 10 MB</small>
+            </a>
+          </div>
+          <p class="evidence">
+            <span class="evidence__lead">Missed 4 trades in range →</span>
+            <a class="chip chip--evidence" href="#catches" data-target="card-missed-trades">R3 · 0:16</a>
+            <a class="chip chip--evidence" href="#catches" data-target="card-missed-trades">R12 · 0:28</a>
+            <a class="chip chip--evidence" href="#catches" data-target="card-missed-trades">R13 · 0:14</a>
+            <a class="chip chip--evidence" href="#catches" data-target="card-missed-trades">R16 · 0:16</a>
+          </p>
+        </div>
+      </section>
+
+      <!-- ======================= HOW IT WORKS / LEDGER ======================= -->
+      <section class="section" id="ledger">
+        <div class="container split" data-reveal>
+          <div class="split__text">
+            <p class="eyebrow">How it works</p>
+            <h2>Every round, narrated.</h2>
+            <p class="body">
+              Import a .dem. The engine rebuilds every round as a play ledger — setup, utility, trades, deaths,
+              rotations, outcome — and gives each round a verdict. When one play decided it, the report names that
+              play.
+            </p>
+            <div class="ledger" data-ledger>
+              <div class="ledger__hd"><span>Round 2 · Inferno · CT</span><b>lost · you 2–1 · 3v0</b></div>
+              <div class="ledger__row" data-t="0:05">
+                <span class="ledger__t">0:05</span>
+                <div><div class="ledger__h">Setup at CT spawn</div><div class="ledger__s">Nearest teammate Roland Pryzbylewski, 432 u · 3 of 4 teammates within 900 u</div></div>
+              </div>
+              <div class="ledger__row" data-t="0:31">
+                <span class="ledger__t">0:31</span>
+                <div><div class="ledger__h">Rotated to the plant in 11 s</div><div class="ledger__s">2,320 u from the plant when it went down</div></div>
+              </div>
+              <div class="ledger__row ledger__row--win" data-t="0:55">
+                <span class="ledger__t">0:55</span>
+                <div><div class="ledger__h">Killed Konky</div><div class="ledger__s">1,436 u · MP9 · +2% win probability · 3v5 before</div></div>
+              </div>
+              <div class="ledger__row ledger__row--win" data-t="1:01">
+                <span class="ledger__t">1:01</span>
+                <div><div class="ledger__h">Killed MyUnit</div><div class="ledger__s">775 u · MP9 · +35% win probability · 3v2 before</div></div>
+              </div>
+              <div class="ledger__row" data-t="1:12">
+                <span class="ledger__t">1:12</span>
+                <div><div class="ledger__h">Round lost — bomb exploded</div><div class="ledger__s">1v0 at the end · 2 kills, 121 damage</div></div>
+              </div>
+              <div class="ledger__row ledger__row--loss" data-t="1:12">
+                <span class="ledger__t">1:12</span>
+                <div><div class="ledger__h">Death</div><div class="ledger__s">Nearest: Roland Pryzbylewski · At Apartments · Not traded — after the round was decided</div></div>
+              </div>
+            </div>
+            <a class="link" href="#catches">See what it looks for →</a>
+          </div>
+          <figure class="frame">
+            <img
+              src="/shots/replay-1440.webp"
+              srcset="/shots/replay-960.webp 960w, /shots/replay-1440.webp 1440w"
+              sizes="(min-width: 1024px) 58vw, 100vw"
+              width="1440" height="900" loading="lazy" decoding="async"
+              alt="ClutchFactor replay screen: the Inferno radar with player positions, CT and T rosters with health and weapons, the kill feed, and the round-2 play ledger"
+            />
+            <figcaption>The 2D replay — positions, health, weapons, kill feed, callouts on the map. 60 fps, deep-linked from every claim.</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <!-- ======================= WHAT IT CATCHES ======================= -->
+      <section class="section section--alt" id="catches">
+        <div class="container" data-reveal>
+          <p class="eyebrow">What it catches</p>
+          <h2>Stop dying for free.</h2>
+          <p class="body">
+            Deaths are sorted into 15 classes by a rule engine over parsed events — positions, trades, utility, timing.
+            Every rule carries a confidence, and rules bias toward silence: a missed detection is fine, a wrong
+            accusation is not.
+          </p>
+          <div class="catches">
+            <div class="card">
+              <p class="eyebrow">How you died</p>
+              <ul class="bars">
+                <li><span>Outaimed in a fair duel</span><b>7</b><i class="bars__bar bars__bar--win" style="--w: 100%"></i></li>
+                <li><span>No-engagement death</span><b>5</b><i class="bars__bar" style="--w: 71%"></i></li>
+                <li><span>Self / world / teammate</span><b>2</b><i class="bars__bar" style="--w: 29%"></i></li>
+                <li><span>Isolated &amp; untradeable</span><b>1</b><i class="bars__bar" style="--w: 14%"></i></li>
+              </ul>
+              <p class="card__note">46.7% were fair duels you lost on mechanics — good news: the rest had a fixable cause.</p>
+            </div>
+            <div class="cards">
+              <article class="card card--loss" id="card-missed-trades" tabindex="-1">
+                <header class="card__hd"><h3>Missed 4 trades in range</h3><span class="chip chip--conf">70%</span></header>
+                <p>You were close enough to trade 4 teammate deaths and stayed on your angle — rounds 3, 12, 13 and 16. Keep your crosshair where he is fighting so the trade is one step, not a repositioning job.</p>
+                <p class="card__chips">
+                  <a class="chip chip--evidence" href="#download" title="Open the tape — in the app">R3 · 0:16</a>
+                  <a class="chip chip--evidence" href="#download" title="Open the tape — in the app">R12 · 0:28</a>
+                  <a class="chip chip--evidence" href="#download" title="Open the tape — in the app">R13 · 0:14</a>
+                  <a class="chip chip--evidence" href="#download" title="Open the tape — in the app">R16 · 0:16</a>
+                </p>
+              </article>
+              <article class="card card--loss" id="card-isolated" tabindex="-1">
+                <header class="card__hd"><h3>Died isolated twice</h3><span class="chip chip--conf">75%</span></header>
+                <p>You died isolated twice with no teammate close enough to punish the kill — rounds 6 and 9. Take those duels one angle closer to a teammate: arrive together, or hold until someone can trade you.</p>
+                <p class="card__chips">
+                  <a class="chip chip--evidence" href="#download" title="Open the tape — in the app">R6 · 0:23</a>
+                  <a class="chip chip--evidence" href="#download" title="Open the tape — in the app">R9 · 0:11</a>
+                </p>
+              </article>
+              <article class="card card--loss" id="card-baited" tabindex="-1">
+                <header class="card__hd"><h3>You traded in, nobody followed</h3><span class="chip chip--conf">70%</span></header>
+                <p>You committed to the trade and the follow-up never came — twice, rounds 6 and 9. You were the only one who re-peeked — Mashed Potato and Crunchy Potato were nearest and stayed put; that is a team spacing problem, not a reason to stop trading.</p>
+                <p class="card__chips">
+                  <a class="chip chip--evidence" href="#download" title="Open the tape — in the app">R6 · 0:23</a>
+                  <a class="chip chip--evidence" href="#download" title="Open the tape — in the app">R9 · 0:11</a>
+                </p>
+              </article>
+              <p class="footnote">Dashed means you can click through to the tape — in the app.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================= THE COACH ======================= -->
+      <section class="section" id="coach">
+        <div class="container" data-reveal>
+          <p class="eyebrow">The AI coach · optional</p>
+          <h2>A coach that can't make up numbers.</h2>
+          <p class="body">
+            With a Gemini key set, the coach reads the measured facts for a round and writes its own read — a judgment
+            call, not a template fill-in. Every number, name and callout it cites is checked against those facts before
+            you see it; anything that doesn't check out is rejected in favor of the template. No key means no network
+            call and no coach — just the plain-language templates.
+          </p>
+          <figure class="frame frame--wide">
+            <img
+              src="/shots/coach-1440.webp"
+              srcset="/shots/coach-960.webp 960w, /shots/coach-1440.webp 1440w"
+              sizes="(min-width: 1240px) 1200px, 100vw"
+              width="1440" height="900" loading="lazy" decoding="async"
+              alt="ClutchFactor match report for a 12–12 Mirage with the coach's read at the top: a paragraph on spacing and trade discipline, then three bullet points, above the death breakdown"
+            />
+          </figure>
+          <dl class="facts">
+            <div><dt>Checked, not trusted</dt><dd>Every figure the coach cites is verified against the parsed demo.</dd></div>
+            <div><dt>Local by default</dt><dd>The only network call this app ever makes is to Google's Gemini API, and only with a key you set.</dd></div>
+            <div><dt>Bring your own key</dt><dd>Settings → Coach; stored in the app's local database.</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <!-- ======================= HONEST LIMITS ======================= -->
+      <section class="section section--alt" id="limits">
+        <div class="container" data-reveal>
+          <p class="eyebrow">What your coach watches</p>
+          <h2>What it can't see, it says so.</h2>
+          <p class="body">
+            A dedicated screen lists every detection rule in plain language with its live thresholds, which of the 15
+            death classes aren't built yet and why, and what the engine flatly cannot see. Deaths it can't attribute
+            stay "Unclassified", and the report says so.
+          </p>
+          <div class="limits">
+            <div class="card">
+              <h3>Not built (and why)</h3>
+              <ul class="plain">
+                <li>Over-peeks (8) and wide peeks (10) need peek geometry the parser doesn't provide.</li>
+                <li>Per-death hotspot classification (12) needs a "standard angle" model — hotspots are tracked across matches instead.</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>Cannot see</h3>
+              <ul class="plain plain--inline">
+                <li>economy</li><li>utility lineups</li><li>comms</li><li>aim mechanics</li><li>line of sight</li>
+              </ul>
+            </div>
+          </div>
+          <figure class="frame frame--wide">
+            <img
+              src="/shots/watches-1440.webp"
+              srcset="/shots/watches-960.webp 960w, /shots/watches-1440.webp 1440w"
+              sizes="(min-width: 1240px) 1200px, 100vw"
+              width="1440" height="888" loading="lazy" decoding="async"
+              alt="The 'What your coach watches' screen: the H2 trade-spacing rules — isolated death, failed trade, baited trade — each with when it counts, how it reads, and which stats it feeds"
+            />
+          </figure>
+        </div>
+      </section>
+
+      <!-- ======================= ACROSS MATCHES ======================= -->
+      <section class="section" id="habits">
+        <div class="container" data-reveal>
+          <p class="eyebrow">Across your matches</p>
+          <h2>Habits, not hot takes.</h2>
+          <p class="body">
+            Patterns are promoted only when they repeat — "Left trades on the table in 5 of your last 10 matches" —
+            including repeat death hotspots per map, with evidence into each contributing demo. Trends chart every habit
+            across your imports and call out streaks, good and bad.
+          </p>
+          <div class="pair">
+            <figure class="frame">
+              <img
+                src="/shots/trends-1440.webp"
+                srcset="/shots/trends-960.webp 960w, /shots/trends-1440.webp 1440w"
+                sizes="(min-width: 1024px) 50vw, 100vw"
+                width="1440" height="900" loading="lazy" decoding="async"
+                alt="Trends screen: the pure-aim-duel share across five matches as a line, then per-habit sparklines with counts and streak callouts like 'missed trades trending up 3 matches straight'"
+              />
+              <figcaption>Trends: per-habit sparklines, the share of deaths that were pure aim duels, streak callouts.</figcaption>
+            </figure>
+            <figure class="frame">
+              <img
+                src="/shots/corpus-1440.webp"
+                srcset="/shots/corpus-960.webp 960w, /shots/corpus-1440.webp 1440w"
+                sizes="(min-width: 1024px) 50vw, 100vw"
+                width="1440" height="900" loading="lazy" decoding="async"
+                alt="Reference corpus screen: imported pro demos per map and the positional occupancy heatmap they build for a map, side and round phase"
+              />
+              <figcaption>Reference corpus: drop pro demos from HLTV; with 8+ on a map it flags spots you hold that pros rarely do — "unusual, not wrong".</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================= DOWNLOAD ======================= -->
+      <section class="section section--alt" id="download">
+        <div class="container" data-reveal>
+          <h2>Download v1.0.0</h2>
+          <p class="lede">Free. No account. Your demos never leave your machine.</p>
+          <div class="dl" data-download-buttons>
+            <div class="card">
+              <h3>macOS</h3>
+              <a class="btn btn--secondary" data-os="mac" href="https://github.com/junlee-3/clutchfactor/releases/download/v1.0.0/ClutchFactor_1.0.0_aarch64.dmg">Download .dmg <small>10 MB · Apple silicon</small></a>
+              <p class="card__note">Unsigned build: right-click the app → Open on first launch. Intel Mac? Not built yet — <a href="https://github.com/junlee-3/clutchfactor#development" rel="noopener">build from source</a>.</p>
+            </div>
+            <div class="card">
+              <h3>Windows</h3>
+              <a class="btn btn--primary" data-os="windows" href="https://github.com/junlee-3/clutchfactor/releases/download/v1.0.0/ClutchFactor_1.0.0_x64-setup.exe">Download .exe <small>8 MB</small></a>
+              <p class="card__note">Prefer an installer package? <a href="https://github.com/junlee-3/clutchfactor/releases/download/v1.0.0/ClutchFactor_1.0.0_x64_en-US.msi">.msi</a>. Unsigned build: SmartScreen will warn — "More info → Run anyway".</p>
+            </div>
+          </div>
+          <div class="firstrun">
+            <p class="eyebrow">First run</p>
+            <ol>
+              <li><b>Import demo.</b></li>
+              <li><b>Pick a <code>.dem</code> from your own matches</b> — CS2 → Watch → Your Matches → Download, or a FACEIT match room.</li>
+              <li><b>The app auto-detects which player you are</b> — the most-seen account across your imports. Override it in Settings if it guesses wrong.</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container footer__in">
+        <span class="brand brand--small">ClutchFactor</span>
+        <nav class="footer__links" aria-label="Footer">
+          <a href="https://github.com/junlee-3/clutchfactor" rel="noopener">GitHub</a>
+          <a href="https://github.com/junlee-3/clutchfactor/releases" rel="noopener">Releases</a>
+          <a href="https://github.com/pnxenopoulos/awpy" rel="noopener">Radar images from awpy</a>
+        </nav>
+        <p class="footer__legal">Not affiliated with Valve Corporation. Counter-Strike is a trademark of Valve Corporation.</p>
+      </div>
+    </footer>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
