@@ -48,6 +48,9 @@ ul, ol { margin: 0; padding: 0; }
 }
 .skip:focus { top: var(--s4); }
 
+/* readable to a screen reader, invisible on screen */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
 .container { max-width: var(--container); margin: 0 auto; padding-left: var(--gutter); padding-right: var(--gutter); }
 
 /* ---------- type roles ---------- */
@@ -130,7 +133,7 @@ h2 + .lede, h2 + .body { margin-top: var(--s4); }
 
 /* ---------- hero ---------- */
 .hero { position: relative; display: flex; flex-direction: column; min-height: min(92svh, 860px); padding-top: calc(var(--nav-h) + var(--s8)); overflow: hidden; }
-.hero__media { position: absolute; inset: 0; background: #05070a; }
+.hero__media { position: absolute; inset: 0; background: var(--bg-tape); }
 .hero__poster, .hero__video {
   position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
   filter: saturate(0.55) contrast(1.15) brightness(0.55);
@@ -160,6 +163,8 @@ h2 + .lede, h2 + .body { margin-top: var(--s4); }
 
 /* ---------- sections ---------- */
 .section { padding: var(--section) 0; }
+/* the nav is fixed — keep an anchored section's heading clear of it */
+main section[id] { scroll-margin-top: calc(var(--nav-h) + var(--s4)); }
 .section--alt { background: var(--bg1); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .section--alt .card { background: var(--bg0); }
 .split { display: grid; grid-template-columns: 1fr; gap: var(--s7); }
@@ -224,7 +229,7 @@ h2 + .lede, h2 + .body { margin-top: var(--s4); }
 .footer__links { display: flex; flex-wrap: wrap; gap: var(--s5); }
 .footer__links a { color: var(--ink-dim); text-decoration: none; font: 500 var(--t-ui) var(--font-sans); }
 .footer__links a:hover { color: var(--ink-bright); }
-.footer__legal { flex-basis: 100%; font: 400 var(--t-micro) var(--font-mono); letter-spacing: 0.04em; color: var(--ink-faint); }
+.footer__legal { flex-basis: 100%; font: 400 var(--t-micro) var(--font-mono); letter-spacing: 0.04em; color: var(--ink-dim); }
 
 /* ---------- reveals (only when JS is present so nothing is ever hidden without it) ---------- */
 .js [data-reveal] { opacity: 0; transform: translateY(8px); transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease); }
