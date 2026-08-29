@@ -381,5 +381,7 @@ video hosting outside the repo · in-page replay (the tape is in the app).
 - Record the clips and `poster.jpg` (§5). Until then the hero shows the
   radar fallback — shippable, just quieter.
 - `vercel login` + `vercel link` (§7), then confirm the production URL.
-- Domain (optional): none needed to ship.
+- Domain (optional): none needed to ship. When one lands, update
+  `og:image` in `site/index.html` (it hardcodes
+  `https://clutchfactor.vercel.app/og.jpg`).
 - LICENSE: the repo has none; the footer stays silent until it does.

@@ -27,3 +27,4 @@ package was needed, just Node 22's built-in `WebSocket` against the
 | Lighthouse desktop | `lighthouse.md` — performance 100, accessibility 96, best-practices 100, seo 100 (first run: 93/96/100/92; fixed a render-blocking Google Fonts stylesheet and a missing `robots.txt`, see `lighthouse.md`) |
 | download URLs answer 200 | `.dmg`, `.exe`, `.msi` — curl -sIL, 2026-08-29 |
 | `pnpm -C site typecheck && lint && test:run && build` | green, 2026-08-29 |
+| CLAUDE.md: `site/` map line (L44), `pnpm -C site dev` (L21), `release.ts` + shots + Honest-limits release step (L58), ≤ 120 lines | 62 lines, 2026-08-29 |
