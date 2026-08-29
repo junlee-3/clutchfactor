@@ -1,4 +1,4 @@
-# Lighthouse — marketing site (2026-08-29)
+# Lighthouse — marketing site (2026-08-29, re-run after the fix wave)
 
 Run against the local `pnpm -C site preview` server (`http://localhost:4173/`),
 desktop preset, headless Brave.
@@ -10,18 +10,33 @@ CHROME_PATH="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" \
 node -e 'const r=require("/tmp/lh.json").categories; for (const k in r) console.log(k, Math.round(r[k].score*100))'
 ```
 
-## Final scores
+## Final scores (re-run after the fix wave, 2026-08-29)
 
 | category | score |
 |---|---|
 | performance | 100 |
-| accessibility | 96 |
+| accessibility | 100 |
 | best-practices | 100 |
 | seo | 100 |
 
-All four ≥ 95.
+All four 100; no failing audit in accessibility, best-practices or seo.
 
-## First run (before fixes)
+Accessibility moved 96 → 100 in this run. Confirmed by putting the old colour
+back in the built CSS and re-running `--only-categories=accessibility`: 96,
+one failing audit, `color-contrast` on
+`body > footer.footer > div.container > p.footer__legal` — *"insufficient
+color contrast of 3.24 (foreground #5c6672, background #0e1116, font size
+8.3pt (11px)). Expected contrast ratio of 4.5:1"*. That line used
+`--ink-faint`; the fix wave moved it to `--ink-dim` (`#8a94a3`, 6.16:1), per
+spec §4 — `--ink-faint` is not for text the reader needs. Nothing else in
+`site.css` uses `--ink-faint` now.
+
+Performance stays 100 with several diagnostic-only insights unscored-but-red
+(`uses-responsive-images`, `prioritize-lcp-image`, `render-blocking-insight`
+and friends) — they are opportunities, not category failures, and the LCP
+image is the radar poster that only ships until the clips are recorded (§5).
+
+## First run (before the task-11 fixes)
 
 | category | score |
 |---|---|
@@ -44,4 +59,5 @@ Two fixes applied, then rebuilt and re-run:
   `<noscript>` fallback for when JS is disabled. `preconnect` hints for
   `fonts.googleapis.com`/`fonts.gstatic.com` were already present.
 
-accessibility was 96 on both runs (already ≥ 95, no fix needed).
+accessibility was 96 on both of those runs (already ≥ 95, no fix needed
+for the DoD); the fix wave later took it to 100, see above.
