@@ -928,9 +928,21 @@ pub fn get_match_report(
             death_classes,
             class_13_share_pct,
             per_round,
-            classes_not_built: vec![8, 10, 12],
+            classes_not_built: unbuilt_class_ids(),
         }))
     })
+}
+
+/// Taxonomy classes with no rule behind them yet, straight from the
+/// catalog (spec §1's honesty rule: if a class isn't built, the Report says
+/// so). Derived, never a literal — shipping a class removes it from the
+/// Report by itself.
+fn unbuilt_class_ids() -> Vec<u8> {
+    cf_analysis::catalog::classes()
+        .iter()
+        .filter(|c| !c.built)
+        .map(|c| c.id)
+        .collect()
 }
 
 #[tauri::command]
@@ -2788,6 +2800,27 @@ mod tests {
         assert_eq!(rows.len(), 1);
         // Sorted: -400, -380, -350, -300 -> lower middle is -380.
         assert_eq!(rows[0].x, -380.0);
+    }
+
+    /// The Report's "Not yet detected" line is derived from the catalog,
+    /// never a literal: a class that ships disappears from it without
+    /// anyone editing this file.
+    #[test]
+    fn classes_not_built_is_the_catalogs_unbuilt_list() {
+        let ids = unbuilt_class_ids();
+        assert_eq!(
+            ids,
+            cf_analysis::catalog::classes()
+                .iter()
+                .filter(|c| !c.built)
+                .map(|c| c.id)
+                .collect::<Vec<u8>>()
+        );
+        assert!(
+            !ids.contains(&8) && !ids.contains(&10),
+            "classes 8 and 10 ship in V1.6: {ids:?}"
+        );
+        assert_eq!(ids, vec![12]);
     }
 
     #[test]

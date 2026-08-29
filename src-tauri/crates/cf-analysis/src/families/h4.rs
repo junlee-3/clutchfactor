@@ -6,6 +6,12 @@
 //! in a line someone pre-fires for free", not "you were outplayed".
 //! `H4_CAUGHT_IN_CROSSFIRE` (class 9): mid-duel with enemy A, killed by a
 //! second enemy B from a clearly different direction.
+//!
+//! Tier 2 (kinematic, no geometry) — `H4_WIDE_PEEK_HELD_ANGLE` (class 10):
+//! "whoever is further from the corner sees the other first" needs raycasts
+//! we do not have, so the proxy is movement: the tracked player covered
+//! ground toward an enemy who was holding still, engaged them, and lost.
+//! Approximation → confidence capped at 0.6 (spec §4.2).
 
 use serde_json::json;
 
@@ -19,6 +25,7 @@ pub struct H4Exposure;
 
 const KILLED_WITHOUT_CONTACT: &str = "H4_KILLED_WITHOUT_CONTACT";
 const CAUGHT_IN_CROSSFIRE: &str = "H4_CAUGHT_IN_CROSSFIRE";
+const WIDE_PEEK_HELD_ANGLE: &str = "H4_WIDE_PEEK_HELD_ANGLE";
 
 /// Event-exact signals (`thru_smoke`, `penetrated`) — the class-5 volume core
 /// per spec §5.4.
@@ -26,12 +33,20 @@ const CONF_EVENT_EXACT: f32 = 0.95;
 /// Inferred "never in contact" — no spotted-flag data in MVP, so low.
 const CONF_NO_CONTACT: f32 = 0.6;
 const CONF_CROSSFIRE: f32 = 0.8;
+/// Kinematic swing-vs-hold proxy, no geometry behind it (spec §4.2).
+const CONF_WIDE_PEEK: f32 = 0.6;
+/// Movement is sampled at 4 Hz across the peek window.
+const SAMPLE_STEP_S: f32 = 0.25;
 const INSIGHT_MIN_OCCURRENCES: usize = 2;
 const INSIGHT_EVIDENCE_CAP: usize = 8;
 
 impl Detector for H4Exposure {
     fn rule_ids(&self) -> &'static [&'static str] {
-        &[KILLED_WITHOUT_CONTACT, CAUGHT_IN_CROSSFIRE]
+        &[
+            KILLED_WITHOUT_CONTACT,
+            CAUGHT_IN_CROSSFIRE,
+            WIDE_PEEK_HELD_ANGLE,
+        ]
     }
 
     fn detect(&self, ctx: &AnalysisContext, cfg: &DetectorConfig) -> Vec<RuleFlag> {
@@ -39,6 +54,7 @@ impl Detector for H4Exposure {
         for kill in ctx.tracked_deaths() {
             out.extend(killed_without_contact(ctx, cfg, kill));
             out.extend(caught_in_crossfire(ctx, cfg, kill));
+            out.extend(wide_peek_held_angle(ctx, cfg, kill));
         }
         out
     }
@@ -106,6 +122,28 @@ impl Detector for H4Exposure {
                 title_data: json!({ "count": crossfire.len() }),
                 metrics: json!({ "count": crossfire.len() }),
                 evidence: crossfire
+                    .iter()
+                    .take(INSIGHT_EVIDENCE_CAP)
+                    .map(|f| f.evidence.clone())
+                    .collect(),
+            });
+        }
+
+        let wide: Vec<&RuleFlag> = flags
+            .iter()
+            .filter(|f| f.rule_id == WIDE_PEEK_HELD_ANGLE)
+            .collect();
+        if wide.len() >= INSIGHT_MIN_OCCURRENCES {
+            out.push(Insight {
+                detector: WIDE_PEEK_HELD_ANGLE.to_string(),
+                category: Category::Positioning,
+                severity: cfg.severity.h4_wide_peek_held_angle,
+                confidence: CONF_WIDE_PEEK,
+                round: 0,
+                player: ctx.tracked(),
+                title_data: json!({ "count": wide.len() }),
+                metrics: json!({ "count": wide.len() }),
+                evidence: wide
                     .iter()
                     .take(INSIGHT_EVIDENCE_CAP)
                     .map(|f| f.evidence.clone())
@@ -234,6 +272,76 @@ fn caught_in_crossfire(
             "angle_deg": angle_deg,
         }),
         evidence: evidence_around(ctx, kill.round, kill.tick, &[kill.victim, killer, engaged]),
+    })
+}
+
+/// Tier 2, class 10: the tracked player swung into a held angle and lost
+/// the duel. Kinematic only — the victim covered ground toward a killer who
+/// barely moved, the gap shrank, shots were traded, and it happened at a
+/// distance where holding an angle is what actually beats you.
+fn wide_peek_held_angle(
+    ctx: &AnalysisContext,
+    cfg: &DetectorConfig,
+    kill: &Kill,
+) -> Option<RuleFlag> {
+    // Through smoke or through a wall was never an angle duel — class 5.
+    if kill.thru_smoke || kill.penetrated > 0 {
+        return None;
+    }
+    let killer = enemy_killer(ctx, kill)?;
+    let killer_state = ctx.state_at(killer, kill.tick)?;
+    if !killer_state.is_alive {
+        return None;
+    }
+    let victim_state = ctx.state_at(kill.victim, kill.tick)?;
+
+    let z = cfg.general.z_weight;
+    let t0 = kill.tick - ctx.seconds(cfg.h4.peek_window_s);
+    let step = ctx.seconds(SAMPLE_STEP_S);
+    let victim_track = ctx.samples_in(kill.victim, t0, kill.tick, step)?;
+    let killer_track = ctx.samples_in(killer, t0, kill.tick, step)?;
+    let exposed_u = AnalysisContext::path_length(&victim_track, z);
+    let killer_moved_u = AnalysisContext::path_length(&killer_track, z);
+    if exposed_u < cfg.h4.exposure_min_u || killer_moved_u > cfg.h4.holder_max_u {
+        return None;
+    }
+    let distance = AnalysisContext::dist(&victim_state, &killer_state, z);
+    // The swing has to be *at* them.
+    if AnalysisContext::dist(victim_track.first()?, killer_track.first()?, z) <= distance {
+        return None;
+    }
+    // Point-blank is a scramble, not an angle duel.
+    if distance < cfg.h4.wide_peek_min_dist_u {
+        return None;
+    }
+
+    // A duel has to have happened: no engagement is class 5's or 13's story.
+    let shots = ctx.shots_by_in(kill.victim, t0, kill.tick).len();
+    let hit_the_killer = ctx
+        .hurts_dealt_in(kill.victim, t0, kill.tick)
+        .iter()
+        .any(|h| h.victim == killer);
+    if shots == 0 && !hit_the_killer {
+        return None;
+    }
+
+    Some(RuleFlag {
+        rule_id: WIDE_PEEK_HELD_ANGLE,
+        round: kill.round,
+        tick: kill.tick,
+        steamid: kill.victim,
+        confidence: CONF_WIDE_PEEK,
+        severity: cfg.severity.h4_wide_peek_held_angle,
+        details: json!({
+            "exposed_u": exposed_u,
+            "killer_moved_u": killer_moved_u,
+            "distance": distance,
+            "shots": shots,
+            "place": victim_state.place,
+            "killer_place": killer_state.place,
+            "killer": killer.to_string(),
+        }),
+        evidence: evidence_around(ctx, kill.round, kill.tick, &[kill.victim, killer]),
     })
 }
 
@@ -483,6 +591,248 @@ mod tests {
             .kill(ENEMY_B, VICTIM, 1, DEATH, "ak47")
             .build();
         assert!(crossfire_flags(&detect(&data)).is_empty());
+    }
+
+    // ---- H4_WIDE_PEEK_HELD_ANGLE ----
+
+    /// 1.5 s of peek window at 64 tick.
+    const PEEK_WINDOW: i32 = 96;
+
+    fn wide_peek_flags(flags: &[RuleFlag]) -> Vec<&RuleFlag> {
+        flags
+            .iter()
+            .filter(|f| f.rule_id == WIDE_PEEK_HELD_ANGLE)
+            .collect()
+    }
+
+    fn at(s: Scenario, sid: u64, tick: i32, x: f32, y: f32, place: &str) -> Scenario {
+        s.waypoint_full(
+            sid,
+            tick,
+            x,
+            y,
+            0.0,
+            0.0,
+            100,
+            true,
+            Some("weapon_ak47"),
+            Some(place),
+            false,
+        )
+    }
+
+    /// The victim swings from the origin to `victim_to` across the peek
+    /// window; the killer sits at `killer_x` and drifts `killer_travel`.
+    /// Everyone else is parked far away.
+    fn swing(victim_to: (f32, f32), killer_x: f32, killer_travel: f32) -> Scenario {
+        let s = Scenario::new("de_test")
+            .players_ct(&[VICTIM, MATE])
+            .players_t(&[ENEMY_A, ENEMY_B, ENEMY_C])
+            .round(1, 1000, 5000)
+            .hold(MATE, 1000, 3000, -5000.0, -5000.0, 0.0)
+            .hold(ENEMY_B, 1000, 3000, 9000.0, 0.0, 0.0)
+            .hold(ENEMY_C, 1000, 3000, 9000.0, 100.0, 0.0);
+        let s = at(s, VICTIM, 1000, 0.0, 0.0, "Palace");
+        let s = at(s, VICTIM, DEATH - PEEK_WINDOW, 0.0, 0.0, "Palace");
+        let s = at(s, VICTIM, DEATH, victim_to.0, victim_to.1, "Palace");
+        let s = at(s, ENEMY_A, 1000, killer_x, 0.0, "Jungle");
+        let s = at(s, ENEMY_A, DEATH - PEEK_WINDOW, killer_x, 0.0, "Jungle");
+        at(s, ENEMY_A, DEATH, killer_x + killer_travel, 0.0, "Jungle")
+    }
+
+    /// The target case: 200 u of swing into a killer holding 800 u away,
+    /// with one shot fired on the way in.
+    fn target_swing() -> Scenario {
+        swing((200.0, 0.0), 1000.0, 0.0).shot(VICTIM, 1950, "weapon_ak47")
+    }
+
+    #[test]
+    fn wide_peek_fires_when_the_victim_swung_into_a_holder() {
+        let data = target_swing()
+            .kill(ENEMY_A, VICTIM, 1, DEATH, "ak47")
+            .build();
+        let flags = detect(&data);
+        let wide = wide_peek_flags(&flags);
+        assert_eq!(wide.len(), 1);
+        let f = wide[0];
+        assert_eq!(f.round, 1);
+        assert_eq!(f.tick, DEATH, "death-anchored: flag tick = kill tick");
+        assert_eq!(f.steamid, VICTIM);
+        assert!((f.confidence - 0.6).abs() < 1e-6, "kinematic proxy");
+        assert_eq!(
+            f.severity,
+            DetectorConfig::default().severity.h4_wide_peek_held_angle
+        );
+        assert!((f.details["exposed_u"].as_f64().unwrap() - 200.0).abs() < 1.0);
+        assert!(f.details["killer_moved_u"].as_f64().unwrap() < 1.0);
+        assert!((f.details["distance"].as_f64().unwrap() - 800.0).abs() < 1.0);
+        assert_eq!(f.details["shots"], 1);
+        assert_eq!(f.details["place"], "Palace");
+        assert_eq!(f.details["killer_place"], "Jungle");
+        assert_eq!(f.details["killer"], ENEMY_A.to_string());
+        assert_eq!(f.evidence.focus_players, vec![VICTIM, ENEMY_A]);
+    }
+
+    #[test]
+    fn wide_peek_silent_when_the_victim_barely_moved() {
+        let data = swing((50.0, 0.0), 1000.0, 0.0)
+            .shot(VICTIM, 1950, "weapon_ak47")
+            .kill(ENEMY_A, VICTIM, 1, DEATH, "ak47")
+            .build();
+        assert!(wide_peek_flags(&detect(&data)).is_empty());
+    }
+
+    #[test]
+    fn wide_peek_silent_when_the_killer_was_moving_too() {
+        // 200 u from the killer: they were not holding an angle.
+        let data = swing((200.0, 0.0), 1000.0, -200.0)
+            .shot(VICTIM, 1950, "weapon_ak47")
+            .kill(ENEMY_A, VICTIM, 1, DEATH, "ak47")
+            .build();
+        assert!(wide_peek_flags(&detect(&data)).is_empty());
+    }
+
+    #[test]
+    fn wide_peek_silent_when_the_victim_moved_away_from_the_killer() {
+        let data = swing((-200.0, 0.0), 1000.0, 0.0)
+            .shot(VICTIM, 1950, "weapon_ak47")
+            .kill(ENEMY_A, VICTIM, 1, DEATH, "ak47")
+            .build();
+        assert!(wide_peek_flags(&detect(&data)).is_empty());
+    }
+
+    #[test]
+    fn wide_peek_silent_without_an_engagement() {
+        // No shot and no damage: that death is class 5's or 13's to judge.
+        let data = swing((200.0, 0.0), 1000.0, 0.0)
+            .kill(ENEMY_A, VICTIM, 1, DEATH, "ak47")
+            .build();
+        assert!(wide_peek_flags(&detect(&data)).is_empty());
+    }
+
+    #[test]
+    fn wide_peek_fires_on_damage_dealt_to_the_killer_without_a_shot_event() {
+        let data = swing((200.0, 0.0), 1000.0, 0.0)
+            .hurt(VICTIM, ENEMY_A, 1950, 30, "ak47")
+            .kill(ENEMY_A, VICTIM, 1, DEATH, "ak47")
+            .build();
+        let flags = detect(&data);
+        let wide = wide_peek_flags(&flags);
+        assert_eq!(wide.len(), 1);
+        assert_eq!(wide[0].details["shots"], 0);
+    }
+
+    #[test]
+    fn wide_peek_silent_at_point_blank_range() {
+        // 100 u apart at the death is a scramble, not an angle duel.
+        let data = swing((200.0, 0.0), 300.0, 0.0)
+            .shot(VICTIM, 1950, "weapon_ak47")
+            .kill(ENEMY_A, VICTIM, 1, DEATH, "ak47")
+            .build();
+        assert!(wide_peek_flags(&detect(&data)).is_empty());
+    }
+
+    #[test]
+    fn wide_peek_silent_through_smoke_or_a_wall() {
+        for (thru_smoke, penetrated) in [(true, 0), (false, 2)] {
+            let data = target_swing()
+                .kill_full(
+                    Some(ENEMY_A),
+                    VICTIM,
+                    1,
+                    DEATH,
+                    "ak47",
+                    thru_smoke,
+                    penetrated,
+                )
+                .build();
+            assert!(
+                wide_peek_flags(&detect(&data)).is_empty(),
+                "thru_smoke {thru_smoke} / penetrated {penetrated} is class 5's"
+            );
+        }
+    }
+
+    #[test]
+    fn wide_peek_requires_a_living_enemy_killer() {
+        let team = target_swing().kill(MATE, VICTIM, 1, DEATH, "m4a1").build();
+        assert!(wide_peek_flags(&detect(&team)).is_empty());
+
+        // Same swing, but the killer's own last sample says dead.
+        let s = Scenario::new("de_test")
+            .players_ct(&[VICTIM, MATE])
+            .players_t(&[ENEMY_A, ENEMY_B, ENEMY_C])
+            .round(1, 1000, 5000);
+        let s = at(s, VICTIM, 1000, 0.0, 0.0, "Palace");
+        let s = at(s, VICTIM, DEATH - PEEK_WINDOW, 0.0, 0.0, "Palace");
+        let s = at(s, VICTIM, DEATH, 200.0, 0.0, "Palace");
+        let s = at(s, ENEMY_A, 1000, 1000.0, 0.0, "Jungle");
+        let s = at(s, ENEMY_A, DEATH - PEEK_WINDOW, 1000.0, 0.0, "Jungle");
+        let dead_killer = s
+            .waypoint_full(
+                ENEMY_A, DEATH, 1000.0, 0.0, 0.0, 0.0, 0, false, None, None, false,
+            )
+            .shot(VICTIM, 1950, "weapon_ak47")
+            .kill(ENEMY_A, VICTIM, 1, DEATH, "ak47")
+            .build();
+        assert!(wide_peek_flags(&detect(&dead_killer)).is_empty());
+    }
+
+    #[test]
+    fn wide_peek_insight_fires_at_two_occurrences() {
+        let mut s = Scenario::new("de_test")
+            .players_ct(&[VICTIM, MATE])
+            .players_t(&[ENEMY_A, ENEMY_B, ENEMY_C])
+            .round(1, 1000, 5000)
+            .round(2, 6000, 10000);
+        for (start, death) in [(1000, DEATH), (6000, 7000)] {
+            s = at(s, VICTIM, start, 0.0, 0.0, "Palace");
+            s = at(s, VICTIM, death - PEEK_WINDOW, 0.0, 0.0, "Palace");
+            s = at(s, VICTIM, death, 200.0, 0.0, "Palace");
+            s = at(s, ENEMY_A, start, 1000.0, 0.0, "Jungle");
+            s = at(s, ENEMY_A, death - PEEK_WINDOW, 1000.0, 0.0, "Jungle");
+            s = at(s, ENEMY_A, death, 1000.0, 0.0, "Jungle");
+            s = s.shot(VICTIM, death - 50, "weapon_ak47").kill(
+                ENEMY_A,
+                VICTIM,
+                if death == DEATH { 1 } else { 2 },
+                death,
+                "ak47",
+            );
+        }
+        let data = s.build();
+        let ctx = AnalysisContext::new(&data, VICTIM);
+        let cfg = DetectorConfig::default();
+        let flags = H4Exposure.detect(&ctx, &cfg);
+        assert_eq!(wide_peek_flags(&flags).len(), 2);
+        let insights = H4Exposure.insights(&ctx, &cfg, &flags);
+        let wide: Vec<&Insight> = insights
+            .iter()
+            .filter(|i| i.detector == WIDE_PEEK_HELD_ANGLE)
+            .collect();
+        assert_eq!(wide.len(), 1);
+        assert_eq!(wide[0].category, Category::Positioning);
+        assert_eq!(wide[0].round, 0, "match-level");
+        assert_eq!(wide[0].severity, cfg.severity.h4_wide_peek_held_angle);
+        assert!((wide[0].confidence - 0.6).abs() < 1e-6);
+        assert_eq!(wide[0].title_data["count"], 2);
+        assert_eq!(wide[0].metrics["count"], 2);
+        assert_eq!(wide[0].evidence.len(), 2);
+    }
+
+    #[test]
+    fn wide_peek_insight_suppressed_at_one_occurrence() {
+        let data = target_swing()
+            .kill(ENEMY_A, VICTIM, 1, DEATH, "ak47")
+            .build();
+        let ctx = AnalysisContext::new(&data, VICTIM);
+        let cfg = DetectorConfig::default();
+        let flags = H4Exposure.detect(&ctx, &cfg);
+        assert_eq!(wide_peek_flags(&flags).len(), 1);
+        assert!(!H4Exposure
+            .insights(&ctx, &cfg, &flags)
+            .iter()
+            .any(|i| i.detector == WIDE_PEEK_HELD_ANGLE));
     }
 
     // ---- insights ----

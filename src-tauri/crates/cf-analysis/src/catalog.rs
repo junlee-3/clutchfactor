@@ -67,6 +67,14 @@ static ENTRIES: &[CatalogEntry] = &[
         watches_for: "A second enemy killed you while you were fighting the first.",
         thresholds: "two enemies you exchanged damage with in the last {h4.crossfire_engage_window_s}, at least {h4.crossfire_min_angle_deg}° apart",
         class_id: Some(9), example: "Fighting Kit at Palace when Sam's teammate hit you from Jungle, 70° apart.", stat_links: &["kd"] },
+    CatalogEntry { id: "H4_WIDE_PEEK_HELD_ANGLE", family: "H4 Exposure", title: "Lost a held-angle duel",
+        watches_for: "You swung into an enemy who was standing still on the angle, traded shots with them and lost.",
+        thresholds: "{h4.exposure_min_u} of your own movement in the {h4.peek_window_s} before the death, toward a killer who moved less than {h4.holder_max_u}, still {h4.wide_peek_min_dist_u} apart when you died, with a shot or damage from you",
+        class_id: Some(10), example: "180 u swung into a killer holding 640 u away at Jungle, 3 shots fired.", stat_links: &["kast", "kd"] },
+    CatalogEntry { id: "H1_DESPERATION_PEEK", family: "H1 Man-count discipline", title: "Over-peek down bodies",
+        watches_for: "You walked into the fight a player down, with nothing on the clock forcing the contact.",
+        thresholds: "down at least one body with two of you still alive; you close {h1.approach_min_u} on the killer inside {h1.approach_window_s} and cover more ground than they do; nobody trades within {h1.traded_within_s}; silent under {h1.ct_retake_forced_s} of bomb on CT and under {h1.t_forced_s} of round on T",
+        class_id: Some(8), example: "3v4 at Palace with 41 s left: 312 u closed on a killer who moved 40 u.", stat_links: &["kast", "kd"] },
     CatalogEntry { id: "H5_DIED_FLASHED", family: "H5 Audio-cued misplay", title: "Died flashed",
         watches_for: "You died inside an enemy flash.", thresholds: "an enemy blind of at least {flash.effective_s} covering the death tick",
         class_id: Some(3), example: "Blinded for 1.8 s when the duel started.", stat_links: &["kd"] },
@@ -138,9 +146,9 @@ static CLASSES: &[ClassEntry] = &[
     ClassEntry { id: 5, name: "No-engagement death (wallbang / through smoke / never saw the attacker)", source: "H4", built: true, why_not: None },
     ClassEntry { id: 6, name: "Isolated & untradeable", source: "H2", built: true, why_not: None },
     ClassEntry { id: 7, name: "Baited / unsupported trade attempt", source: "H2", built: true, why_not: None },
-    ClassEntry { id: 8, name: "Over-peek in man disadvantage", source: "H1", built: false, why_not: Some("Needs peek geometry (who exposed to whom) — the parser gives positions, not lines of sight.") },
+    ClassEntry { id: 8, name: "Over-peek in man disadvantage", source: "H1", built: true, why_not: None },
     ClassEntry { id: 9, name: "Crossfire death (killed by a second enemy mid-duel)", source: "H4", built: true, why_not: None },
-    ClassEntry { id: 10, name: "Lost angle-advantage duel (wide peek)", source: "H4", built: false, why_not: Some("Needs angle-of-exposure geometry against map walls; no raycast data exists in v1.") },
+    ClassEntry { id: 10, name: "Lost angle-advantage duel (wide peek)", source: "H4", built: true, why_not: None },
     ClassEntry { id: 11, name: "Pushed without info", source: "H6", built: true, why_not: None },
     ClassEntry { id: 12, name: "Off-angle / repeat-hotspot death", source: "H8", built: false, why_not: Some("Per-death classification needs a 'standard angle' model; hotspots are tracked across matches instead (Habits).") },
     ClassEntry { id: 13, name: "Outaimed in a fair duel", source: "fallback — good to see", built: true, why_not: None },
@@ -213,7 +221,7 @@ mod tests {
                 .filter(|c| !c.built)
                 .map(|c| c.id)
                 .collect::<Vec<_>>(),
-            vec![8, 10, 12]
+            vec![12]
         );
     }
 
@@ -228,6 +236,10 @@ mod tests {
             "H2_BAITED_TRADE",
             "H14_UNSUPPORTED_ENTRY",
             "H11_EARLY_AGGRESSIVE_DEATH",
+            // Both class 8 and class 10 describe a death you lost without a
+            // kill and without a trade — the same KAST miss.
+            "H1_DESPERATION_PEEK",
+            "H4_WIDE_PEEK_HELD_ANGLE",
         ] {
             let e = entries().iter().find(|e| e.id == id).expect("entry");
             assert!(e.stat_links.contains(&"kast"), "{id} does not feed kast");

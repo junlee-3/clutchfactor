@@ -12,8 +12,8 @@ use crate::types::{DeathClassRow, RuleFlag};
 use cf_parser::model::Kill;
 
 /// Priority-ordered (class_id, source rule ids). Order encodes causality
-/// (spec §1 "why the order is the spec") — do not reorder casually; classes
-/// 8/10/11/12 are reserved for families not yet built (H1/H4-T2/H6-info/H8).
+/// (spec §1 "why the order is the spec") — do not reorder casually; class 12
+/// is the only one still reserved for a family not yet built (H8).
 const PRIORITY: &[(u8, &[&str])] = &[
     (1, &["H3_DIED_WITH_NADE_OUT", "H3_DIED_MID_SWITCH"]),
     (2, &["H16_DIED_TO_UTILITY_NO_DUEL"]),
@@ -22,7 +22,9 @@ const PRIORITY: &[(u8, &[&str])] = &[
     (5, &["H4_KILLED_WITHOUT_CONTACT"]),
     (6, &["H2_ISOLATED_DEATH"]),
     (7, &["H2_BAITED_TRADE"]),
+    (8, &["H1_DESPERATION_PEEK"]),
     (9, &["H4_CAUGHT_IN_CROSSFIRE"]),
+    (10, &["H4_WIDE_PEEK_HELD_ANGLE"]),
     (11, &["H6_PUSH_WITHOUT_INFO"]),
 ];
 
@@ -269,6 +271,74 @@ mod tests {
         let rows = classify_deaths(&ctx, &cfg, &alone);
         assert_eq!(rows[0].class_id, 11);
         assert_eq!(rows[0].class_source, "H6_PUSH_WITHOUT_INFO");
+    }
+
+    /// Class 8 sits below the "nobody could trade you" classes and above
+    /// every duel-loss class (spec §1 ordering).
+    #[test]
+    fn desperation_peek_classifies_as_8_below_isolation() {
+        let data = base().kill(3, 1, 1, 2000, "ak47").build();
+        let ctx = AnalysisContext::new(&data, 1);
+        let cfg = DetectorConfig::default();
+
+        let both = vec![
+            flag("H2_ISOLATED_DEATH", 2000, 1, 0.75),
+            flag("H1_DESPERATION_PEEK", 2000, 1, 0.6),
+        ];
+        let rows = classify_deaths(&ctx, &cfg, &both);
+        assert_eq!(rows[0].class_id, 6);
+        assert_eq!(rows[0].secondary_tags, vec!["H1_DESPERATION_PEEK"]);
+
+        let alone = vec![flag("H1_DESPERATION_PEEK", 2000, 1, 0.6)];
+        let rows = classify_deaths(&ctx, &cfg, &alone);
+        assert_eq!(rows[0].class_id, 8);
+        assert_eq!(rows[0].class_source, "H1_DESPERATION_PEEK");
+        assert!((rows[0].confidence - 0.6).abs() < 0.01);
+
+        for lower in [
+            "H4_CAUGHT_IN_CROSSFIRE",
+            "H4_WIDE_PEEK_HELD_ANGLE",
+            "H6_PUSH_WITHOUT_INFO",
+        ] {
+            let rows = classify_deaths(
+                &ctx,
+                &cfg,
+                &[
+                    flag("H1_DESPERATION_PEEK", 2000, 1, 0.6),
+                    flag(lower, 2000, 1, 0.6),
+                ],
+            );
+            assert_eq!(rows[0].class_id, 8, "class 8 must outrank {lower}");
+        }
+    }
+
+    #[test]
+    fn wide_peek_classifies_as_10_between_crossfire_and_push_without_info() {
+        let data = base().kill(3, 1, 1, 2000, "ak47").build();
+        let ctx = AnalysisContext::new(&data, 1);
+        let cfg = DetectorConfig::default();
+
+        let alone = vec![flag("H4_WIDE_PEEK_HELD_ANGLE", 2000, 1, 0.6)];
+        let rows = classify_deaths(&ctx, &cfg, &alone);
+        assert_eq!(rows[0].class_id, 10);
+        assert_eq!(rows[0].class_source, "H4_WIDE_PEEK_HELD_ANGLE");
+
+        // A second enemy finishing the duel (9) outranks losing it (10).
+        let with_crossfire = vec![
+            flag("H4_CAUGHT_IN_CROSSFIRE", 2000, 1, 0.8),
+            flag("H4_WIDE_PEEK_HELD_ANGLE", 2000, 1, 0.6),
+        ];
+        let rows = classify_deaths(&ctx, &cfg, &with_crossfire);
+        assert_eq!(rows[0].class_id, 9);
+        assert_eq!(rows[0].secondary_tags, vec!["H4_WIDE_PEEK_HELD_ANGLE"]);
+
+        let with_push = vec![
+            flag("H4_WIDE_PEEK_HELD_ANGLE", 2000, 1, 0.6),
+            flag("H6_PUSH_WITHOUT_INFO", 2000, 1, 0.6),
+        ];
+        let rows = classify_deaths(&ctx, &cfg, &with_push);
+        assert_eq!(rows[0].class_id, 10);
+        assert_eq!(rows[0].secondary_tags, vec!["H6_PUSH_WITHOUT_INFO"]);
     }
 
     #[test]
