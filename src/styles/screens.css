@@ -381,9 +381,8 @@ a.stats-chip:hover {
   overflow: hidden;
 }
 
-/* Competitive-queue scenic map preview (issue #38 / design-system §9):
-   cover-fit into the 56px tile, hairline, slightly dimmed until hover/focus.
-   Replay still uses radar. */
+/* Competitive-queue map tile (issue #38): blurred scenic + badge, cover-fit
+   into 56px, hairline. Replay still uses radar. */
 .library-row-thumb {
   width: 56px;
   height: 56px;
