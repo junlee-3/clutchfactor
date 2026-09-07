@@ -381,8 +381,8 @@ a.stats-chip:hover {
   overflow: hidden;
 }
 
-/* Radar thumbnail (spec §1): cover-fit, hairline, dimmed until the row is
-   hovered/focused so the map reads as furniture, not a photo strip. */
+/* Competitive-queue map tile (issue #38): blurred scenic + badge, cover-fit
+   into 56px, hairline. Replay still uses radar. */
 .library-row-thumb {
   width: 56px;
   height: 56px;
@@ -390,7 +390,8 @@ a.stats-chip:hover {
   border: 1px solid var(--line);
   background: var(--bg-tape);
   object-fit: cover;
-  opacity: 0.8;
+  object-position: center;
+  opacity: 0.9;
   transition: opacity var(--dur-fast) var(--ease);
 }
 
