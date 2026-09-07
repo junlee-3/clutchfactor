@@ -27,3 +27,8 @@ export function radarLayer(cal: MapCalibration, z: number): "upper" | "lower" {
 export function radarImageUrl(map: string, layer: "upper" | "lower"): string {
   return layer === "lower" ? `/maps/${map}_lower.png` : `/maps/${map}.png`;
 }
+
+/** CS2 competitive-queue map tile: blurred scenic + badge (not the radar). */
+export function mapPreviewImageUrl(map: string): string {
+  return `/maps/previews/${map}.png`;
+}

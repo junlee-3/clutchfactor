@@ -234,7 +234,8 @@ screen-specific brief AND `dataviz` (for any chart) before writing each
 screen's code; screenshot + self-critique against this doc before done.**
 
 - **Library** — the shelf of tapes. Match rows become Table rows with a 2px
-  win/loss edge and a radar map thumbnail; import queue uses
+  win/loss edge and a CS2 competitive-queue map thumbnail (blurred scenic
+  background + map badge, 56×56; radar stays for Replay); import queue uses
   ImportQueuePanel + Toast for completion.
 - **Report** — the coach's write-up. Coach-note becomes the editorial lead;
   insight cards on Card with severity edge + evidence chips (dashed); class

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { radarImageUrl, radarLayer, worldToRadar } from "./coords";
+import { mapPreviewImageUrl, radarImageUrl, radarLayer, worldToRadar } from "./coords";
 import type { MapCalibration } from "./coords";
 
 // Real values from assets/maps/map-data.json
@@ -54,5 +54,12 @@ describe("radarImageUrl", () => {
   it("builds layer-specific urls", () => {
     expect(radarImageUrl("de_nuke", "upper")).toBe("/maps/de_nuke.png");
     expect(radarImageUrl("de_nuke", "lower")).toBe("/maps/de_nuke_lower.png");
+  });
+});
+
+describe("mapPreviewImageUrl", () => {
+  it("points at the vendored preview icon, not the radar", () => {
+    expect(mapPreviewImageUrl("de_mirage")).toBe("/maps/previews/de_mirage.png");
+    expect(mapPreviewImageUrl("de_nuke")).not.toBe(radarImageUrl("de_nuke", "upper"));
   });
 });
