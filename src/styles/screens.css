@@ -381,8 +381,9 @@ a.stats-chip:hover {
   overflow: hidden;
 }
 
-/* Radar thumbnail (spec §1): cover-fit, hairline, dimmed until the row is
-   hovered/focused so the map reads as furniture, not a photo strip. */
+/* Map-selection preview thumbnail (issue #38 / design-system §9): cover-fit
+   into the 56px tile, hairline, dimmed until the row is hovered/focused so
+   the badge reads as furniture, not a photo strip. Replay still uses radar. */
 .library-row-thumb {
   width: 56px;
   height: 56px;
@@ -390,7 +391,8 @@ a.stats-chip:hover {
   border: 1px solid var(--line);
   background: var(--bg-tape);
   object-fit: cover;
-  opacity: 0.8;
+  object-position: center;
+  opacity: 0.85;
   transition: opacity var(--dur-fast) var(--ease);
 }
 

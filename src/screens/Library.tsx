@@ -14,7 +14,7 @@ import { errorMessage } from "../lib/errors";
 import { useDeleteMatch, useImportDemo, useMatches, useReAnalyzeMatch } from "../lib/queries";
 import { formatMatchRow } from "../lib/score";
 import { mapInitials, mapName } from "../lib/mapName";
-import { radarImageUrl } from "../replay/coords";
+import { mapPreviewImageUrl } from "../replay/coords";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -36,9 +36,9 @@ const EDGE_BY_RESULT: Record<"W" | "L" | "T", "win" | "loss" | undefined> = {
   T: undefined,
 };
 
-// The radar image as a 56px tile (spec §1 "Library thumbnails"). Decorative:
-// the row's aria-label already names the map, so the image is aria-hidden.
-// A map with no vendored radar (404) falls back to a two-letter mono tile.
+// CS2 map-selection preview as a 56px tile (issue #38; design-system §9).
+// Decorative: the row's aria-label already names the map, so the image is
+// aria-hidden. Missing preview (404) falls back to a two-letter mono tile.
 function MapThumb({ map }: { map: string }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
@@ -51,7 +51,7 @@ function MapThumb({ map }: { map: string }) {
   return (
     <img
       className="library-row-thumb"
-      src={radarImageUrl(map, "upper")}
+      src={mapPreviewImageUrl(map)}
       alt=""
       aria-hidden="true"
       onError={() => setFailed(true)}
