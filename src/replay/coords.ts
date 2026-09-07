@@ -28,7 +28,7 @@ export function radarImageUrl(map: string, layer: "upper" | "lower"): string {
   return layer === "lower" ? `/maps/${map}_lower.png` : `/maps/${map}.png`;
 }
 
-/** CS2 in-game map-selection / match-history preview icon (not the radar). */
+/** CS2 competitive-queue scenic map screenshot (not the radar). */
 export function mapPreviewImageUrl(map: string): string {
   return `/maps/previews/${map}.png`;
 }

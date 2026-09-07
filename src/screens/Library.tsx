@@ -36,9 +36,9 @@ const EDGE_BY_RESULT: Record<"W" | "L" | "T", "win" | "loss" | undefined> = {
   T: undefined,
 };
 
-// CS2 map-selection preview as a 56px tile (issue #38; design-system §9).
-// Decorative: the row's aria-label already names the map, so the image is
-// aria-hidden. Missing preview (404) falls back to a two-letter mono tile.
+// CS2 competitive-queue scenic map preview as a 56px tile (issue #38;
+// design-system §9). Decorative: the row's aria-label already names the map,
+// so the image is aria-hidden. Missing preview (404) → two-letter mono tile.
 function MapThumb({ map }: { map: string }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
