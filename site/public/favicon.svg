@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- ClutchFactor app icon: crosshair (the duel) + rising-then-caught spark
+       (the trend line a coach reads). Palette = app tokens: bg #151a21,
+       panel line #232b36, CT blue #4aa3ff, T amber #f5b83d. -->
+  <rect width="1024" height="1024" rx="224" fill="#151a21"/>
+  <rect x="26" y="26" width="972" height="972" rx="206" fill="none" stroke="#232b36" stroke-width="12"/>
+  <!-- crosshair ring -->
+  <circle cx="512" cy="512" r="268" fill="none" stroke="#2c3a4d" stroke-width="34"/>
+  <!-- crosshair ticks -->
+  <g stroke="#4aa3ff" stroke-width="46" stroke-linecap="round">
+    <line x1="512" y1="150" x2="512" y2="268"/>
+    <line x1="512" y1="756" x2="512" y2="874"/>
+    <line x1="150" y1="512" x2="268" y2="512"/>
+    <line x1="756" y1="512" x2="874" y2="512"/>
+  </g>
+  <!-- spark polyline through the middle: the habit trending down -->
+  <polyline points="330,612 438,548 512,588 606,470 694,414"
+            fill="none" stroke="#4aa3ff" stroke-width="44"
+            stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- last point: the clutch moment, T amber -->
+  <circle cx="694" cy="414" r="42" fill="#f5b83d"/>
+</svg>
