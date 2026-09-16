@@ -3,7 +3,7 @@
 ClutchFactor is a coach, not a stats tracker: import your own CS2 demo
 (`.dem`) and it narrates what happened, round by round. Every insight and
 every number it shows links to the exact rounds and seconds in a 2D replay,
-so you can watch the play instead of taking a stat's word for it
+so you can watch the play instead of taking a stat's word for it.
 
 ![Match report](docs/screenshots/report.png)
 
