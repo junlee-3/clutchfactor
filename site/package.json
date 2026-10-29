@@ -18,7 +18,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.1",
     "eslint": "^10.8.1",
-    "happy-dom": "^20.11.15",
+    "happy-dom": "^21.0.4",
     "sharp": "^0.35.4",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.67.0",
